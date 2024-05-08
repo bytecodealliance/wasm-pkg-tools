@@ -1,0 +1,15 @@
+[package]
+name = "wasm-pkg-loader-e2e-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.79"
+bytes = "1.5.0"
+futures-util = { version = "0.3.29", features = ["io"] }
+libtest-mimic = "0.7.0"
+tempfile = "3.9.0"
+tokio-test = "0.4.3"
+wasm-pkg-loader = { path = "../.." }
+
+[workspace]
