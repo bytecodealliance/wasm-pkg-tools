@@ -1,8 +1,11 @@
 [package]
 name = "wasm-pkg-loader"
 description = "Wasm package loader"
+authors = ["Lann Martin <lann.martin@fermyon.com>"]
 version.workspace = true
+license.workspace = true
 edition.workspace = true
+repository = "https://github.com/bytecodealliance/wasm-pkg-tools/tree/main/crates/wasm-pkg-loader"
 
 [dependencies]
 anyhow = "1.0.79"
