@@ -118,8 +118,8 @@ impl TryFrom<TomlRegistryConfig> for super::RegistryConfig {
                 config_file,
             } => {
                 let client_config = match config_file {
-                    Some(path) => warg_client::Config::from_file(path)?,
-                    None => warg_client::Config::from_default_file()?.unwrap_or_default(),
+                    Some(path) => Some(warg_client::Config::from_file(path)?),
+                    None => Some(warg_client::Config::from_default_file()?.unwrap_or_default()),
                 };
                 Self::Warg(WargConfig {
                     auth_token,

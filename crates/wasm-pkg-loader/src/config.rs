@@ -44,6 +44,10 @@ impl ClientConfig {
         self
     }
 
+    pub fn get_default_registry(&self) -> Option<&str> {
+        self.default_registry.as_deref()
+    }
+
     pub fn namespace_registry(
         &mut self,
         namespace: impl Into<String>,
@@ -95,7 +99,7 @@ impl ClientConfig {
         auth_token: Option<impl Into<SecretString>>,
     ) -> Result<&mut Self, Error> {
         let cfg = RegistryConfig::Warg(WargConfig {
-            client_config: client_config.unwrap_or_default(),
+            client_config,
             auth_token: auth_token.map(Into::into),
         });
         self.registry_configs.insert(registry.into(), cfg);
