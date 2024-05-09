@@ -38,8 +38,8 @@ async fn fetch_smoke_test() {
     // Fetch package
     let mut client_config = ClientConfig::default();
     client_config
-        .default_registry("localhost:5000")
-        .oci_registry_config(
+        .set_default_registry("localhost:5000")
+        .set_oci_registry_config(
             "localhost:5000",
             Some(oci_client::ClientConfig {
                 protocol: oci_client::ClientProtocol::Http,
