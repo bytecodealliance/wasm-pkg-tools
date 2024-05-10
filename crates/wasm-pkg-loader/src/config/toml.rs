@@ -35,7 +35,7 @@ impl super::ClientConfig {
         let Some(config_dir) = dirs::config_dir() else {
             return Ok(None);
         };
-        let path = config_dir.join("warg").join("config.toml");
+        let path = config_dir.join("wasm-pkg").join("config.toml");
         if !path.exists() {
             return Ok(None);
         }
