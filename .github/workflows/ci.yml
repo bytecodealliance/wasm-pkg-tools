@@ -1,0 +1,19 @@
+on: [push, pull_request]
+
+name: CI
+
+jobs:
+  run-ci:
+    name: Run CI
+    runs-on: ubuntu-latest
+    services:
+      distribution:
+        image: distribution/distribution:2.8.3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: |
+          ci/get-oras.sh
+          echo "/tmp/ci-bin" >> $GITHUB_PATH
+      - run: ci/run-ci.sh
