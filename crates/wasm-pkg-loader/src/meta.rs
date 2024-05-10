@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::Error;
 
-const WELL_KNOWN_PATH: &str = ".well-known/warg/registry.json";
+const WELL_KNOWN_PATH: &str = ".well-known/wasm-pkg/registry.json";
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
