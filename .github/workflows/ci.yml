@@ -9,6 +9,8 @@ jobs:
     services:
       distribution:
         image: distribution/distribution:2.8.3
+        ports:
+          - 5000:5000
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
