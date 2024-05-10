@@ -86,7 +86,11 @@ async fn show_package_info(
         println!("Package: {package}");
         println!("Versions:");
         for ver in versions {
-            println!("  {ver}");
+            println!(
+                "  {ver}{yanked}",
+                ver = ver.version,
+                yanked = if ver.yanked { " - Yanked" } else { "" }
+            );
         }
     }
     Ok(())
@@ -107,6 +111,7 @@ async fn fetch_package_content(
                 .with_context(|| format!("error listing {package} releases"))?;
             versions
                 .into_iter()
+                .map(|v| v.version)
                 .max()
                 .with_context(|| format!("no releases found for {package}"))?
         }

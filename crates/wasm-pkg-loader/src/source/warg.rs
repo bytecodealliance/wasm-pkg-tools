@@ -3,11 +3,14 @@ use bytes::Bytes;
 use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
 use secrecy::SecretString;
 use semver::Version;
-use tokio_util::io::ReaderStream;
 use warg_client::{storage::PackageInfo, ClientError, FileSystemClient};
 use warg_protocol::registry::PackageName;
 
-use crate::{meta::RegistryMeta, source::PackageSource, Error, PackageRef, Release};
+use crate::{
+    meta::RegistryMeta,
+    source::{PackageSource, VersionInfo},
+    Error, PackageRef, Release,
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct WargConfig {
@@ -28,7 +31,7 @@ impl WargSource {
         let url = registry_meta.warg_url.unwrap_or(registry);
         let WargConfig {
             client_config,
-            mut auth_token,
+            auth_token,
         } = config;
 
         let client_config = if let Some(client_config) = client_config {
@@ -38,12 +41,6 @@ impl WargSource {
                 .map_err(Error::InvalidConfig)?
                 .unwrap_or_default()
         };
-        if auth_token.is_none() && client_config.keyring_auth {
-            auth_token = warg_credentials::keyring::get_auth_token(
-                &warg_client::RegistryUrl::new(&url).map_err(Error::InvalidConfig)?,
-            )
-            .map_err(Error::InvalidConfig)?;
-        }
         let client =
             FileSystemClient::new_with_config(Some(url.as_str()), &client_config, auth_token)?;
         Ok(Self { client })
@@ -57,17 +54,14 @@ impl WargSource {
 
 #[async_trait]
 impl PackageSource for WargSource {
-    async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<Version>, Error> {
+    async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
         let info = self.fetch_package_info(package).await?;
         Ok(info
             .state
             .releases()
-            .filter_map(|release| {
-                if release.yanked() {
-                    None
-                } else {
-                    Some(release.version.clone())
-                }
+            .map(|r| VersionInfo {
+                version: r.version.clone(),
+                yanked: r.yanked(),
             })
             .collect())
     }
@@ -107,13 +101,12 @@ impl PackageSource for WargSource {
     ) -> Result<BoxStream<Result<Bytes, Error>>, Error> {
         let package_name = package.try_into()?;
 
-        // warg client already validated the digest
-        let download = self
+        // warg client validates the digest matches the content
+        let (_, stream) = self
             .client
-            .download_exact(&package_name, &release.version)
+            .download_exact_as_stream(&package_name, &release.version)
             .await?;
-        let file = tokio::fs::File::open(download.path).await?;
-        Ok(ReaderStream::new(file).map_err(Into::into).boxed())
+        Ok(stream.map_err(Into::into).boxed())
     }
 }
 

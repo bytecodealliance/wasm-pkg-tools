@@ -15,7 +15,7 @@ use source::{
     local::LocalSource,
     oci::{OciConfig, OciSource},
     warg::{WargConfig, WargSource},
-    PackageSource,
+    PackageSource, VersionInfo,
 };
 
 /// Re-exported to ease configuration.
@@ -54,7 +54,10 @@ impl Client {
     }
 
     /// Returns a list of all package [`Version`]s available for the given package.
-    pub async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<Version>, Error> {
+    pub async fn list_all_versions(
+        &mut self,
+        package: &PackageRef,
+    ) -> Result<Vec<VersionInfo>, Error> {
         let source = self.resolve_source(package).await?;
         source.list_all_versions(package).await
     }
@@ -168,4 +171,6 @@ pub enum Error {
     VersionYanked(Version),
     #[error("Warg error: {0}")]
     WargError(#[from] warg_client::ClientError),
+    #[error("Warg error: {0}")]
+    WargAnyhowError(#[from] anyhow::Error),
 }
