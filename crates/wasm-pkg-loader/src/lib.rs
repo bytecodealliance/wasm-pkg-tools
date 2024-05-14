@@ -15,7 +15,7 @@ use source::{
     local::LocalSource,
     oci::{OciConfig, OciSource},
     warg::{WargConfig, WargSource},
-    PackageSource,
+    PackageSource, VersionInfo,
 };
 
 /// Re-exported to ease configuration.
@@ -54,7 +54,10 @@ impl Client {
     }
 
     /// Returns a list of all package [`Version`]s available for the given package.
-    pub async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<Version>, Error> {
+    pub async fn list_all_versions(
+        &mut self,
+        package: &PackageRef,
+    ) -> Result<Vec<VersionInfo>, Error> {
         let source = self.resolve_source(package).await?;
         source.list_all_versions(package).await
     }
@@ -103,10 +106,10 @@ impl Client {
             let source: Box<dyn PackageSource> = match registry_config {
                 config::RegistryConfig::Local(config) => Box::new(LocalSource::new(config)),
                 config::RegistryConfig::Oci(config) => {
-                    Box::new(self.build_oci_client(&registry, config).await?)
+                    Box::new(self.build_oci_client(&registry, registry_meta, config)?)
                 }
                 config::RegistryConfig::Warg(config) => {
-                    Box::new(self.build_warg_client(&registry, config).await?)
+                    Box::new(self.build_warg_client(&registry, registry_meta, config)?)
                 }
             };
             self.sources.insert(registry.clone(), source);
@@ -114,25 +117,23 @@ impl Client {
         Ok(self.sources.get_mut(&registry).unwrap().as_mut())
     }
 
-    async fn build_oci_client(
+    fn build_oci_client(
         &mut self,
         registry: &str,
+        registry_meta: RegistryMeta,
         config: OciConfig,
     ) -> Result<OciSource, Error> {
         tracing::debug!("Building new OCI client for {registry:?}");
-        // Check registry metadata for OCI registry override
-        let registry_meta = RegistryMeta::fetch_or_default(registry).await;
         OciSource::new(registry.to_string(), config, registry_meta)
     }
 
-    async fn build_warg_client(
+    fn build_warg_client(
         &mut self,
         registry: &str,
+        registry_meta: RegistryMeta,
         config: WargConfig,
     ) -> Result<WargSource, Error> {
         tracing::debug!("Building new Warg client for {registry:?}");
-        // Check registry metadata for OCI registry override
-        let registry_meta = RegistryMeta::fetch_or_default(registry).await;
         WargSource::new(registry.to_string(), config, registry_meta)
     }
 }
@@ -164,6 +165,12 @@ pub enum Error {
     RegistryMeta(#[source] anyhow::Error),
     #[error("invalid version: {0}")]
     VersionError(#[from] semver::Error),
+    #[error("version not found: {0}")]
+    VersionNotFound(Version),
+    #[error("version yanked: {0}")]
+    VersionYanked(Version),
     #[error("Warg error: {0}")]
     WargError(#[from] warg_client::ClientError),
+    #[error("Warg error: {0}")]
+    WargAnyhowError(#[from] anyhow::Error),
 }

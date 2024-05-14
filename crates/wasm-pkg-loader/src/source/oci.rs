@@ -9,7 +9,10 @@ use secrecy::ExposeSecret;
 use semver::Version;
 
 use crate::{
-    config::BasicCredentials, meta::RegistryMeta, source::PackageSource, Error, PackageRef, Release,
+    config::BasicCredentials,
+    meta::RegistryMeta,
+    source::{PackageSource, VersionInfo},
+    Error, PackageRef, Release,
 };
 
 const WASM_LAYER_MEDIA_TYPES: &[&str] = &[
@@ -154,7 +157,7 @@ impl OciSource {
 
 #[async_trait]
 impl PackageSource for OciSource {
-    async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<Version>, Error> {
+    async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
         let reference = self.make_reference(package, None);
 
         tracing::debug!("Listing tags for OCI reference {reference:?}");
@@ -167,7 +170,10 @@ impl PackageSource for OciSource {
             .tags
             .iter()
             .flat_map(|tag| match Version::parse(tag) {
-                Ok(version) => Some(version),
+                Ok(version) => Some(VersionInfo {
+                    version,
+                    yanked: false,
+                }),
                 Err(err) => {
                     tracing::warn!("Ignoring invalid version tag {tag:?}: {err:?}");
                     None

@@ -38,8 +38,8 @@ async fn fetch_smoke_test() {
     // Fetch package
     let mut client_config = ClientConfig::default();
     client_config
-        .default_registry("localhost:5000")
-        .oci_registry_config(
+        .set_default_registry("localhost:5000")
+        .set_oci_registry_config(
             "localhost:5000",
             Some(oci_client::ClientConfig {
                 protocol: oci_client::ClientProtocol::Http,
@@ -55,7 +55,10 @@ async fn fetch_smoke_test() {
     let version = versions.into_iter().next().unwrap();
     assert_eq!(version.to_string(), FIXTURE_VERSION);
 
-    let release = client.get_release(&package, &version).await.unwrap();
+    let release = client
+        .get_release(&package, &version.version)
+        .await
+        .unwrap();
     let content = client
         .stream_content(&package, &release)
         .await

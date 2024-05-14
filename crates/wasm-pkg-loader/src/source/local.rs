@@ -6,7 +6,10 @@ use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
 use semver::Version;
 use tokio_util::io::ReaderStream;
 
-use crate::{source::PackageSource, ContentDigest, Error, PackageRef, Release};
+use crate::{
+    source::{PackageSource, VersionInfo},
+    ContentDigest, Error, PackageRef, Release,
+};
 
 #[derive(Clone, Debug)]
 pub struct LocalConfig {
@@ -38,7 +41,7 @@ impl LocalSource {
 
 #[async_trait]
 impl PackageSource for LocalSource {
-    async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<Version>, Error> {
+    async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
         let mut versions = vec![];
         let package_dir = self.package_dir(package);
         tracing::debug!("Reading versions from {package_dir:?}");
@@ -57,7 +60,10 @@ impl PackageSource for LocalSource {
                 tracing::warn!("invalid package file name at {path:?}");
                 continue;
             };
-            versions.push(version);
+            versions.push(VersionInfo {
+                version,
+                yanked: false,
+            });
         }
         Ok(versions)
     }

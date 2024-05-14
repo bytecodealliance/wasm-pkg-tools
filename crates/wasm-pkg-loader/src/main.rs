@@ -7,7 +7,9 @@ use wasm_pkg_loader::{Client, ClientConfig, PackageRef, Release, Version};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
 
     let mut args = std::env::args();
     let arg0 = args.next().unwrap_or_else(|| "wasm-pkg-loader".into());
@@ -21,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
 
     let client = {
         let mut config = ClientConfig::default();
-        config.namespace_registry("wasi", "bytecodealliance.org");
+        config.set_namespace_registry("wasi", "bytecodealliance.org");
         if let Some(file_config) = ClientConfig::from_default_file()? {
             config.merge_config(file_config);
         }
@@ -65,7 +67,11 @@ async fn show_package_info(
         println!("Package: {package}");
         println!("Versions:");
         for ver in versions {
-            println!("  {ver}");
+            println!(
+                "  {ver}{yanked}",
+                ver = ver.version,
+                yanked = if ver.yanked { " - Yanked" } else { "" }
+            );
         }
     }
     Ok(())
@@ -86,6 +92,7 @@ async fn fetch_package_content(
                 .with_context(|| format!("error listing {package} releases"))?;
             versions
                 .into_iter()
+                .map(|v| v.version)
                 .max()
                 .with_context(|| format!("no releases found for {package}"))?
         }

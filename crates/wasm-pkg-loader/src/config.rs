@@ -28,10 +28,10 @@ impl ClientConfig {
 
     pub fn merge_config(&mut self, other: ClientConfig) -> &mut Self {
         if let Some(default_registry) = other.default_registry {
-            self.default_registry(default_registry);
+            self.set_default_registry(default_registry);
         }
         for (namespace, registry) in other.namespace_registries {
-            self.namespace_registry(namespace, registry);
+            self.set_namespace_registry(namespace, registry);
         }
         for (registry, config) in other.registry_configs {
             self.registry_configs.insert(registry, config);
@@ -39,12 +39,16 @@ impl ClientConfig {
         self
     }
 
-    pub fn default_registry(&mut self, registry: impl Into<String>) -> &mut Self {
+    pub fn set_default_registry(&mut self, registry: impl Into<String>) -> &mut Self {
         self.default_registry = Some(registry.into());
         self
     }
 
-    pub fn namespace_registry(
+    pub fn default_registry(&self) -> Option<&str> {
+        self.default_registry.as_deref()
+    }
+
+    pub fn set_namespace_registry(
         &mut self,
         namespace: impl Into<String>,
         registry: impl Into<String>,
@@ -54,7 +58,7 @@ impl ClientConfig {
         self
     }
 
-    pub fn local_registry_config(
+    pub fn set_local_registry_config(
         &mut self,
         registry: impl Into<String>,
         root: impl Into<PathBuf>,
@@ -66,7 +70,7 @@ impl ClientConfig {
         self
     }
 
-    pub fn oci_registry_config(
+    pub fn set_oci_registry_config(
         &mut self,
         registry: impl Into<String>,
         client_config: Option<OciClientConfig>,
@@ -88,14 +92,14 @@ impl ClientConfig {
         Ok(self)
     }
 
-    pub fn warg_registry_config(
+    pub fn set_warg_registry_config(
         &mut self,
         registry: impl Into<String>,
         client_config: Option<warg_client::Config>,
         auth_token: Option<impl Into<SecretString>>,
     ) -> Result<&mut Self, Error> {
         let cfg = RegistryConfig::Warg(WargConfig {
-            client_config: client_config.unwrap_or_default(),
+            client_config,
             auth_token: auth_token.map(Into::into),
         });
         self.registry_configs.insert(registry.into(), cfg);
