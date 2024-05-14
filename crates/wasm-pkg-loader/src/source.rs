@@ -34,6 +34,12 @@ impl PartialEq for VersionInfo {
     }
 }
 
+impl std::fmt::Display for VersionInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{version}", version = self.version)
+    }
+}
+
 #[async_trait]
 pub trait PackageSource: Send {
     async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error>;
