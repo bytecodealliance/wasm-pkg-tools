@@ -27,7 +27,6 @@ async fn main() -> anyhow::Result<()> {
         if let Some(file_config) = ClientConfig::from_default_file()? {
             config.merge_config(file_config);
         }
-
         config.to_client()
     };
 
