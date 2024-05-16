@@ -1,5 +1,6 @@
 use crate::{label::Label, Error};
 
+/// A package reference, consisting of kebab-case namespace and name, e.g. `wasm-pkg:loader`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PackageRef {
     namespace: Label,
@@ -7,10 +8,12 @@ pub struct PackageRef {
 }
 
 impl PackageRef {
+    /// Returns the namespace of the package.
     pub fn namespace(&self) -> &Label {
         &self.namespace
     }
 
+    /// Returns the name of the package.
     pub fn name(&self) -> &Label {
         &self.name
     }

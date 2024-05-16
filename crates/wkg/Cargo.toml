@@ -1,8 +1,18 @@
 [package]
 name = "wkg"
+description = "Wasm Package Tools CLI"
 edition.workspace = true
 version.workspace = true
 authors.workspace = true
 license.workspace = true
 
 [dependencies]
+anyhow = "1.0"
+clap = { version = "4.5.4", features = ["derive"] }
+futures-util = { version = "0.3.29", features = ["io"] }
+tempfile = "3.10.1"
+tokio = { workspace = true, features = ["macros", "rt"] }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+wasm-pkg-loader = { workspace = true }
+wit-component = "0.207"
