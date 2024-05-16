@@ -29,5 +29,5 @@ toml = "0.8.8"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 url = "2.5.0"
-warg-client = "0.6.0"
-warg-protocol = "0.6.0"
+warg-client = "0.7.0"
+warg-protocol = "0.7.0"

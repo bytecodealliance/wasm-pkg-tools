@@ -23,7 +23,7 @@ pub struct WargSource {
 }
 
 impl WargSource {
-    pub fn new(
+    pub async fn new(
         registry: String,
         config: WargConfig,
         registry_meta: RegistryMeta,
@@ -42,7 +42,7 @@ impl WargSource {
                 .unwrap_or_default()
         };
         let client =
-            FileSystemClient::new_with_config(Some(url.as_str()), &client_config, auth_token)?;
+            FileSystemClient::new_with_config(Some(url.as_str()), &client_config, auth_token).await?;
         Ok(Self { client })
     }
 

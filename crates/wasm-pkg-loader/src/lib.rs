@@ -109,7 +109,7 @@ impl Client {
                     Box::new(self.build_oci_client(&registry, registry_meta, config)?)
                 }
                 config::RegistryConfig::Warg(config) => {
-                    Box::new(self.build_warg_client(&registry, registry_meta, config)?)
+                    Box::new(self.build_warg_client(&registry, registry_meta, config).await?)
                 }
             };
             self.sources.insert(registry.clone(), source);
@@ -127,14 +127,14 @@ impl Client {
         OciSource::new(registry.to_string(), config, registry_meta)
     }
 
-    fn build_warg_client(
+    async fn build_warg_client(
         &mut self,
         registry: &str,
         registry_meta: RegistryMeta,
         config: WargConfig,
     ) -> Result<WargSource, Error> {
         tracing::debug!("Building new Warg client for {registry:?}");
-        WargSource::new(registry.to_string(), config, registry_meta)
+        WargSource::new(registry.to_string(), config, registry_meta).await
     }
 }
 
