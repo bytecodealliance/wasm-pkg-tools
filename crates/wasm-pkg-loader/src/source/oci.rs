@@ -128,14 +128,18 @@ impl OciSource {
                     "identity tokens not supported"
                 )));
             }
-            Err(err @ CredentialRetrievalError::HelperFailure { .. }) => {
-                tracing::info!("Docker credential helper failed: {err:?}");
+            Err(err) => {
+                if matches!(
+                    err,
+                    CredentialRetrievalError::ConfigNotFound
+                        | CredentialRetrievalError::ConfigReadError
+                        | CredentialRetrievalError::NoCredentialConfigured
+                ) {
+                    tracing::debug!("Failed to look up OCI credentials: {err}");
+                } else {
+                    tracing::warn!("Failed to look up OCI credentials: {err}");
+                };
             }
-            Err(
-                CredentialRetrievalError::ConfigNotFound
-                | CredentialRetrievalError::NoCredentialConfigured,
-            ) => (),
-            Err(err) => return Err(Error::CredentialError(err.into())),
         }
 
         Ok(RegistryAuth::Anonymous)

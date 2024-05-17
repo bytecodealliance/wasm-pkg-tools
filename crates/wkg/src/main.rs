@@ -7,6 +7,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
 use package_spec::PackageSpec;
 use tokio::io::AsyncWriteExt;
+use tracing::level_filters::LevelFilter;
 use wasm_pkg_loader::ClientConfig;
 use wit_component::DecodedWasm;
 
@@ -191,7 +192,11 @@ impl GetCommand {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::builder()
+                .with_default_directive(LevelFilter::WARN.into())
+                .from_env_lossy(),
+        )
         .init();
 
     let cli = Cli::parse();
