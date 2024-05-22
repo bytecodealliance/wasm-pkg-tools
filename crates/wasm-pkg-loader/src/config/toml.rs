@@ -93,6 +93,7 @@ enum TomlRegistryConfig {
     },
     Oci {
         auth: Option<TomlAuth>,
+        protocol: Option<String>,
     },
     Warg {
         auth_token: Option<SecretString>,
@@ -106,10 +107,14 @@ impl TryFrom<TomlRegistryConfig> for super::RegistryConfig {
     fn try_from(value: TomlRegistryConfig) -> Result<Self, Self::Error> {
         Ok(match value {
             TomlRegistryConfig::Local { root } => Self::Local(LocalConfig { root }),
-            TomlRegistryConfig::Oci { auth } => {
+            TomlRegistryConfig::Oci { auth, protocol } => {
+                let mut client_config = oci_distribution::client::ClientConfig::default();
+                if let Some(protocol) = protocol {
+                    client_config.protocol = oci_client_protocol(&protocol)?;
+                };
                 let credentials = auth.map(TryInto::try_into).transpose()?;
                 Self::Oci(OciConfig {
-                    client_config: None,
+                    client_config,
                     credentials,
                 })
             }
@@ -172,6 +177,16 @@ impl TryFrom<TomlAuth> for BasicCredentials {
     }
 }
 
+fn oci_client_protocol(text: &str) -> Result<oci_distribution::client::ClientProtocol, Error> {
+    match text {
+        "http" => Ok(oci_distribution::client::ClientProtocol::Http),
+        "https" => Ok(oci_distribution::client::ClientProtocol::Https),
+        _ => Err(Error::InvalidConfig(anyhow::anyhow!(
+            "Unknown OCI protocol {text:?}"
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::config::{ClientConfig, RegistryConfig};
@@ -189,6 +204,7 @@ mod tests {
             [registry."example.com"]
             type = "oci"
             auth = { username = "open", password = "sesame" }
+            protocol = "http"
 
             [registry."wasi.dev"]
             type = "oci"
@@ -205,6 +221,10 @@ mod tests {
         let BasicCredentials { username, password } = oci_config.credentials.as_ref().unwrap();
         assert_eq!(username, "open");
         assert_eq!(password.expose_secret(), "sesame");
+        assert_eq!(
+            oci_distribution::client::ClientProtocol::Http,
+            oci_config.client_config.protocol
+        );
 
         let RegistryConfig::Oci(oci_config) = &cfg.registry_configs["wasi.dev"] else {
             panic!("not an oci config");

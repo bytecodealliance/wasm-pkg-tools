@@ -73,13 +73,10 @@ impl ClientConfig {
     pub fn set_oci_registry_config(
         &mut self,
         registry: impl Into<String>,
-        client_config: Option<OciClientConfig>,
+        client_config: OciClientConfig,
         credentials: Option<BasicCredentials>,
     ) -> Result<&mut Self, Error> {
-        if client_config
-            .as_ref()
-            .is_some_and(|cfg| cfg.platform_resolver.is_some())
-        {
+        if client_config.platform_resolver.is_some() {
             Error::InvalidConfig(anyhow::anyhow!(
                 "oci_distribution::client::ClientConfig::platform_resolver not supported"
             ));

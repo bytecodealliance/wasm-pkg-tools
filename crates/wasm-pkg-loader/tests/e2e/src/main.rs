@@ -41,10 +41,10 @@ async fn fetch_smoke_test() {
         .set_default_registry("localhost:5000")
         .set_oci_registry_config(
             "localhost:5000",
-            Some(oci_client::ClientConfig {
+            oci_client::ClientConfig {
                 protocol: oci_client::ClientProtocol::Http,
                 ..Default::default()
-            }),
+            },
             None,
         )
         .unwrap();
