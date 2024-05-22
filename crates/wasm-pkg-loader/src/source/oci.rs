@@ -22,18 +22,18 @@ const WASM_LAYER_MEDIA_TYPES: &[&str] = &[
 
 #[derive(Default)]
 pub struct OciConfig {
-    pub client_config: Option<ClientConfig>,
+    pub client_config: ClientConfig,
     pub credentials: Option<BasicCredentials>,
 }
 
 impl Clone for OciConfig {
     fn clone(&self) -> Self {
-        let client_config = self.client_config.as_ref().map(|cfg| ClientConfig {
-            protocol: cfg.protocol.clone(),
-            extra_root_certificates: cfg.extra_root_certificates.clone(),
+        let client_config = ClientConfig {
+            protocol: self.client_config.protocol.clone(),
+            extra_root_certificates: self.client_config.extra_root_certificates.clone(),
             platform_resolver: None,
-            ..*cfg
-        });
+            ..self.client_config
+        };
         Self {
             client_config,
             credentials: self.credentials.clone(),
@@ -44,7 +44,7 @@ impl Clone for OciConfig {
 impl std::fmt::Debug for OciConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OciConfig")
-            .field("client_config", &self.client_config.as_ref().map(|_| "..."))
+            .field("client_config", &"...")
             .field("credentials", &self.credentials)
             .finish()
     }
@@ -68,7 +68,7 @@ impl OciSource {
             client_config,
             credentials,
         } = config;
-        let client = oci_distribution::Client::new(client_config.unwrap_or_default());
+        let client = oci_distribution::Client::new(client_config);
 
         let oci_registry = registry_meta.oci_registry.unwrap_or(registry);
 
