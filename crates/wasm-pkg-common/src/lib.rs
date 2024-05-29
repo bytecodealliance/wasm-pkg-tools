@@ -3,7 +3,7 @@ use http::uri::InvalidUri;
 pub mod config;
 mod label;
 mod package;
-mod registry;
+pub mod registry;
 
 use label::InvalidLabel;
 pub use registry::Registry;
@@ -22,6 +22,8 @@ pub enum Error {
     InvalidPackageRef(String),
     #[error("invalid registry: {0}")]
     InvalidRegistry(#[from] InvalidUri),
+    #[error("invalid registry metadata: {0}")]
+    InvalidRegistryMetadata(#[source] serde_json::Error),
 }
 
 impl Error {
