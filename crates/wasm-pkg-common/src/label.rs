@@ -1,5 +1,8 @@
+use serde::{Deserialize, Serialize};
+
 /// A Component Model kebab-case label.
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(into = "String", try_from = "String")]
 pub struct Label(String);
 
 impl AsRef<str> for Label {
@@ -17,6 +20,12 @@ impl std::fmt::Display for Label {
 impl std::fmt::Debug for Label {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.0)
+    }
+}
+
+impl From<Label> for String {
+    fn from(value: Label) -> Self {
+        value.0
     }
 }
 

@@ -3,16 +3,18 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 
-use crate::{label::Label, package::PackageRef, Error, Registry};
+use crate::{label::Label, package::PackageRef, Registry};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TomlConfig {
     default_registry: Option<Registry>,
     #[serde(default)]
-    package_registries: HashMap<PackagePattern, Registry>,
+    namespace_registries: HashMap<Label, Registry>,
+    #[serde(default)]
+    package_registry_overrides: HashMap<PackageRef, Registry>,
     #[serde(default)]
     registry: HashMap<Registry, TomlRegistryConfig>,
 }
@@ -21,22 +23,10 @@ impl From<TomlConfig> for super::Config {
     fn from(value: TomlConfig) -> Self {
         let TomlConfig {
             default_registry,
-            package_registries: pattern_registries,
+            namespace_registries,
+            package_registry_overrides,
             registry,
         } = value;
-
-        let mut namespace_registries: HashMap<Label, Registry> = Default::default();
-        let mut package_registries: HashMap<PackageRef, Registry> = Default::default();
-        for (pattern, registry) in pattern_registries {
-            match pattern {
-                PackagePattern::NamespaceWildcard(namespace) => {
-                    namespace_registries.insert(namespace, registry);
-                }
-                PackagePattern::ExactPackage(package) => {
-                    package_registries.insert(package, registry);
-                }
-            }
-        }
 
         let registry_configs = registry
             .into_iter()
@@ -46,32 +36,8 @@ impl From<TomlConfig> for super::Config {
         Self {
             default_registry,
             namespace_registries,
-            package_registries,
+            package_registry_overrides,
             registry_configs,
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Deserialize)]
-#[serde(try_from = "String")]
-enum PackagePattern {
-    NamespaceWildcard(Label),
-    ExactPackage(PackageRef),
-}
-
-impl TryFrom<String> for PackagePattern {
-    type Error = Error;
-
-    fn try_from(mut value: String) -> Result<Self, Self::Error> {
-        if value.ends_with(":*") {
-            value.truncate(value.len() - 2);
-            Ok(PackagePattern::NamespaceWildcard(value.try_into()?))
-        } else if value.contains(':') {
-            Ok(PackagePattern::ExactPackage(value.try_into()?))
-        } else {
-            Err(Error::InvalidPackagePattern(
-                "keys must be full package names or <namespace>:* wildcards".into(),
-            ))
         }
     }
 }
@@ -97,16 +63,6 @@ impl From<TomlRegistryConfig> for super::RegistryConfig {
     }
 }
 
-impl<'de> Deserialize<'de> for Registry {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use serde::de::Error;
-        Registry::try_from(String::deserialize(deserializer)?).map_err(D::Error::custom)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,8 +72,10 @@ mod tests {
         let toml_config = toml::toml! {
             default_registry = "example.com"
 
-            [package_registries]
-            "wasi:*" = "wasi.dev"
+            [namespace_registries]
+            wasi = "wasi.dev"
+
+            [package_registry_overrides]
             "example:foo" = "example.com"
 
             [registry."wasi.dev".oci]

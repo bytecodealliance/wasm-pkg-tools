@@ -3770,6 +3770,7 @@ dependencies = [
  "dirs",
  "http",
  "serde 1.0.201",
+ "serde_json",
  "thiserror",
  "toml 0.8.13",
  "tracing",

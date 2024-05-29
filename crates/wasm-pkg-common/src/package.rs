@@ -1,7 +1,10 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{label::Label, Error};
 
 /// A package reference, consisting of kebab-case namespace and name, e.g. `wasm-pkg:loader`.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(into = "String", try_from = "String")]
 pub struct PackageRef {
     namespace: Label,
     name: Label,
@@ -22,6 +25,12 @@ impl PackageRef {
 impl std::fmt::Display for PackageRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", self.namespace, self.name)
+    }
+}
+
+impl From<PackageRef> for String {
+    fn from(value: PackageRef) -> Self {
+        value.to_string()
     }
 }
 

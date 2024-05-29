@@ -4,12 +4,13 @@ use std::{
 };
 
 use http::uri::Authority;
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::Error;
 
 /// A registry identifier, which should be a valid HTTP Host.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(into = "String", try_from = "String")]
 pub struct Registry(Authority);
 
 impl Registry {
@@ -33,6 +34,12 @@ impl AsRef<str> for Registry {
 impl std::fmt::Display for Registry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl From<Registry> for String {
+    fn from(value: Registry) -> Self {
+        value.to_string()
     }
 }
 

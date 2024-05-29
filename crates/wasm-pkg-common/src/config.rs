@@ -22,7 +22,7 @@ pub const DEFAULT_REGISTRY: &str = "bytecodealliance.org";
 pub struct Config {
     default_registry: Option<Registry>,
     namespace_registries: HashMap<Label, Registry>,
-    package_registries: HashMap<PackageRef, Registry>,
+    package_registry_overrides: HashMap<PackageRef, Registry>,
     registry_configs: HashMap<Registry, RegistryConfig>,
 }
 
@@ -31,7 +31,7 @@ impl Default for Config {
         Self {
             default_registry: Some(DEFAULT_REGISTRY.parse().unwrap()),
             namespace_registries: Default::default(),
-            package_registries: Default::default(),
+            package_registry_overrides: Default::default(),
             registry_configs: Default::default(),
         }
     }
@@ -46,7 +46,7 @@ impl Config {
         Self {
             default_registry: Default::default(),
             namespace_registries: Default::default(),
-            package_registries: Default::default(),
+            package_registry_overrides: Default::default(),
             registry_configs: Default::default(),
         }
     }
@@ -100,14 +100,14 @@ impl Config {
         let Self {
             default_registry,
             namespace_registries,
-            package_registries,
+            package_registry_overrides: package_registries,
             registry_configs,
         } = other;
         if default_registry.is_some() {
             self.default_registry = default_registry;
         }
         self.namespace_registries.extend(namespace_registries);
-        self.package_registries.extend(package_registries);
+        self.package_registry_overrides.extend(package_registries);
         for (registry, config) in registry_configs {
             match self.registry_configs.entry(registry) {
                 Entry::Occupied(mut occupied) => occupied.get_mut().merge(config),
@@ -125,7 +125,7 @@ impl Config {
     /// - A namespace registry matching the package's namespace
     /// - The default registry
     pub fn resolve_registry(&self, package: &PackageRef) -> Option<&Registry> {
-        if let Some(reg) = self.package_registries.get(package) {
+        if let Some(reg) = self.package_registry_overrides.get(package) {
             Some(reg)
         } else if let Some(reg) = self.namespace_registries.get(package.namespace()) {
             Some(reg)
@@ -158,16 +158,16 @@ impl Config {
         self.namespace_registries.insert(namespace, registry);
     }
 
-    /// Returns a registry configured for the given exact package.
+    /// Returns a registry override configured for the given package.
     ///
     /// Does not fall back to namespace or default registries; see [`Self::resolve`].
-    pub fn package_registry(&self, package: &PackageRef) -> Option<&Registry> {
-        self.package_registries.get(package)
+    pub fn package_registry_override(&self, package: &PackageRef) -> Option<&Registry> {
+        self.package_registry_overrides.get(package)
     }
 
-    /// Sets a registry for the given exact package.
-    pub fn set_package_registry(&mut self, package: PackageRef, registry: Registry) {
-        self.package_registries.insert(package, registry);
+    /// Sets a registry override for the given package.
+    pub fn set_package_registry_override(&mut self, package: PackageRef, registry: Registry) {
+        self.package_registry_overrides.insert(package, registry);
     }
 
     /// Returns [`RegistryConfig`] for the given registry.
