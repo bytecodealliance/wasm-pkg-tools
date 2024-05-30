@@ -11,4 +11,5 @@ license = "Apache-2.0 WITH LLVM-exception"
 [workspace.dependencies]
 tokio = "1.35.1"
 tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", default-features = false, features = ["fmt", "env-filter"] }
 wasm-pkg-loader = { version = "0.3.0", path = "crates/wasm-pkg-loader" }
