@@ -164,10 +164,10 @@ impl PackageSource for OciSource {
     async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
         let reference = self.make_reference(package, None);
 
-        tracing::debug!("Listing tags for OCI reference {reference:?}");
+        tracing::debug!(?reference, "Listing tags for OCI reference");
         let auth = self.auth(&reference).await?;
         let resp = self.client.list_tags(&reference, &auth, None, None).await?;
-        tracing::trace!("List tags response: {resp:?}");
+        tracing::trace!(response = ?resp, "List tags response");
 
         // Return only tags that parse as valid semver versions.
         let versions = resp
@@ -179,7 +179,7 @@ impl PackageSource for OciSource {
                     yanked: false,
                 }),
                 Err(err) => {
-                    tracing::warn!("Ignoring invalid version tag {tag:?}: {err:?}");
+                    tracing::warn!(?tag, error = ?err, "Ignoring invalid version tag");
                     None
                 }
             })

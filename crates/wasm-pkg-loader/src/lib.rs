@@ -91,7 +91,7 @@ impl Client {
         if !self.sources.contains_key(&registry) {
             let registry_config = self.config.registry_configs.get(&registry).cloned();
 
-            tracing::debug!("Resolved registry config: {registry_config:?}");
+            tracing::debug!(?registry_config, "Resolved registry config");
 
             let registry_meta = RegistryMeta::fetch_or_default(&registry).await;
 
@@ -108,9 +108,10 @@ impl Client {
                 config::RegistryConfig::Oci(config) => {
                     Box::new(self.build_oci_client(&registry, registry_meta, config)?)
                 }
-                config::RegistryConfig::Warg(config) => {
-                    Box::new(self.build_warg_client(&registry, registry_meta, config).await?)
-                }
+                config::RegistryConfig::Warg(config) => Box::new(
+                    self.build_warg_client(&registry, registry_meta, config)
+                        .await?,
+                ),
             };
             self.sources.insert(registry.clone(), source);
         }
@@ -123,7 +124,7 @@ impl Client {
         registry_meta: RegistryMeta,
         config: OciConfig,
     ) -> Result<OciSource, Error> {
-        tracing::debug!("Building new OCI client for {registry:?}");
+        tracing::debug!(?registry, "Building new OCI client");
         OciSource::new(registry.to_string(), config, registry_meta)
     }
 
@@ -133,7 +134,7 @@ impl Client {
         registry_meta: RegistryMeta,
         config: WargConfig,
     ) -> Result<WargSource, Error> {
-        tracing::debug!("Building new Warg client for {registry:?}");
+        tracing::debug!(?registry, "Building new Warg client");
         WargSource::new(registry.to_string(), config, registry_meta).await
     }
 }
