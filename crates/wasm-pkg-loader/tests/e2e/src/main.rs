@@ -1,14 +1,10 @@
-use std::{
-    future::Future,
-    io::Write,
-    process::{Command, Output},
-};
+use std::future::Future;
 
+use anyhow::Context;
 use futures_util::TryStreamExt;
 use libtest_mimic::{Arguments, Failed, Trial};
+use oci_wasm::{WasmClient, WasmConfig};
 use wasm_pkg_loader::{oci_client, Client, ClientConfig};
-
-const WASM_LAYER_MEDIA_TYPE: &str = "application/vnd.wasm.content.layer.v1+wasm";
 
 macro_rules! tests {
     [$($name:ident),+] => { vec![$(Trial::test(stringify!($name), || run_test($name))),+] };
@@ -16,7 +12,7 @@ macro_rules! tests {
 
 fn main() -> anyhow::Result<()> {
     let args = Arguments::from_args();
-    prepare_fixtures()?;
+    tokio_test::block_on(prepare_fixtures())?;
     let tests = tests![fetch_smoke_test];
     libtest_mimic::run(&args, tests).exit();
 }
@@ -32,15 +28,15 @@ where
 
 const FIXTURE_PACKAGE: &str = "test:pkg";
 const FIXTURE_VERSION: &str = "1.0.0";
-const FIXTURE_CONTENT: &[u8] = b"test content";
+const FIXTURE_WASM: &str = "./testdata/binary_wit.wasm";
 
 async fn fetch_smoke_test() {
     // Fetch package
     let mut client_config = ClientConfig::default();
     client_config
-        .set_default_registry("localhost:5000")
+        .set_default_registry("localhost:5001")
         .set_oci_registry_config(
-            "localhost:5000",
+            "localhost:5001",
             oci_client::ClientConfig {
                 protocol: oci_client::ClientProtocol::Http,
                 ..Default::default()
@@ -66,50 +62,40 @@ async fn fetch_smoke_test() {
         .try_collect::<bytes::BytesMut>()
         .await
         .unwrap();
-    assert_eq!(content, FIXTURE_CONTENT);
+    let expected_content = tokio::fs::read(FIXTURE_WASM)
+        .await
+        .expect("Failed to read fixture");
+    assert_eq!(content, expected_content);
 }
 
-fn prepare_fixtures() -> anyhow::Result<()> {
-    // Write content
-    let mut tmp = tempfile::NamedTempFile::new().expect("tempfile should work");
-    tmp.write_all(FIXTURE_CONTENT)
-        .expect("should be able to write to tempfile");
-    let tmp_path = tmp.path().to_str().expect("tempfile path should be utf8");
+fn get_client() -> WasmClient {
+    let client = oci_distribution::Client::new(oci_distribution::client::ClientConfig {
+        protocol: oci_client::ClientProtocol::HttpsExcept(vec!["localhost:5001".to_string()]),
+        ..Default::default()
+    });
+    WasmClient::new(client)
+}
 
-    // Push package with `oras`
+async fn prepare_fixtures() -> anyhow::Result<()> {
     let pkg = FIXTURE_PACKAGE.replace(':', "/");
-    let mut cmd = Command::new("oras");
-    let output = cmd
-        .arg("push")
-        .arg(format!("localhost:5000/{pkg}:{FIXTURE_VERSION}",))
-        .arg(format!("{tmp_path}:{WASM_LAYER_MEDIA_TYPE}"))
-        // Suppress error from absolute tmp_path
-        .arg("--disable-path-validation")
-        .output();
+    let client = get_client();
 
-    if output.as_ref().is_ok_and(|output| output.status.success()) {
-        return Ok(());
-    }
+    let image =
+        oci_distribution::Reference::try_from(format!("localhost:5001/{pkg}:{FIXTURE_VERSION}"))
+            .unwrap();
 
-    match output {
-        Ok(Output {
-            status,
-            stdout,
-            stderr,
-        }) => {
-            eprintln!("Command [{cmd:?}] returned {status}",);
-            if !stdout.is_empty() {
-                eprintln!("Command stdout:\n{}", String::from_utf8_lossy(&stdout));
-            }
-            if !stderr.is_empty() {
-                eprintln!("Command stderr:\n{}", String::from_utf8_lossy(&stderr));
-            }
-            eprintln!("\nNOTE: These tests expect an OCI distribution server to be running at localhost:5000.\n");
-        }
-        Err(err) => {
-            eprintln!("Command [{cmd:?}] failed to execute: {err:?}");
-            eprintln!("\nNOTE: These tests expect the `oras` command to be available in PATH.\n");
-        }
-    }
-    Err(anyhow::anyhow!("Fixture package creation failed."))
+    let (conf, component) = WasmConfig::from_component(FIXTURE_WASM, Some("proxy"), None)
+        .await
+        .context("Should be able to parse component and create config")?;
+    client
+        .push(
+            &image,
+            &oci_distribution::secrets::RegistryAuth::Anonymous,
+            component,
+            conf,
+            None,
+        )
+        .await
+        .context("Should be able to push component")?;
+    Ok(())
 }

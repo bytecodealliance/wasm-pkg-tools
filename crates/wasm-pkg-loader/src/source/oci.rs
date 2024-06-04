@@ -15,11 +15,6 @@ use crate::{
     Error, PackageRef, Release,
 };
 
-const WASM_LAYER_MEDIA_TYPES: &[&str] = &[
-    "application/wasm",
-    "application/vnd.wasm.content.layer.v1+wasm",
-];
-
 #[derive(Default)]
 pub struct OciConfig {
     pub client_config: ClientConfig,
@@ -51,7 +46,7 @@ impl std::fmt::Debug for OciConfig {
 }
 
 pub struct OciSource {
-    client: oci_distribution::Client,
+    client: oci_wasm::WasmClient,
     oci_registry: String,
     namespace_prefix: Option<String>,
     credentials: Option<BasicCredentials>,
@@ -69,6 +64,7 @@ impl OciSource {
             credentials,
         } = config;
         let client = oci_distribution::Client::new(client_config);
+        let client = oci_wasm::WasmClient::new(client);
 
         let oci_registry = registry_meta.oci_registry.unwrap_or(registry);
 
@@ -194,27 +190,24 @@ impl PackageSource for OciSource {
     ) -> Result<Release, Error> {
         let reference = self.make_reference(package, Some(version));
 
-        tracing::debug!("Fetching image manifest for OCI reference {reference:?}");
+        tracing::debug!(?reference, "Fetching image manifest for OCI reference");
         let auth = self.auth(&reference).await?;
-        let (manifest, _digest) = self.client.pull_image_manifest(&reference, &auth).await?;
-        tracing::trace!("Got manifest {manifest:?}");
+        let (manifest, _config, _digest) = self
+            .client
+            .pull_manifest_and_config(&reference, &auth)
+            .await?;
+        tracing::trace!(?manifest, "Got manifest");
 
-        // Pending standardization of an OCI manifest/config format, a package
-        // artifact must contain exactly one layer with a known wasm media type
-        // (other non-wasm layers may be present as well).
-        let wasm_layers = manifest
+        let version = version.to_owned();
+        let content_digest = manifest
             .layers
             .into_iter()
-            .filter(|layer| WASM_LAYER_MEDIA_TYPES.contains(&layer.media_type.as_str()))
-            .collect::<Vec<_>>();
-        if wasm_layers.len() != 1 {
-            return Err(Error::InvalidPackageManifest(format!(
-                "expected 1 wasm layer; got {}",
-                wasm_layers.len()
-            )));
-        }
-        let version = version.clone();
-        let content_digest = wasm_layers[0].digest.parse()?;
+            .next()
+            .ok_or_else(|| {
+                Error::InvalidPackageManifest("Returned manifest had no layers".to_string())
+            })?
+            .digest
+            .parse()?;
         Ok(Release {
             version,
             content_digest,
