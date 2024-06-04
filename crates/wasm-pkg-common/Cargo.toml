@@ -8,10 +8,17 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true }
 dirs = "5.0.1"
 http = "1.1.0"
+oci-distribution = { workspace = true }
+reqwest = { version = "0.12.0", features = ["json"] }
+semver = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+tokio = { workspace = true, features = ["rt", "sync"] }
 toml = "0.8.13"
 thiserror = "1.0"
 tracing = "0.1"
+warg-client = { workspace = true }

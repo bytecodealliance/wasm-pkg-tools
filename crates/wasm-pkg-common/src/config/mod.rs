@@ -68,7 +68,7 @@ impl Config {
         Ok(config)
     }
 
-    /// Reads config from
+    /// Reads config from the default global config file location
     pub fn read_global_config() -> Result<Option<Self>, Error> {
         let Some(config_dir) = dirs::config_dir() else {
             return Ok(None);
@@ -142,8 +142,8 @@ impl Config {
     }
 
     /// Sets the default registry.
-    pub fn set_default_registry(&mut self, registry: Option<Registry>) {
-        self.default_registry = registry;
+    pub fn set_default_registry(&mut self, registry: Registry) {
+        self.default_registry = Some(registry);
     }
 
     /// Returns a registry for the given namespace.
@@ -221,8 +221,8 @@ impl RegistryConfig {
     }
 
     /// Sets the backend type override.
-    pub fn set_backend_type(&mut self, backend_type: Option<String>) {
-        self.backend_type = backend_type;
+    pub fn set_backend_type(&mut self, backend_type: String) {
+        self.backend_type = Some(backend_type);
     }
 
     /// Returns an iterator of configured backend types.
