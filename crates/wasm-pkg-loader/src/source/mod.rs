@@ -6,7 +6,6 @@ use std::cmp::Ordering;
 
 use crate::{Error, PackageRef, Release};
 
-pub mod local;
 pub mod oci;
 pub mod warg;
 

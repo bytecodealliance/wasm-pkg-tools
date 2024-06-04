@@ -68,7 +68,7 @@ impl Config {
         Ok(config)
     }
 
-    /// Reads config from
+    /// Reads config from the default global config file location
     pub fn read_global_config() -> Result<Option<Self>, Error> {
         let Some(config_dir) = dirs::config_dir() else {
             return Ok(None);
@@ -91,7 +91,7 @@ impl Config {
     /// Parses config from the given TOML contents.
     pub fn from_toml(contents: &str) -> Result<Self, Error> {
         let toml_cfg: toml::TomlConfig =
-            ::toml::from_str(contents).map_err(Error::invalid_config)?;
+            ::toml::from_str(contents).map_err(|e| Error::InvalidConfig(e.into()))?;
         Ok(toml_cfg.into())
     }
 
@@ -141,7 +141,7 @@ impl Config {
         self.default_registry.as_ref()
     }
 
-    /// Sets the default registry.
+    /// Sets the default registry. To unset the default registry, pass `None`.
     pub fn set_default_registry(&mut self, registry: Option<Registry>) {
         self.default_registry = registry;
     }
@@ -220,7 +220,7 @@ impl RegistryConfig {
         self.backend_type.as_deref()
     }
 
-    /// Sets the backend type override.
+    /// Sets the backend type override. To unset the backend type, pass `None`.
     pub fn set_backend_type(&mut self, backend_type: Option<String>) {
         self.backend_type = backend_type;
     }
@@ -241,7 +241,10 @@ impl RegistryConfig {
         let Some(table) = self.backend_configs.get(backend_type) else {
             return Ok(None);
         };
-        let config = table.clone().try_into().map_err(Error::invalid_config)?;
+        let config = table
+            .clone()
+            .try_into()
+            .map_err(|e| Error::InvalidConfig(e.into()))?;
         Ok(Some(config))
     }
 
@@ -251,7 +254,8 @@ impl RegistryConfig {
         backend_type: String,
         backend_config: T,
     ) -> Result<(), Error> {
-        let table = ::toml::Table::try_from(backend_config).map_err(Error::invalid_config)?;
+        let table =
+            ::toml::Table::try_from(backend_config).map_err(|e| Error::InvalidConfig(e.into()))?;
         self.backend_configs.insert(backend_type, table);
         Ok(())
     }

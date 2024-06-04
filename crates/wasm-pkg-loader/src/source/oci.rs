@@ -3,18 +3,20 @@ use bytes::Bytes;
 use docker_credential::{CredentialRetrievalError, DockerCredential};
 use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
 use oci_distribution::{
-    client::ClientConfig, manifest::OciDescriptor, secrets::RegistryAuth, Reference,
+    client::ClientConfig, errors::OciDistributionError, manifest::OciDescriptor,
+    secrets::RegistryAuth, Reference,
 };
 use secrecy::ExposeSecret;
 use semver::Version;
+use wasm_pkg_common::registry::OciProtocolConfig;
 
 use crate::{
-    config::BasicCredentials,
-    meta::RegistryMeta,
+    config::oci::BasicCredentials,
     source::{PackageSource, VersionInfo},
     Error, PackageRef, Release,
 };
 
+/// Configuration for the OCI client.
 #[derive(Default)]
 pub struct OciConfig {
     pub client_config: ClientConfig,
@@ -57,8 +59,8 @@ impl OciSource {
     pub fn new(
         registry: String,
         config: OciConfig,
-        registry_meta: RegistryMeta,
-    ) -> Result<Self, Error> {
+        registry_meta: Option<OciProtocolConfig>,
+    ) -> Self {
         let OciConfig {
             client_config,
             credentials,
@@ -66,15 +68,18 @@ impl OciSource {
         let client = oci_distribution::Client::new(client_config);
         let client = oci_wasm::WasmClient::new(client);
 
-        let oci_registry = registry_meta.oci_registry.unwrap_or(registry);
+        let (oci_registry, namespace_prefix) = match registry_meta {
+            Some(meta) => (meta.registry, meta.namespace_prefix),
+            None => (registry.clone(), None),
+        };
 
-        Ok(Self {
+        Self {
             client,
             oci_registry,
-            namespace_prefix: registry_meta.oci_namespace_prefix,
+            namespace_prefix,
             credentials,
             registry_auth: None,
-        })
+        }
     }
 
     async fn auth(&mut self, reference: &Reference) -> Result<RegistryAuth, Error> {
@@ -195,7 +200,11 @@ impl PackageSource for OciSource {
         let (manifest, _config, _digest) = self
             .client
             .pull_manifest_and_config(&reference, &auth)
-            .await?;
+            .await
+            .map_err(|e| match e.downcast::<OciDistributionError>() {
+                Ok(e) => Error::OciError(e),
+                Err(e) => Error::InvalidPackageManifest(e.to_string()),
+            })?;
         tracing::trace!(?manifest, "Got manifest");
 
         let version = version.to_owned();

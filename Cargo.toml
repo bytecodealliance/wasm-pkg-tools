@@ -9,12 +9,21 @@ authors = ["The Wasmtime Project Developers"]
 license = "Apache-2.0 WITH LLVM-exception"
 
 [workspace.dependencies]
-oci-wasm = "0.0.3"
+anyhow = "1.0.79"
+async-trait = "0.1.77"
+base64 = "0.22.0"
+bytes = "1.5.0"
+futures = "0.3"
+oci-distribution = "0.11.0"
+oci-wasm = "0.0.4"
+secrecy = "0.8.0"
+semver = "1"
 tokio = "1.35.1"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", default-features = false, features = [
     "fmt",
     "env-filter",
 ] }
+warg-client = "0.7.0"
 wasm-pkg-common = { version = "0.3.0", path = "crates/wasm-pkg-common" }
 wasm-pkg-loader = { version = "0.3.0", path = "crates/wasm-pkg-loader" }

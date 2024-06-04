@@ -7,11 +7,20 @@ version.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+default = []
+metadata-client = ["reqwest"]
+
 [dependencies]
+anyhow = { workspace = true }
 dirs = "5.0.1"
 http = "1.1.0"
+oci-distribution = { workspace = true }
+reqwest = { version = "0.12.0", features = ["json"], optional = true }
+semver = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8.13"
 thiserror = "1.0"
 tracing = "0.1"
+warg-client = { workspace = true }

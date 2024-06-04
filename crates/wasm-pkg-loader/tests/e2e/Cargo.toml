@@ -9,10 +9,11 @@ bytes = "1.5.0"
 futures-util = { version = "0.3.29", features = ["io"] }
 libtest-mimic = "0.7.0"
 oci-distribution = "0.11.0"
-oci-wasm = "0.0.3"
+oci-wasm = "0.0.4"
 tempfile = "3.9.0"
 tokio = { version = "1", default-features = false, features = ["fs"] }
 tokio-test = "0.4.3"
+wasm-pkg-common = { path = "../../../wasm-pkg-common" }
 wasm-pkg-loader = { path = "../.." }
 
 [workspace]
