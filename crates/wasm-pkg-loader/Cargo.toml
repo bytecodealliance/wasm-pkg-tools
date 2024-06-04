@@ -1,34 +1,34 @@
 [package]
 name = "wasm-pkg-loader"
 description = "Wasm package loader"
-authors = ["Lann Martin <lann.martin@fermyon.com>"]
-version.workspace = true
-license.workspace = true
 edition.workspace = true
+version.workspace = true
+authors.workspace = true
+license.workspace = true
 repository = "https://github.com/bytecodealliance/wasm-pkg-tools/tree/main/crates/wasm-pkg-loader"
 
 [dependencies]
-anyhow = "1.0.79"
+anyhow = { workspace = true }
 async-trait = "0.1.77"
 base64 = "0.22.0"
 bytes = "1.5.0"
 dirs = "5.0.1"
-docker_credential = "1.2.1"
 futures-util = { version = "0.3.29", features = ["io"] }
-oci-distribution = "0.11.0"
+oci-distribution = { workspace = true }
 oci-wasm = { workspace = true }
 reqwest = { version = "0.12.0", features = ["json"] }
-secrecy = { version = "0.8.0", features = ["serde"] }
+secrecy = { workspace = true, features = ["serde"] }
 semver = "1.0.20"
 serde = { version = "1.0.194", features = ["derive"] }
 serde_json = "1.0.110"
 sha2 = "0.10.8"
 thiserror = "1.0.51"
-tokio = { version = "1.35.1", features = ["rt", "macros"] }
+tokio = { workspace = true, features = ["rt", "macros"] }
 tokio-util = { version = "0.7.10", features = ["io"] }
 toml = "0.8.8"
 tracing = "0.1.40"
 tracing-subscriber = { workspace = true }
 url = "2.5.0"
+wasm-pkg-common = { workspace = true }
 warg-client = "0.7.0"
 warg-protocol = "0.7.0"

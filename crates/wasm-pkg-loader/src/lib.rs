@@ -11,16 +11,17 @@ use bytes::Bytes;
 use futures_util::stream::BoxStream;
 use oci_distribution::errors::OciDistributionError;
 pub use semver::Version;
-use source::{
-    local::LocalSource,
-    oci::{OciConfig, OciSource},
-    warg::{WargConfig, WargSource},
-    PackageSource, VersionInfo,
-};
+use wasm_pkg_common::oci::OciConfig;
 
 /// Re-exported to ease configuration.
 pub use oci_distribution::client as oci_client;
 
+use crate::source::{
+    local::LocalSource,
+    oci::OciSource,
+    warg::{WargConfig, WargSource},
+    PackageSource, VersionInfo,
+};
 pub use crate::{
     config::ClientConfig,
     package::PackageRef,
@@ -125,7 +126,7 @@ impl Client {
         config: OciConfig,
     ) -> Result<OciSource, Error> {
         tracing::debug!(?registry, "Building new OCI client");
-        OciSource::new(registry.to_string(), config, registry_meta)
+        Ok(OciSource::new(registry.to_string(), config, registry_meta))
     }
 
     async fn build_warg_client(

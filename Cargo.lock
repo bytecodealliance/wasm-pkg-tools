@@ -3767,11 +3767,17 @@ dependencies = [
 name = "wasm-pkg-common"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
  "dirs",
+ "docker_credential",
  "http",
+ "oci-distribution",
+ "oci-wasm",
+ "secrecy",
  "serde 1.0.201",
  "serde_json",
  "thiserror",
+ "tokio",
  "toml 0.8.13",
  "tracing",
 ]
@@ -3785,7 +3791,6 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "dirs",
- "docker_credential",
  "futures-util",
  "oci-distribution",
  "oci-wasm",
@@ -3804,6 +3809,7 @@ dependencies = [
  "url",
  "warg-client",
  "warg-protocol",
+ "wasm-pkg-common",
 ]
 
 [[package]]

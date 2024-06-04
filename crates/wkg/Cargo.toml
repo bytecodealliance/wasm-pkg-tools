@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-anyhow = "1.0"
+anyhow = { workspace = true }
 clap = { version = "4.5.4", features = ["derive", "wrap_help"] }
 futures-util = { version = "0.3.29", features = ["io"] }
 tempfile = "3.10.1"

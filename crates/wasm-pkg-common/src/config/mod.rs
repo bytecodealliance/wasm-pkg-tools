@@ -4,6 +4,7 @@ use std::{
     path::Path,
 };
 
+use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 
 use crate::{label::Label, package::PackageRef, Error, Registry};
@@ -278,4 +279,10 @@ impl<'a> std::fmt::Debug for DebugBackendConfigs<'a> {
             .entries(self.0.keys().map(|ty| (ty, &"<HIDDEN>")))
             .finish()
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct BasicCredentials {
+    pub username: String,
+    pub password: SecretString,
 }

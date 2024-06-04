@@ -4,9 +4,10 @@ use std::{collections::HashMap, path::PathBuf};
 
 use oci_distribution::client::ClientConfig as OciClientConfig;
 use secrecy::SecretString;
+use wasm_pkg_common::{config::BasicCredentials, oci::OciConfig};
 
 use crate::{
-    source::{local::LocalConfig, oci::OciConfig, warg::WargConfig},
+    source::{local::LocalConfig, warg::WargConfig},
     Error, PackageRef,
 };
 
@@ -131,10 +132,4 @@ impl Default for RegistryConfig {
     fn default() -> Self {
         Self::Oci(Default::default())
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct BasicCredentials {
-    pub username: String,
-    pub password: SecretString,
 }

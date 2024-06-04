@@ -10,13 +10,12 @@ use base64::{
 };
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
+use wasm_pkg_common::{config::BasicCredentials, oci::OciConfig};
 
 use crate::{
-    source::{local::LocalConfig, oci::OciConfig, warg::WargConfig},
+    source::{local::LocalConfig, warg::WargConfig},
     Error,
 };
-
-use super::BasicCredentials;
 
 impl super::ClientConfig {
     pub fn from_toml(s: &str) -> Result<Self, Error> {
