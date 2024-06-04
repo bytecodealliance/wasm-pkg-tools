@@ -1,12 +1,12 @@
 mod package_spec;
 
-use std::{io::Seek, path::PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{ensure, Context};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
 use package_spec::PackageSpec;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tracing::level_filters::LevelFilter;
 use wasm_pkg_loader::ClientConfig;
 use wit_component::DecodedWasm;
@@ -104,15 +104,19 @@ impl GetCommand {
 
         let output_trailing_slash = self.output.as_os_str().to_string_lossy().ends_with('/');
         let parent_dir = if output_trailing_slash {
-            self.output.as_path()
+            self.output.clone()
         } else {
             self.output
                 .parent()
+                .map(|p| p.to_owned())
                 .context("Failed to resolve output parent dir")?
         };
 
-        let (tmp_file, tmp_path) =
-            tempfile::NamedTempFile::with_prefix_in(".wkg-get", parent_dir)?.into_parts();
+        let (tmp_file, tmp_path) = tokio::task::spawn_blocking(|| {
+            tempfile::NamedTempFile::with_prefix_in(".wkg-get", parent_dir)
+        })
+        .await??
+        .into_parts();
         tracing::debug!(?tmp_path);
 
         let mut content_stream = client.stream_content(&package, &release).await?;
@@ -125,7 +129,7 @@ impl GetCommand {
         let mut format = self.format;
         if let (Format::Auto, Some(ext)) = (&format, self.output.extension()) {
             tracing::debug!("Inferring output format from file extension {ext:?}");
-            format = match ext.to_string_lossy().as_ref() {
+            format = match ext.to_str().unwrap_or_default() {
                 "wasm" => Format::Wasm,
                 "wit" => Format::Wit,
                 _ => {
@@ -141,9 +145,11 @@ impl GetCommand {
         let wit = if format == Format::Wasm {
             None
         } else {
+            file.rewind().await?;
             let mut file = file.into_std().await;
-            file.rewind()?;
-            match wit_component::decode_reader(&mut file) {
+            match tokio::task::spawn_blocking(move || wit_component::decode_reader(&mut file))
+                .await?
+            {
                 Ok(DecodedWasm::WitPackage(resolve, pkg)) => {
                     tracing::debug!(?pkg, "decoded WIT package");
                     Some(wit_component::WitPrinter::default().print(&resolve, pkg)?)
@@ -170,17 +176,23 @@ impl GetCommand {
         } else {
             self.output
         };
+        let output_path_exists = tokio::fs::metadata(&output_path)
+            .await
+            .map(|_| true)
+            .unwrap_or(false);
         ensure!(
-            self.overwrite || !output_path.exists(),
+            self.overwrite || !output_path_exists,
             "{output_path:?} already exists; you can use '--overwrite' to overwrite it"
         );
 
         if let Some(wit) = wit {
-            std::fs::write(&output_path, wit)
+            tokio::fs::write(&output_path, wit)
+                .await
                 .with_context(|| format!("Failed to write WIT to {output_path:?}"))?
         } else {
-            tmp_path
-                .persist(&output_path)
+            let out_path = output_path.clone();
+            tokio::task::spawn_blocking(move || tmp_path.persist(out_path))
+                .await?
                 .with_context(|| format!("Failed to persist WASM to {output_path:?}"))?
         }
         println!("Wrote '{}'", output_path.display());
