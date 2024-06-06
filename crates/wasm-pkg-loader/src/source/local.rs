@@ -44,7 +44,7 @@ impl PackageSource for LocalSource {
     async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
         let mut versions = vec![];
         let package_dir = self.package_dir(package);
-        tracing::debug!("Reading versions from {package_dir:?}");
+        tracing::debug!(?package_dir, "Reading versions from path");
         let mut entries = tokio::fs::read_dir(package_dir).await?;
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
@@ -74,7 +74,7 @@ impl PackageSource for LocalSource {
         version: &Version,
     ) -> Result<Release, Error> {
         let path = self.version_path(package, version);
-        tracing::debug!("Reading content from {path:?}");
+        tracing::debug!(path = %path.display(), "Reading content from path");
         let content_digest = ContentDigest::sha256_from_file(path).await?;
         Ok(Release {
             version: version.clone(),

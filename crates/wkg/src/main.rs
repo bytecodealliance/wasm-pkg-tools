@@ -86,7 +86,7 @@ impl GetCommand {
             None => {
                 println!("No version specified; fetching version list...");
                 let versions = client.list_all_versions(&package).await?;
-                tracing::trace!(?versions);
+                tracing::trace!(?versions, "Fetched version list");
                 versions
                     .into_iter()
                     .filter_map(|vi| (!vi.yanked).then_some(vi.version))
@@ -100,7 +100,7 @@ impl GetCommand {
             .get_release(&package, &version)
             .await
             .context("Failed to get release details")?;
-        tracing::debug!(?release);
+        tracing::debug!(?release, "Fetched release details");
 
         let output_trailing_slash = self.output.as_os_str().to_string_lossy().ends_with('/');
         let parent_dir = if output_trailing_slash {
@@ -113,7 +113,7 @@ impl GetCommand {
 
         let (tmp_file, tmp_path) =
             tempfile::NamedTempFile::with_prefix_in(".wkg-get", parent_dir)?.into_parts();
-        tracing::debug!(?tmp_path);
+        tracing::debug!(?tmp_path, "Created temporary file");
 
         let mut content_stream = client.stream_content(&package, &release).await?;
 
@@ -124,7 +124,7 @@ impl GetCommand {
 
         let mut format = self.format;
         if let (Format::Auto, Some(ext)) = (&format, self.output.extension()) {
-            tracing::debug!("Inferring output format from file extension {ext:?}");
+            tracing::debug!(?ext, "Inferring output format from file extension");
             format = match ext.to_string_lossy().as_ref() {
                 "wasm" => Format::Wasm,
                 "wit" => Format::Wit,
@@ -150,7 +150,7 @@ impl GetCommand {
                 }
                 Ok(_) => None,
                 Err(err) => {
-                    tracing::debug!(?err);
+                    tracing::debug!(?err, "failed to decode WIT package");
                     if format == Format::Wit {
                         return Err(err);
                     }
@@ -200,7 +200,6 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let cli = Cli::parse();
-    tracing::debug!(?cli);
 
     match cli.command {
         Commands::Get(cmd) => cmd.run().await,

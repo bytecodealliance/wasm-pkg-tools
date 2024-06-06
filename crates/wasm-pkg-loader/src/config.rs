@@ -105,14 +105,14 @@ impl ClientConfig {
 
     pub(crate) fn resolve_package_registry(&self, package: &PackageRef) -> Result<&str, Error> {
         let namespace = package.namespace();
-        tracing::debug!("Resolving registry for {namespace:?}");
+        tracing::debug!(?namespace, "Resolving registry");
 
         if let Some(registry) = self.namespace_registries.get(namespace.as_ref()) {
-            tracing::debug!("Found namespace-specific registry {registry:?}");
+            tracing::debug!(?registry, "Found namespace-specific registry");
             return Ok(registry);
         }
         if let Some(registry) = &self.default_registry {
-            tracing::debug!("No namespace-specific registry; using default {registry:?}");
+            tracing::debug!(?registry, "No namespace-specific registry; using default");
             return Ok(registry);
         }
         Err(Error::NoRegistryForNamespace(namespace.to_owned()))

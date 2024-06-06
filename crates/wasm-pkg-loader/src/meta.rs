@@ -18,7 +18,7 @@ impl RegistryMeta {
     pub async fn fetch_or_default(domain: &str) -> Self {
         match Self::fetch(domain).await {
             Ok(Some(meta)) => {
-                tracing::debug!("Got registry metadata {meta:?}");
+                tracing::debug!(?meta, "Got registry metadata");
                 meta
             }
             Ok(None) => {
@@ -26,7 +26,7 @@ impl RegistryMeta {
                 Default::default()
             }
             Err(err) => {
-                tracing::warn!("Error fetching registry metadata: {err}");
+                tracing::warn!(error = ?err, "Error fetching registry metadata");
                 Default::default()
             }
         }
@@ -46,7 +46,8 @@ impl RegistryMeta {
     }
 
     async fn fetch_url(url: &str) -> anyhow::Result<Option<Self>> {
-        tracing::debug!("Fetching registry metadata from {url:?}");
+        tracing::debug!(?url, "Fetching registry metadata");
+
         let resp = reqwest::get(url).await?;
         if resp.status() == StatusCode::NOT_FOUND {
             return Ok(None);
