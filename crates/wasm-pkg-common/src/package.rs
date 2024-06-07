@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{label::Label, Error};
@@ -50,10 +52,32 @@ impl TryFrom<String> for PackageRef {
     }
 }
 
-impl std::str::FromStr for PackageRef {
+impl FromStr for PackageRef {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         s.to_string().try_into()
+    }
+}
+
+/// A full package specification consisting of the reference and an optional semver compatible version
+#[derive(Clone, Debug)]
+pub struct PackageSpec {
+    pub package: PackageRef,
+    pub version: Option<semver::Version>,
+}
+
+impl FromStr for PackageSpec {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (package, version) = s
+            .split_once('@')
+            .map(|(pkg, ver)| (pkg, Some(ver)))
+            .unwrap_or((s, None));
+        Ok(Self {
+            package: package.parse()?,
+            version: version.map(|ver| ver.parse()).transpose()?,
+        })
     }
 }

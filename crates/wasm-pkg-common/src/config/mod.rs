@@ -4,12 +4,14 @@ use std::{
     path::Path,
 };
 
-use secrecy::SecretString;
-use serde::{Deserialize, Serialize};
+use secrecy::{ExposeSecret, SecretString};
+use serde::{Deserialize, Serialize, Serializer};
 
 use crate::{label::Label, package::PackageRef, Error, Registry};
 
+pub mod oci;
 mod toml;
+pub mod warg;
 
 pub const DEFAULT_REGISTRY: &str = "bytecodealliance.org";
 
@@ -69,7 +71,7 @@ impl Config {
         Ok(config)
     }
 
-    /// Reads config from
+    /// Reads config from the default global config file location
     pub fn read_global_config() -> Result<Option<Self>, Error> {
         let Some(config_dir) = dirs::config_dir() else {
             return Ok(None);
@@ -143,8 +145,8 @@ impl Config {
     }
 
     /// Sets the default registry.
-    pub fn set_default_registry(&mut self, registry: Option<Registry>) {
-        self.default_registry = registry;
+    pub fn set_default_registry(&mut self, registry: Registry) {
+        self.default_registry = Some(registry);
     }
 
     /// Returns a registry for the given namespace.
@@ -222,8 +224,8 @@ impl RegistryConfig {
     }
 
     /// Sets the backend type override.
-    pub fn set_backend_type(&mut self, backend_type: Option<String>) {
-        self.backend_type = backend_type;
+    pub fn set_backend_type(&mut self, backend_type: String) {
+        self.backend_type = Some(backend_type);
     }
 
     /// Returns an iterator of configured backend types.
@@ -281,8 +283,98 @@ impl<'a> std::fmt::Debug for DebugBackendConfigs<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct BasicCredentials {
-    pub username: String,
-    pub password: SecretString,
+pub(crate) fn serialize_string_secret<S: Serializer>(
+    secret: &SecretString,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(secret.expose_secret())
+}
+
+pub(crate) fn serialize_option_string_secret<S: Serializer>(
+    secret: &Option<SecretString>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match secret {
+        Some(sec) => serializer.serialize_str(sec.expose_secret()),
+        None => serializer.serialize_none(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use oci_distribution::client::ClientProtocol;
+    use secrecy::ExposeSecret;
+
+    use super::*;
+
+    const TEST_CONFIG: &str = r#"
+    default_registry = "example.com"
+
+    [namespace_registries]
+    wasi = "wasi.dev"
+
+    [registry."wasi.dev"]
+    type = "oci"
+    oci = { auth = { username = "open", password = "sesame" }, protocol = "https" }
+
+    [registry."example.com"]
+    type = "warg"
+    warg = { auth_token = "top_secret" }
+    "#;
+
+    #[test]
+    fn parse_registry_configs() {
+        let conf = Config::from_toml(TEST_CONFIG).expect("unable to parse config");
+        let wasi_dev: Registry = "wasi.dev".parse().unwrap();
+        let example_com: Registry = "example.com".parse().unwrap();
+
+        let reg_conf = conf
+            .registry_config(&wasi_dev)
+            .expect("missing registry config");
+        assert_eq!(
+            reg_conf.backend_type().expect("missing backend type"),
+            "oci",
+            "should have the correct backend type"
+        );
+        let parsed: oci::OciRegistryConfig = reg_conf
+            .backend_config("oci")
+            .expect("unable to parse oci config")
+            .expect("missing oci config");
+
+        assert_eq!(
+            parsed.protocol.expect("missing protocol"),
+            ClientProtocol::Https,
+            "should have the correct protocol"
+        );
+        let auth = parsed.auth.expect("missing auth");
+        assert_eq!(auth.username, "open", "should have the correct username");
+        assert_eq!(
+            auth.password.expose_secret(),
+            "sesame",
+            "should have the correct password"
+        );
+
+        let reg_conf = conf
+            .registry_config(&example_com)
+            .expect("missing registry config");
+        assert_eq!(
+            reg_conf.backend_type().expect("missing backend type"),
+            "warg",
+            "should have the correct backend type"
+        );
+        let parsed: warg::WargRawConfig = reg_conf
+            .backend_config("warg")
+            .expect("unable to parse warg config")
+            .expect("missing warg config");
+
+        assert_eq!(
+            parsed
+                .auth_token
+                .as_ref()
+                .expect("Should have auth token set")
+                .expose_secret(),
+            "top_secret",
+            "should have the correct auth token"
+        );
+    }
 }

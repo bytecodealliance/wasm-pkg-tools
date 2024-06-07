@@ -12,7 +12,7 @@ use oci_wasm::WasmClient;
 use secrecy::ExposeSecret;
 use tokio::sync::RwLock;
 
-use crate::{config::BasicCredentials, Error};
+use crate::{config::oci::BasicCredentials, Error};
 
 /// Configuration for the OCI client.
 #[derive(Default)]

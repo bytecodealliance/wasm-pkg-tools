@@ -1,14 +1,12 @@
-mod package_spec;
-
 use std::{io::Seek, path::PathBuf};
 
 use anyhow::{ensure, Context};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
-use package_spec::PackageSpec;
 use tokio::io::AsyncWriteExt;
 use tracing::level_filters::LevelFilter;
-use wasm_pkg_loader::ClientConfig;
+use wasm_pkg_common::{config::Config, package::PackageSpec};
+use wasm_pkg_loader::Client;
 use wit_component::DecodedWasm;
 
 #[derive(Parser, Debug)]
@@ -68,17 +66,21 @@ impl GetCommand {
         let PackageSpec { package, version } = self.package_spec;
 
         let mut client = {
-            let mut config = ClientConfig::default();
-            config.set_default_registry("bytecodealliance.org");
-            if let Some(file_config) = ClientConfig::from_default_file()? {
-                config.merge_config(file_config);
+            let mut config = Config::default();
+            config.set_default_registry(
+                "bytecodealliance.org"
+                    .parse()
+                    .expect("Should be able to parse default registry. This is programmer error"),
+            );
+            if let Some(file_config) = Config::read_global_config()? {
+                config.merge(file_config);
             }
             if let Some(registry) = self.registry.domain {
                 let namespace = package.namespace().to_string();
                 tracing::debug!(namespace, registry, "overriding namespace registry");
-                config.set_namespace_registry(namespace, registry);
+                config.set_namespace_registry(namespace.parse()?, registry.parse()?);
             }
-            config.to_client()
+            Client::new(config)
         };
 
         let version = match version {

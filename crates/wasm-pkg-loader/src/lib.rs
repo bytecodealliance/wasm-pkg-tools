@@ -1,7 +1,4 @@
-mod config;
-mod label;
-mod meta;
-mod package;
+//! A crate for loading wasm components and packages from a registry
 mod release;
 mod source;
 
@@ -9,39 +6,40 @@ use std::collections::HashMap;
 
 use bytes::Bytes;
 use futures_util::stream::BoxStream;
-use oci_distribution::errors::OciDistributionError;
 pub use semver::Version;
-use wasm_pkg_common::oci::OciConfig;
+use wasm_pkg_common::{
+    config::{
+        oci::OciRegistryConfig,
+        warg::{WargRawConfig, WargRegistryConfig},
+        Config,
+    },
+    oci::OciConfig,
+    package::PackageRef,
+    registry::{
+        OciProtocolConfig, RegistryMetadata, WargProtocolConfig, OCI_PROTOCOL, WARG_PROTOCOL,
+    },
+    Error,
+};
 
 /// Re-exported to ease configuration.
 pub use oci_distribution::client as oci_client;
 
+pub use crate::release::{ContentDigest, Release};
 use crate::source::{
-    local::LocalSource,
     oci::OciSource,
     warg::{WargConfig, WargSource},
     PackageSource, VersionInfo,
 };
-pub use crate::{
-    config::ClientConfig,
-    package::PackageRef,
-    release::{ContentDigest, Release},
-};
-use crate::{
-    config::RegistryConfig,
-    label::{InvalidLabel, Label},
-    meta::RegistryMeta,
-};
 
 /// A read-only registry client.
 pub struct Client {
-    config: ClientConfig,
+    config: Config,
     sources: HashMap<String, Box<dyn PackageSource>>,
 }
 
 impl Client {
-    /// Returns a new client with the given [`ClientConfig`].
-    pub fn new(config: ClientConfig) -> Self {
+    /// Returns a new client with the given [`Config`].
+    pub fn new(config: Config) -> Self {
         Self {
             config,
             sources: Default::default(),
@@ -51,7 +49,7 @@ impl Client {
     /// Returns a new client configured from the default config file path.
     /// Returns Ok(None) if the default config file does not exist.
     pub fn from_default_config_file() -> Result<Option<Self>, Error> {
-        Ok(ClientConfig::from_default_file()?.map(Self::new))
+        Ok(Config::read_global_config()?.map(Self::new))
     }
 
     /// Returns a list of all package [`Version`]s available for the given package.
@@ -88,41 +86,103 @@ impl Client {
         &mut self,
         package: &PackageRef,
     ) -> Result<&mut dyn PackageSource, Error> {
-        let registry = self.config.resolve_package_registry(package)?.to_owned();
-        if !self.sources.contains_key(&registry) {
-            let registry_config = self.config.registry_configs.get(&registry).cloned();
+        let registry = self
+            .config
+            .resolve_registry(package)
+            .ok_or_else(|| {
+                Error::InvalidPackageRef(format!("Couldn't resolve registry for {package}"))
+            })?
+            .to_owned();
+        if !self.sources.contains_key(registry.as_ref()) {
+            let registry_config = self.config.registry_config(&registry);
 
             tracing::debug!(?registry_config, "Resolved registry config");
 
-            let registry_meta = RegistryMeta::fetch_or_default(&registry).await;
-
-            let registry_config = registry_config.unwrap_or_else(|| {
-                if registry_meta.warg_url.is_some() {
-                    RegistryConfig::Warg(Default::default())
-                } else {
-                    RegistryConfig::Oci(Default::default())
-                }
-            });
+            let maybe_metadata = RegistryMetadata::fetch(registry.as_ref()).await?;
 
             let source: Box<dyn PackageSource> = match registry_config {
-                config::RegistryConfig::Local(config) => Box::new(LocalSource::new(config)),
-                config::RegistryConfig::Oci(config) => {
-                    Box::new(self.build_oci_client(&registry, registry_meta, config)?)
+                Some(conf) if conf.backend_type().unwrap_or_default() == "oci" => {
+                    let conf: OciRegistryConfig = conf.backend_config("oci")?.ok_or_else(|| {
+                        Error::InvalidConfig(
+                            anyhow::anyhow!("No OCI config found for registry {registry}").into(),
+                        )
+                    })?;
+                    let meta = maybe_metadata
+                        .and_then(|metadata| {
+                            metadata
+                                .protocol_config::<OciProtocolConfig>(OCI_PROTOCOL)
+                                .ok()
+                        })
+                        .flatten();
+                    Box::new(self.build_oci_client(registry.as_ref(), meta, conf.into())?)
                 }
-                config::RegistryConfig::Warg(config) => Box::new(
-                    self.build_warg_client(&registry, registry_meta, config)
+                Some(conf) if conf.backend_type().unwrap_or_default() == "warg" => {
+                    let meta = maybe_metadata
+                        .and_then(|metadata| {
+                            metadata
+                                .protocol_config::<WargProtocolConfig>(WARG_PROTOCOL)
+                                .ok()
+                        })
+                        .flatten();
+                    let conf: WargRawConfig = conf.backend_config("warg")?.ok_or_else(|| {
+                        Error::InvalidConfig(
+                            anyhow::anyhow!("No warg config found for registry {registry}").into(),
+                        )
+                    })?;
+                    let conf: WargRegistryConfig = conf.try_into()?;
+                    Box::new(
+                        self.build_warg_client(
+                            registry.as_ref(),
+                            meta,
+                            WargConfig {
+                                client_config: Some(conf.client_config),
+                                auth_token: conf.auth_token,
+                            },
+                        )
                         .await?,
-                ),
+                    )
+                }
+                Some(_) | None => {
+                    if let Some(meta) = maybe_metadata
+                        .as_ref()
+                        .and_then(|meta| {
+                            meta.protocol_config::<WargProtocolConfig>(WARG_PROTOCOL)
+                                .ok()
+                        })
+                        .flatten()
+                    {
+                        Box::new(
+                            self.build_warg_client(
+                                registry.as_ref(),
+                                Some(meta),
+                                Default::default(),
+                            )
+                            .await?,
+                        )
+                    } else {
+                        // Default to OCI client
+                        let meta = maybe_metadata
+                            .and_then(|meta| {
+                                meta.protocol_config::<OciProtocolConfig>(OCI_PROTOCOL).ok()
+                            })
+                            .flatten();
+                        Box::new(self.build_oci_client(
+                            registry.as_ref(),
+                            meta,
+                            Default::default(),
+                        )?)
+                    }
+                }
             };
-            self.sources.insert(registry.clone(), source);
+            self.sources.insert(registry.to_string(), source);
         }
-        Ok(self.sources.get_mut(&registry).unwrap().as_mut())
+        Ok(self.sources.get_mut(registry.as_ref()).unwrap().as_mut())
     }
 
     fn build_oci_client(
         &mut self,
         registry: &str,
-        registry_meta: RegistryMeta,
+        registry_meta: Option<OciProtocolConfig>,
         config: OciConfig,
     ) -> Result<OciSource, Error> {
         tracing::debug!(?registry, "Building new OCI client");
@@ -132,47 +192,10 @@ impl Client {
     async fn build_warg_client(
         &mut self,
         registry: &str,
-        registry_meta: RegistryMeta,
+        registry_meta: Option<WargProtocolConfig>,
         config: WargConfig,
     ) -> Result<WargSource, Error> {
         tracing::debug!(?registry, "Building new Warg client");
         WargSource::new(registry.to_string(), config, registry_meta).await
     }
-}
-
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum Error {
-    #[error("failed to get registry credentials: {0:#}")]
-    CredentialError(anyhow::Error),
-    #[error("invalid config: {0:#}")]
-    InvalidConfig(anyhow::Error),
-    #[error("invalid content: {0}")]
-    InvalidContent(String),
-    #[error("invalid content digest: {0}")]
-    InvalidContentDigest(String),
-    #[error("invalid label: {0}")]
-    InvalidLabel(#[from] InvalidLabel),
-    #[error("invalid package ref: {0}")]
-    InvalidPackageRef(String),
-    #[error("invalid package manifest: {0}")]
-    InvalidPackageManifest(String),
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
-    #[error("OCI error: {0}")]
-    OciError(#[from] OciDistributionError),
-    #[error("no registry configured for namespace {0:?}")]
-    NoRegistryForNamespace(Label),
-    #[error("registry metadata error: {0:#}")]
-    RegistryMeta(#[source] anyhow::Error),
-    #[error("invalid version: {0}")]
-    VersionError(#[from] semver::Error),
-    #[error("version not found: {0}")]
-    VersionNotFound(Version),
-    #[error("version yanked: {0}")]
-    VersionYanked(Version),
-    #[error("Warg error: {0}")]
-    WargError(#[from] warg_client::ClientError),
-    #[error("Warg error: {0}")]
-    WargAnyhowError(#[from] anyhow::Error),
 }

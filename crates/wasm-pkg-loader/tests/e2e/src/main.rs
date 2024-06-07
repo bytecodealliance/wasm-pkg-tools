@@ -4,7 +4,11 @@ use anyhow::Context;
 use futures_util::TryStreamExt;
 use libtest_mimic::{Arguments, Failed, Trial};
 use oci_wasm::{WasmClient, WasmConfig};
-use wasm_pkg_loader::{oci_client, Client, ClientConfig};
+use wasm_pkg_common::{
+    config::{oci::OciRegistryConfig, Config},
+    Registry,
+};
+use wasm_pkg_loader::{oci_client, Client};
 
 macro_rules! tests {
     [$($name:ident),+] => { vec![$(Trial::test(stringify!($name), || run_test($name))),+] };
@@ -32,18 +36,21 @@ const FIXTURE_WASM: &str = "./testdata/binary_wit.wasm";
 
 async fn fetch_smoke_test() {
     // Fetch package
-    let mut client_config = ClientConfig::default();
-    client_config
-        .set_default_registry("localhost:5001")
-        .set_oci_registry_config(
-            "localhost:5001",
-            oci_client::ClientConfig {
-                protocol: oci_client::ClientProtocol::Http,
-                ..Default::default()
+    let mut client_config = Config::default();
+    let registry: Registry = "localhost:5001".parse().unwrap();
+    client_config.set_default_registry(registry.clone());
+    let reg_config = client_config.get_or_insert_registry_config_mut(&registry);
+    reg_config
+        .set_backend_config(
+            "oci".to_string(),
+            OciRegistryConfig {
+                auth: None,
+                protocol: Some(oci_client::ClientProtocol::Http),
             },
-            None,
         )
-        .unwrap();
+        .expect("Should be able to set config");
+    reg_config.set_backend_type("oci".to_string());
+
     let mut client = Client::new(client_config);
 
     let package = FIXTURE_PACKAGE.parse().unwrap();
@@ -84,7 +91,7 @@ async fn prepare_fixtures() -> anyhow::Result<()> {
         oci_distribution::Reference::try_from(format!("localhost:5001/{pkg}:{FIXTURE_VERSION}"))
             .unwrap();
 
-    let (conf, component) = WasmConfig::from_component(FIXTURE_WASM, Some("proxy"), None)
+    let (conf, component) = WasmConfig::from_component(FIXTURE_WASM, None)
         .await
         .context("Should be able to parse component and create config")?;
     client

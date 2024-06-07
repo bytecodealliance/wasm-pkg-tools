@@ -1955,9 +1955,9 @@ dependencies = [
 
 [[package]]
 name = "oci-wasm"
-version = "0.0.3"
+version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e1930a0cc13337feec6dfcc223d51707b0228189c1c9ac27fab0cf38487acb8"
+checksum = "a91502e5352f927156f2b6a28d2558cc59558b1f441b681df3f706ced6937e07"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3825,18 +3825,22 @@ name = "wasm-pkg-common"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "dirs",
  "docker_credential",
  "http",
  "oci-distribution",
  "oci-wasm",
+ "reqwest",
  "secrecy",
+ "semver",
  "serde 1.0.202",
  "serde_json",
  "thiserror",
  "tokio",
  "toml 0.8.13",
  "tracing",
+ "warg-client",
 ]
 
 [[package]]
@@ -3882,6 +3886,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-test",
+ "wasm-pkg-common",
  "wasm-pkg-loader",
 ]
 

@@ -3,6 +3,7 @@ use std::{
     collections::{BTreeSet, HashMap},
 };
 
+use anyhow::Context;
 use http::uri::Authority;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
@@ -64,6 +65,20 @@ pub const REGISTRY_METADATA_PATH: &str = "/.well-known/wasm-pkg/registry.json";
 
 type JsonObject = serde_json::Map<String, serde_json::Value>;
 
+/// The configuration returned by a warg registry
+#[derive(Deserialize)]
+pub struct WargProtocolConfig {
+    pub url: String,
+}
+
+/// The configuration returned by an OCI registry
+#[derive(Deserialize)]
+pub struct OciProtocolConfig {
+    pub registry: String,
+    #[serde(rename = "namespacePrefix")]
+    pub namespace_prefix: Option<String>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegistryMetadata {
@@ -83,8 +98,10 @@ pub struct RegistryMetadata {
     warg_url: Option<String>,
 }
 
-const OCI_PROTOCOL: &str = "oci";
-const WARG_PROTOCOL: &str = "warg";
+/// The protocol name for OCI
+pub const OCI_PROTOCOL: &str = "oci";
+/// The protocol name for warg
+pub const WARG_PROTOCOL: &str = "warg";
 
 impl RegistryMetadata {
     /// Returns the registry's preferred protocol.
@@ -151,6 +168,32 @@ impl RegistryMetadata {
                 .map_err(Error::InvalidRegistryMetadata)?,
         ))
     }
+
+    /// Creates a new [`RegistryMetadata`] by attempting to fetch it from a well known path. Only
+    /// errors if an error occurred with the request itself. If the URL was not found, `None` is
+    /// returned
+    pub async fn fetch(domain: &str) -> Result<Option<Self>, Error> {
+        let scheme = if domain.starts_with("localhost:") {
+            "http"
+        } else {
+            "https"
+        };
+        let url = format!("{scheme}://{domain}{REGISTRY_METADATA_PATH}");
+        Self::fetch_url(&url)
+            .await
+            .with_context(|| format!("error fetching registry metadata from {url:?}"))
+            .map_err(Error::RegistryMeta)
+    }
+
+    async fn fetch_url(url: &str) -> anyhow::Result<Option<Self>> {
+        tracing::debug!("Fetching registry metadata from {url:?}");
+        let resp = reqwest::get(url).await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let resp = resp.error_for_status()?;
+        Ok(Some(resp.json().await?))
+    }
 }
 
 #[cfg(test)]
@@ -177,10 +220,10 @@ mod tests {
             meta.configured_protocols().collect::<Vec<_>>(),
             ["oci", "warg"]
         );
-        let oci_config: JsonObject = meta.protocol_config("oci").unwrap().unwrap();
-        assert_eq!(oci_config["registry"], "oci.example.com");
-        let warg_config: JsonObject = meta.protocol_config("warg").unwrap().unwrap();
-        assert_eq!(warg_config["url"], "https://warg.example.com");
+        let oci_config: OciProtocolConfig = meta.protocol_config("oci").unwrap().unwrap();
+        assert_eq!(oci_config.registry, "oci.example.com");
+        let warg_config: WargProtocolConfig = meta.protocol_config("warg").unwrap().unwrap();
+        assert_eq!(warg_config.url, "https://warg.example.com");
         let other_config: Option<OtherProtocolConfig> = meta.protocol_config("other").unwrap();
         assert_eq!(other_config, None);
     }
@@ -217,11 +260,16 @@ mod tests {
             meta.configured_protocols().collect::<Vec<_>>(),
             ["oci", "warg"]
         );
-        let oci_config: JsonObject = meta.protocol_config("oci").unwrap().unwrap();
-        assert_eq!(oci_config["registry"], "oci.example.com");
-        assert_eq!(oci_config["namespacePrefix"], "prefix/");
-        let warg_config: JsonObject = meta.protocol_config("warg").unwrap().unwrap();
-        assert_eq!(warg_config["url"], "https://warg.example.com");
+        let oci_config: OciProtocolConfig = meta.protocol_config("oci").unwrap().unwrap();
+        assert_eq!(oci_config.registry, "oci.example.com");
+        assert_eq!(
+            oci_config
+                .namespace_prefix
+                .expect("Namespace prefix should be set"),
+            "prefix/"
+        );
+        let warg_config: WargProtocolConfig = meta.protocol_config("warg").unwrap().unwrap();
+        assert_eq!(warg_config.url, "https://warg.example.com");
     }
 
     #[test]
@@ -235,8 +283,8 @@ mod tests {
             meta.configured_protocols().collect::<Vec<_>>(),
             ["other", "warg"]
         );
-        let warg_config: JsonObject = meta.protocol_config("warg").unwrap().unwrap();
-        assert_eq!(warg_config["url"], "https://warg.example.com");
+        let warg_config: WargProtocolConfig = meta.protocol_config("warg").unwrap().unwrap();
+        assert_eq!(warg_config.url, "https://warg.example.com");
         let other_config: OtherProtocolConfig = meta.protocol_config("other").unwrap().unwrap();
         assert_eq!(other_config.key, "value");
     }

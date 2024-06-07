@@ -3,10 +3,9 @@ use bytes::Bytes;
 use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
 use oci_distribution::{manifest::OciDescriptor, Reference, RegistryOperation};
 use semver::Version;
-use wasm_pkg_common::oci::OciConfig;
+use wasm_pkg_common::{oci::OciConfig, registry::OciProtocolConfig};
 
 use crate::{
-    meta::RegistryMeta,
     source::{PackageSource, VersionInfo},
     Error, PackageRef, Release,
 };
@@ -18,12 +17,22 @@ pub struct OciSource {
 }
 
 impl OciSource {
-    pub fn new(registry: String, config: OciConfig, registry_meta: RegistryMeta) -> Self {
-        let oci_registry = registry_meta.oci_registry.unwrap_or(registry);
+    pub fn new(
+        registry: String,
+        config: OciConfig,
+        registry_meta: Option<OciProtocolConfig>,
+    ) -> Self {
+        let (oci_registry, namespace_prefix) = match registry_meta {
+            Some(OciProtocolConfig {
+                registry,
+                namespace_prefix,
+            }) => (registry, namespace_prefix),
+            None => (registry, None),
+        };
 
         Self {
             client: wasm_pkg_common::oci::Oci::new(config),
-            namespace_prefix: registry_meta.oci_namespace_prefix,
+            namespace_prefix,
             oci_registry,
         }
     }
@@ -93,7 +102,8 @@ impl PackageSource for OciSource {
         let (manifest, _config, _digest) = self
             .client
             .pull_manifest_and_config(&reference, &auth)
-            .await?;
+            .await
+            .map_err(|e| Error::InvalidPackageManifest(e.to_string()))?;
         tracing::trace!(?manifest, "Got manifest");
 
         let version = version.to_owned();
