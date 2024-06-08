@@ -9,6 +9,10 @@ use wasm_pkg_client::Client;
 use wasm_pkg_common::{config::Config, package::PackageSpec, registry::Registry};
 use wit_component::DecodedWasm;
 
+mod oci;
+
+use oci::OciCommands;
+
 #[derive(Parser, Debug)]
 #[command(version)]
 struct Cli {
@@ -19,18 +23,22 @@ struct Cli {
 #[derive(Args, Debug)]
 struct RegistryArgs {
     /// The registry domain to use. Overrides configuration file(s).
-    #[arg(long = "registry", value_name = "DOMAIN")]
+    #[arg(long = "registry", value_name = "REGISTRY", env = "WKG_REGISTRY")]
     registry: Option<Registry>,
 }
 
 #[derive(Subcommand, Debug)]
+#[allow(clippy::large_enum_variant)]
 enum Commands {
-    /// Get a package.
-    Get(GetCommand),
+    /// Load a package. This is for use in debugging dependency fetching. For pulling a component, use `wit get`
+    Get(GetArgs),
+    /// Commands for interacting with OCI registries
+    #[clap(subcommand)]
+    Oci(OciCommands),
 }
 
 #[derive(Args, Debug)]
-struct GetCommand {
+struct GetArgs {
     /// Output path. If this ends with a '/', a filename based on the package
     /// name, version, and format will be appended, e.g.
     /// `name-space_name@1.0.0.wasm``.
@@ -61,7 +69,7 @@ enum Format {
     Wit,
 }
 
-impl GetCommand {
+impl GetArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         let PackageSpec { package, version } = self.package_spec;
 
@@ -195,6 +203,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Get(cmd) => cmd.run().await,
+        Commands::Get(args) => args.run().await,
+        Commands::Oci(args) => args.run().await,
     }
 }

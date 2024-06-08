@@ -9,6 +9,9 @@ authors = ["The Wasmtime Project Developers"]
 license = "Apache-2.0 WITH LLVM-exception"
 
 [workspace.dependencies]
+anyhow = "1"
+docker_credential = "1.2.1"
+oci-distribution = "0.11.0"
 oci-wasm = "0.0.4"
 tokio = "1.35.1"
 tracing = "0.1.40"
