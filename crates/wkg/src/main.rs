@@ -9,6 +9,12 @@ use wasm_pkg_common::{config::Config, package::PackageSpec};
 use wasm_pkg_loader::Client;
 use wit_component::DecodedWasm;
 
+mod oci;
+mod warg;
+
+use oci::{GetArgs as OciGetArgs, PushArgs as OciPushArgs};
+use warg::{GetArgs as WargGetArgs, PushArgs as WargPushArgs};
+
 #[derive(Parser, Debug)]
 #[command(version)]
 struct Cli {
@@ -19,18 +25,24 @@ struct Cli {
 #[derive(Args, Debug)]
 struct RegistryArgs {
     /// The registry domain to use. Overrides configuration file(s).
-    #[arg(long = "registry", value_name = "DOMAIN")]
+    #[arg(long = "registry", value_name = "WKG_DOMAIN")]
     domain: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Get a package.
+    /// Load a package. This is for use in debugging dependency fetching. For pulling a component, use `wit get`
+    Load(LoadArgs),
+    /// Get a component from a registry and write it to a file.
+    #[clap(subcommand)]
     Get(GetCommand),
+    /// Push a component to a registry.
+    #[clap(subcommand)]
+    Push(PushCommand),
 }
 
 #[derive(Args, Debug)]
-struct GetCommand {
+struct LoadArgs {
     /// Output path. If this ends with a '/', a filename based on the package
     /// name, version, and format will be appended, e.g.
     /// `name-space_name@1.0.0.wasm``.
@@ -61,7 +73,23 @@ enum Format {
     Wit,
 }
 
-impl GetCommand {
+#[derive(Subcommand, Debug)]
+enum GetCommand {
+    /// Get a component from an OCI registry and write it to a file.
+    Oci(OciGetArgs),
+    /// Get a component from a warg registry and write it to a file.
+    Warg(WargGetArgs),
+}
+
+#[derive(Subcommand, Debug)]
+enum PushCommand {
+    /// Push a component to an OCI registry.
+    Oci(OciPushArgs),
+    /// Push a component to a warg registry.
+    Warg(WargPushArgs),
+}
+
+impl LoadArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         let PackageSpec { package, version } = self.package_spec;
 
@@ -114,7 +142,7 @@ impl GetCommand {
         };
 
         let (tmp_file, tmp_path) =
-            tempfile::NamedTempFile::with_prefix_in(".wkg-get", parent_dir)?.into_parts();
+            tempfile::NamedTempFile::with_prefix_in(".wkg-load", parent_dir)?.into_parts();
         tracing::debug!(?tmp_path, "Created temporary file");
 
         let mut content_stream = client.stream_content(&package, &release).await?;
@@ -204,6 +232,10 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Get(cmd) => cmd.run().await,
+        Commands::Load(args) => args.run().await,
+        Commands::Get(GetCommand::Oci(args)) => args.run().await,
+        Commands::Get(GetCommand::Warg(args)) => args.run().await,
+        Commands::Push(PushCommand::Oci(args)) => args.run().await,
+        Commands::Push(PushCommand::Warg(args)) => args.run().await,
     }
 }

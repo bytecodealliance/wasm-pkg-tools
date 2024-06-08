@@ -8,8 +8,10 @@ license.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
-clap = { version = "4.5.4", features = ["derive", "wrap_help"] }
+clap = { version = "4.5", features = ["derive", "wrap_help", "env"] }
 futures-util = { version = "0.3.29", features = ["io"] }
+oci-distribution = { workspace = true }
+oci-wasm = { workspace = true }
 tempfile = "3.10.1"
 tokio = { workspace = true, features = ["macros", "rt"] }
 tracing = { workspace = true }

@@ -4127,6 +4127,8 @@ dependencies = [
  "anyhow",
  "clap",
  "futures-util",
+ "oci-distribution",
+ "oci-wasm",
  "tempfile",
  "tokio",
  "tracing",
