@@ -7,9 +7,12 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-anyhow = "1.0"
-clap = { version = "4.5.4", features = ["derive", "wrap_help"] }
+anyhow = { workspace = true }
+clap = { version = "4.5", features = ["derive", "wrap_help", "env"] }
+docker_credential = { workspace = true }
 futures-util = { version = "0.3.29", features = ["io"] }
+oci-distribution = { workspace = true }
+oci-wasm = { workspace = true }
 tempfile = "3.10.1"
 tokio = { workspace = true, features = ["macros", "rt"] }
 tracing = { workspace = true }

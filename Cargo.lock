@@ -4191,7 +4191,10 @@ version = "0.4.1"
 dependencies = [
  "anyhow",
  "clap",
+ "docker_credential",
  "futures-util",
+ "oci-distribution",
+ "oci-wasm",
  "tempfile",
  "tokio",
  "tracing",

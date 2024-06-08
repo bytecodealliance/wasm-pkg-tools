@@ -12,7 +12,7 @@ metadata-client = ["dep:reqwest"]
 tokio = ["dep:tokio"]
 
 [dependencies]
-anyhow = "1.0"
+anyhow = { workspace = true }
 bytes = "1.6.0"
 dirs = "5.0.1"
 futures-util = "0.3.30"
