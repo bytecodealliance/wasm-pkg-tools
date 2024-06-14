@@ -37,6 +37,7 @@ impl From<TomlConfig> for super::Config {
             default_registry,
             namespace_registries,
             package_registry_overrides,
+            fallback_namespace_registries: Default::default(),
             registry_configs,
         }
     }

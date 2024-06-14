@@ -3849,7 +3849,6 @@ dependencies = [
  "futures-util",
  "oci-distribution",
  "oci-wasm",
- "reqwest",
  "secrecy",
  "serde 1.0.202",
  "serde_json",

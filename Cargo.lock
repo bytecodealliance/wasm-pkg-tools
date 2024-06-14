@@ -3792,7 +3792,6 @@ dependencies = [
  "futures-util",
  "oci-distribution",
  "oci-wasm",
- "reqwest",
  "secrecy",
  "serde 1.0.201",
  "serde_json",
@@ -3808,6 +3807,10 @@ dependencies = [
  "warg-protocol",
  "wasm-pkg-common",
 ]
+
+[[package]]
+name = "wasm-pkg-publish"
+version = "0.3.0"
 
 [[package]]
 name = "wasm-streams"

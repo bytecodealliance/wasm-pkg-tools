@@ -1,14 +1,18 @@
+mod config;
+
 use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::Bytes;
+use config::WargConfig;
 use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
-use secrecy::SecretString;
 use serde::Deserialize;
 use warg_client::{storage::PackageInfo, ClientError, FileSystemClient};
 use warg_protocol::registry::PackageName;
 use wasm_pkg_common::{
+    config::RegistryConfig,
     metadata::RegistryMetadata,
     package::{PackageRef, Version},
+    registry::Registry,
     Error,
 };
 
@@ -16,12 +20,6 @@ use crate::{
     source::{PackageSource, VersionInfo},
     Release,
 };
-
-#[derive(Clone, Debug, Default)]
-pub struct WargConfig {
-    pub client_config: Option<warg_client::Config>,
-    pub auth_token: Option<SecretString>,
-}
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,18 +33,18 @@ pub struct WargSource {
 
 impl WargSource {
     pub async fn new(
-        registry: String,
-        config: WargConfig,
-        registry_meta: RegistryMetadata,
+        registry: &Registry,
+        registry_config: &RegistryConfig,
+        registry_meta: &RegistryMetadata,
     ) -> Result<Self, Error> {
         let warg_meta = registry_meta
             .protocol_config::<WargRegistryMetadata>("warg")?
             .unwrap_or_default();
-        let url = warg_meta.url.unwrap_or(registry);
+        let url = warg_meta.url.unwrap_or_else(|| registry.to_string());
         let WargConfig {
             client_config,
             auth_token,
-        } = config;
+        } = registry_config.try_into()?;
 
         let client_config = if let Some(client_config) = client_config {
             client_config

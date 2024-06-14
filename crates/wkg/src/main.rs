@@ -5,8 +5,8 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
 use tokio::io::AsyncWriteExt;
 use tracing::level_filters::LevelFilter;
-use wasm_pkg_common::package::PackageSpec;
-use wasm_pkg_loader::ClientConfig;
+use wasm_pkg_common::{config::Config, package::PackageSpec, registry::Registry};
+use wasm_pkg_loader::Client;
 use wit_component::DecodedWasm;
 
 #[derive(Parser, Debug)]
@@ -20,7 +20,7 @@ struct Cli {
 struct RegistryArgs {
     /// The registry domain to use. Overrides configuration file(s).
     #[arg(long = "registry", value_name = "DOMAIN")]
-    domain: Option<String>,
+    registry: Option<Registry>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -51,7 +51,7 @@ struct GetCommand {
     package_spec: PackageSpec,
 
     #[command(flatten)]
-    registry: RegistryArgs,
+    registry_args: RegistryArgs,
 }
 
 #[derive(ValueEnum, Clone, Debug, PartialEq)]
@@ -66,17 +66,12 @@ impl GetCommand {
         let PackageSpec { package, version } = self.package_spec;
 
         let mut client = {
-            let mut config = ClientConfig::default();
-            config.set_default_registry("bytecodealliance.org");
-            if let Some(file_config) = ClientConfig::from_default_file()? {
-                config.merge_config(file_config);
+            let mut config = Config::global_defaults()?;
+            if let Some(registry) = self.registry_args.registry.clone() {
+                tracing::debug!(%package, %registry, "overriding package registry");
+                config.set_package_registry_override(package.clone(), registry);
             }
-            if let Some(registry) = self.registry.domain {
-                let namespace = package.namespace().to_string();
-                tracing::debug!(namespace, registry, "overriding namespace registry");
-                config.set_namespace_registry(namespace, registry);
-            }
-            config.to_client()
+            Client::new(config)
         };
 
         let version = match version {

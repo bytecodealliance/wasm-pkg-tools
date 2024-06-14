@@ -107,11 +107,11 @@ mod client {
     use http::StatusCode;
 
     use super::REGISTRY_METADATA_PATH;
-    use crate::Error;
+    use crate::{registry::Registry, Error};
 
     impl super::RegistryMetadata {
-        pub async fn fetch_or_default(domain: &str) -> Self {
-            match Self::fetch(domain).await {
+        pub async fn fetch_or_default(registry: &Registry) -> Self {
+            match Self::fetch(registry).await {
                 Ok(Some(meta)) => {
                     tracing::debug!(?meta, "Got registry metadata");
                     meta
@@ -127,13 +127,13 @@ mod client {
             }
         }
 
-        pub async fn fetch(domain: &str) -> Result<Option<Self>, Error> {
-            let scheme = if domain.starts_with("localhost:") {
+        pub async fn fetch(registry: &Registry) -> Result<Option<Self>, Error> {
+            let scheme = if registry.host() == "localhost" {
                 "http"
             } else {
                 "https"
             };
-            let url = format!("{scheme}://{domain}{REGISTRY_METADATA_PATH}");
+            let url = format!("{scheme}://{registry}{REGISTRY_METADATA_PATH}");
             Self::fetch_url(&url)
                 .await
                 .with_context(|| format!("error fetching registry metadata from {url:?}"))

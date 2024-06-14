@@ -1,54 +1,27 @@
+mod config;
+
 use async_trait::async_trait;
 use bytes::Bytes;
+use config::{BasicCredentials, OciConfig};
 use docker_credential::{CredentialRetrievalError, DockerCredential};
 use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
 use oci_distribution::{
-    client::ClientConfig, errors::OciDistributionError, manifest::OciDescriptor,
-    secrets::RegistryAuth, Reference,
+    errors::OciDistributionError, manifest::OciDescriptor, secrets::RegistryAuth, Reference,
 };
 use secrecy::ExposeSecret;
 use serde::Deserialize;
 use wasm_pkg_common::{
+    config::RegistryConfig,
     metadata::RegistryMetadata,
     package::{PackageRef, Version},
+    registry::Registry,
     Error,
 };
 
 use crate::{
-    config::BasicCredentials,
     source::{PackageSource, VersionInfo},
     Release,
 };
-
-#[derive(Default)]
-pub struct OciConfig {
-    pub client_config: ClientConfig,
-    pub credentials: Option<BasicCredentials>,
-}
-
-impl Clone for OciConfig {
-    fn clone(&self) -> Self {
-        let client_config = ClientConfig {
-            protocol: self.client_config.protocol.clone(),
-            extra_root_certificates: self.client_config.extra_root_certificates.clone(),
-            platform_resolver: None,
-            ..self.client_config
-        };
-        Self {
-            client_config,
-            credentials: self.credentials.clone(),
-        }
-    }
-}
-
-impl std::fmt::Debug for OciConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OciConfig")
-            .field("client_config", &"...")
-            .field("credentials", &self.credentials)
-            .finish()
-    }
-}
 
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,21 +40,21 @@ pub struct OciSource {
 
 impl OciSource {
     pub fn new(
-        registry: String,
-        config: OciConfig,
-        registry_meta: RegistryMetadata,
+        registry: &Registry,
+        registry_config: &RegistryConfig,
+        registry_meta: &RegistryMetadata,
     ) -> Result<Self, Error> {
         let OciConfig {
             client_config,
             credentials,
-        } = config;
+        } = registry_config.try_into()?;
         let client = oci_distribution::Client::new(client_config);
         let client = oci_wasm::WasmClient::new(client);
 
         let oci_meta = registry_meta
             .protocol_config::<OciRegistryMetadata>("oci")?
             .unwrap_or_default();
-        let oci_registry = oci_meta.registry.unwrap_or(registry);
+        let oci_registry = oci_meta.registry.unwrap_or_else(|| registry.to_string());
 
         Ok(Self {
             client,
