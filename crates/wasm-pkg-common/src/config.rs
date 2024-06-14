@@ -6,7 +6,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{label::Label, package::PackageRef, Error, Registry};
+use crate::{label::Label, package::PackageRef, registry::Registry, Error};
 
 mod toml;
 
@@ -68,7 +68,7 @@ impl Config {
         Ok(config)
     }
 
-    /// Reads config from
+    /// Reads config from the default global config file location
     pub fn read_global_config() -> Result<Option<Self>, Error> {
         let Some(config_dir) = dirs::config_dir() else {
             return Ok(None);
@@ -142,6 +142,8 @@ impl Config {
     }
 
     /// Sets the default registry.
+    ///
+    /// To unset the default registry, pass `None`.
     pub fn set_default_registry(&mut self, registry: Option<Registry>) {
         self.default_registry = registry;
     }
@@ -221,6 +223,8 @@ impl RegistryConfig {
     }
 
     /// Sets the backend type override.
+    ///
+    /// To unset the backend type override, pass `None`.
     pub fn set_backend_type(&mut self, backend_type: Option<String>) {
         self.backend_type = backend_type;
     }

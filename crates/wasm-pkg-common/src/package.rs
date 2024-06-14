@@ -1,6 +1,10 @@
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{label::Label, Error};
+
+pub use semver::Version;
 
 /// A package reference, consisting of kebab-case namespace and name, e.g. `wasm-pkg:loader`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -50,10 +54,32 @@ impl TryFrom<String> for PackageRef {
     }
 }
 
-impl std::str::FromStr for PackageRef {
+impl FromStr for PackageRef {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         s.to_string().try_into()
+    }
+}
+
+/// A package spec combines a [`PackageRef`] with an optional version.
+#[derive(Clone, Debug)]
+pub struct PackageSpec {
+    pub package: PackageRef,
+    pub version: Option<Version>,
+}
+
+impl FromStr for PackageSpec {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (package, version) = s
+            .split_once('@')
+            .map(|(pkg, ver)| (pkg, Some(ver)))
+            .unwrap_or((s, None));
+        Ok(Self {
+            package: package.parse()?,
+            version: version.map(|ver| ver.parse()).transpose()?,
+        })
     }
 }

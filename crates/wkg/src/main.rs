@@ -1,13 +1,11 @@
-mod package_spec;
-
 use std::{io::Seek, path::PathBuf};
 
 use anyhow::{ensure, Context};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
-use package_spec::PackageSpec;
 use tokio::io::AsyncWriteExt;
 use tracing::level_filters::LevelFilter;
+use wasm_pkg_common::package::PackageSpec;
 use wasm_pkg_loader::ClientConfig;
 use wit_component::DecodedWasm;
 

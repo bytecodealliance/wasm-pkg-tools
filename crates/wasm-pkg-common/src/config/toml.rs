@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use crate::{label::Label, package::PackageRef, Registry};
+use crate::{label::Label, package::PackageRef, registry::Registry};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

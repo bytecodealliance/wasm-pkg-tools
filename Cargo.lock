@@ -3767,8 +3767,11 @@ dependencies = [
 name = "wasm-pkg-common"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
  "dirs",
  "http",
+ "reqwest",
+ "semver",
  "serde 1.0.201",
  "serde_json",
  "thiserror",
@@ -3791,7 +3794,6 @@ dependencies = [
  "oci-wasm",
  "reqwest",
  "secrecy",
- "semver",
  "serde 1.0.201",
  "serde_json",
  "sha2",
@@ -3804,6 +3806,7 @@ dependencies = [
  "url",
  "warg-client",
  "warg-protocol",
+ "wasm-pkg-common",
 ]
 
 [[package]]
@@ -4190,6 +4193,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "wasm-pkg-common",
  "wasm-pkg-loader",
  "wit-component 0.207.0",
 ]

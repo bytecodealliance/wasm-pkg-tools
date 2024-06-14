@@ -1,7 +1,7 @@
 [package]
 name = "wasm-pkg-loader"
 description = "Wasm package loader"
-authors = ["Lann Martin <lann.martin@fermyon.com>"]
+authors.workspace = true
 version.workspace = true
 license.workspace = true
 edition.workspace = true
@@ -19,7 +19,6 @@ oci-distribution = "0.11.0"
 oci-wasm = { workspace = true }
 reqwest = { version = "0.12.0", features = ["json"] }
 secrecy = { version = "0.8.0", features = ["serde"] }
-semver = "1.0.20"
 serde = { version = "1.0.194", features = ["derive"] }
 serde_json = "1.0.110"
 sha2 = "0.10.8"
@@ -32,3 +31,4 @@ tracing-subscriber = { workspace = true }
 url = "2.5.0"
 warg-client = "0.7.0"
 warg-protocol = "0.7.0"
+wasm-pkg-common = { workspace = true, features = ["metadata-client"] }

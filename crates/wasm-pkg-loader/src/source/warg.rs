@@ -1,21 +1,32 @@
+use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
 use secrecy::SecretString;
-use semver::Version;
+use serde::Deserialize;
 use warg_client::{storage::PackageInfo, ClientError, FileSystemClient};
 use warg_protocol::registry::PackageName;
+use wasm_pkg_common::{
+    metadata::RegistryMetadata,
+    package::{PackageRef, Version},
+    Error,
+};
 
 use crate::{
-    meta::RegistryMeta,
     source::{PackageSource, VersionInfo},
-    Error, PackageRef, Release,
+    Release,
 };
 
 #[derive(Clone, Debug, Default)]
 pub struct WargConfig {
     pub client_config: Option<warg_client::Config>,
     pub auth_token: Option<SecretString>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WargRegistryMetadata {
+    url: Option<String>,
 }
 
 pub struct WargSource {
@@ -26,9 +37,12 @@ impl WargSource {
     pub async fn new(
         registry: String,
         config: WargConfig,
-        registry_meta: RegistryMeta,
+        registry_meta: RegistryMetadata,
     ) -> Result<Self, Error> {
-        let url = registry_meta.warg_url.unwrap_or(registry);
+        let warg_meta = registry_meta
+            .protocol_config::<WargRegistryMetadata>("warg")?
+            .unwrap_or_default();
+        let url = warg_meta.url.unwrap_or(registry);
         let WargConfig {
             client_config,
             auth_token,
@@ -42,13 +56,18 @@ impl WargSource {
                 .unwrap_or_default()
         };
         let client =
-            FileSystemClient::new_with_config(Some(url.as_str()), &client_config, auth_token).await?;
+            FileSystemClient::new_with_config(Some(url.as_str()), &client_config, auth_token)
+                .await
+                .map_err(warg_registry_error)?;
         Ok(Self { client })
     }
 
     async fn fetch_package_info(&mut self, package: &PackageRef) -> Result<PackageInfo, Error> {
-        let package_name = package.try_into()?;
-        Ok(self.client.package(&package_name).await?)
+        let package_name = package_ref_to_name(package)?;
+        self.client
+            .package(&package_name)
+            .await
+            .map_err(warg_registry_error)
     }
 }
 
@@ -78,7 +97,7 @@ impl PackageSource for WargSource {
             .ok_or_else(|| Error::VersionNotFound(version.clone()))?;
         let content_digest = release
             .content()
-            .ok_or_else(|| Error::VersionYanked(version.clone()))?
+            .ok_or_else(|| Error::RegistryError(anyhow!("version {version} yanked")))?
             .to_string();
         Ok(Release {
             version: version.clone(),
@@ -99,21 +118,23 @@ impl PackageSource for WargSource {
         package: &PackageRef,
         release: &Release,
     ) -> Result<BoxStream<Result<Bytes, Error>>, Error> {
-        let package_name = package.try_into()?;
+        let package_name = package_ref_to_name(package)?;
 
         // warg client validates the digest matches the content
         let (_, stream) = self
             .client
             .download_exact_as_stream(&package_name, &release.version)
-            .await?;
-        Ok(stream.map_err(Into::into).boxed())
+            .await
+            .map_err(warg_registry_error)?;
+        Ok(stream.map_err(Error::RegistryError).boxed())
     }
 }
 
-impl TryFrom<&PackageRef> for PackageName {
-    type Error = Error;
+fn package_ref_to_name(package_ref: &PackageRef) -> Result<PackageName, Error> {
+    PackageName::new(package_ref.to_string())
+        .map_err(|err| Error::InvalidPackageRef(err.to_string()))
+}
 
-    fn try_from(value: &PackageRef) -> Result<Self, Self::Error> {
-        Self::new(value.to_string()).map_err(|err| Error::WargError(ClientError::Other(err)))
-    }
+fn warg_registry_error(err: ClientError) -> Error {
+    Error::RegistryError(err.into())
 }

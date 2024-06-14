@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
-use semver::Version;
 use tokio_util::io::ReaderStream;
+use wasm_pkg_common::package::Version;
 
 use crate::{
     source::{PackageSource, VersionInfo},

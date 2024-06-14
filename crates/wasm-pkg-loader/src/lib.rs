@@ -1,17 +1,20 @@
 mod config;
-mod label;
-mod meta;
-mod package;
 mod release;
 mod source;
 
 use std::collections::HashMap;
 
 use bytes::Bytes;
+use config::RegistryConfig;
 use futures_util::stream::BoxStream;
-use oci_distribution::errors::OciDistributionError;
-pub use semver::Version;
-use source::{
+
+use wasm_pkg_common::{
+    metadata::RegistryMetadata,
+    package::{PackageRef, Version},
+    Error,
+};
+
+use crate::source::{
     local::LocalSource,
     oci::{OciConfig, OciSource},
     warg::{WargConfig, WargSource},
@@ -23,13 +26,7 @@ pub use oci_distribution::client as oci_client;
 
 pub use crate::{
     config::ClientConfig,
-    package::PackageRef,
     release::{ContentDigest, Release},
-};
-use crate::{
-    config::RegistryConfig,
-    label::{InvalidLabel, Label},
-    meta::RegistryMeta,
 };
 
 /// A read-only registry client.
@@ -93,22 +90,27 @@ impl Client {
 
             tracing::debug!(?registry_config, "Resolved registry config");
 
-            let registry_meta = RegistryMeta::fetch_or_default(&registry).await;
+            let registry_meta = RegistryMetadata::fetch_or_default(&registry).await;
 
-            let registry_config = registry_config.unwrap_or_else(|| {
-                if registry_meta.warg_url.is_some() {
-                    RegistryConfig::Warg(Default::default())
-                } else {
-                    RegistryConfig::Oci(Default::default())
-                }
-            });
+            let registry_config = match registry_config {
+                Some(config) => config,
+                None => match registry_meta.preferred_protocol() {
+                    Some("oci") | None => RegistryConfig::Oci(Default::default()),
+                    Some("warg") => RegistryConfig::Warg(Default::default()),
+                    Some(other) => {
+                        return Err(Error::InvalidRegistryMetadata(anyhow::anyhow!(
+                            "unknown preferred registry protocol {other:?}"
+                        )));
+                    }
+                },
+            };
 
             let source: Box<dyn PackageSource> = match registry_config {
-                config::RegistryConfig::Local(config) => Box::new(LocalSource::new(config)),
-                config::RegistryConfig::Oci(config) => {
+                RegistryConfig::Local(config) => Box::new(LocalSource::new(config)),
+                RegistryConfig::Oci(config) => {
                     Box::new(self.build_oci_client(&registry, registry_meta, config)?)
                 }
-                config::RegistryConfig::Warg(config) => Box::new(
+                RegistryConfig::Warg(config) => Box::new(
                     self.build_warg_client(&registry, registry_meta, config)
                         .await?,
                 ),
@@ -121,7 +123,7 @@ impl Client {
     fn build_oci_client(
         &mut self,
         registry: &str,
-        registry_meta: RegistryMeta,
+        registry_meta: RegistryMetadata,
         config: OciConfig,
     ) -> Result<OciSource, Error> {
         tracing::debug!(?registry, "Building new OCI client");
@@ -131,47 +133,10 @@ impl Client {
     async fn build_warg_client(
         &mut self,
         registry: &str,
-        registry_meta: RegistryMeta,
+        registry_meta: RegistryMetadata,
         config: WargConfig,
     ) -> Result<WargSource, Error> {
         tracing::debug!(?registry, "Building new Warg client");
         WargSource::new(registry.to_string(), config, registry_meta).await
     }
-}
-
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum Error {
-    #[error("failed to get registry credentials: {0:#}")]
-    CredentialError(anyhow::Error),
-    #[error("invalid config: {0:#}")]
-    InvalidConfig(anyhow::Error),
-    #[error("invalid content: {0}")]
-    InvalidContent(String),
-    #[error("invalid content digest: {0}")]
-    InvalidContentDigest(String),
-    #[error("invalid label: {0}")]
-    InvalidLabel(#[from] InvalidLabel),
-    #[error("invalid package ref: {0}")]
-    InvalidPackageRef(String),
-    #[error("invalid package manifest: {0}")]
-    InvalidPackageManifest(String),
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
-    #[error("OCI error: {0}")]
-    OciError(#[from] OciDistributionError),
-    #[error("no registry configured for namespace {0:?}")]
-    NoRegistryForNamespace(Label),
-    #[error("registry metadata error: {0:#}")]
-    RegistryMeta(#[source] anyhow::Error),
-    #[error("invalid version: {0}")]
-    VersionError(#[from] semver::Error),
-    #[error("version not found: {0}")]
-    VersionNotFound(Version),
-    #[error("version yanked: {0}")]
-    VersionYanked(Version),
-    #[error("Warg error: {0}")]
-    WargError(#[from] warg_client::ClientError),
-    #[error("Warg error: {0}")]
-    WargAnyhowError(#[from] anyhow::Error),
 }

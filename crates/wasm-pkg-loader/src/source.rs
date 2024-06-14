@@ -1,10 +1,14 @@
+use std::cmp::Ordering;
+
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::{stream::BoxStream, StreamExt};
-use semver::Version;
-use std::cmp::Ordering;
+use wasm_pkg_common::{
+    package::{PackageRef, Version},
+    Error,
+};
 
-use crate::{Error, PackageRef, Release};
+use crate::Release;
 
 pub mod local;
 pub mod oci;

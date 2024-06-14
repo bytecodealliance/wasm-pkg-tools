@@ -3,16 +3,21 @@ use bytes::Bytes;
 use docker_credential::{CredentialRetrievalError, DockerCredential};
 use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
 use oci_distribution::{
-    client::ClientConfig, manifest::OciDescriptor, secrets::RegistryAuth, Reference,
+    client::ClientConfig, errors::OciDistributionError, manifest::OciDescriptor,
+    secrets::RegistryAuth, Reference,
 };
 use secrecy::ExposeSecret;
-use semver::Version;
+use serde::Deserialize;
+use wasm_pkg_common::{
+    metadata::RegistryMetadata,
+    package::{PackageRef, Version},
+    Error,
+};
 
 use crate::{
     config::BasicCredentials,
-    meta::RegistryMeta,
     source::{PackageSource, VersionInfo},
-    Error, PackageRef, Release,
+    Release,
 };
 
 #[derive(Default)]
@@ -45,6 +50,13 @@ impl std::fmt::Debug for OciConfig {
     }
 }
 
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OciRegistryMetadata {
+    registry: Option<String>,
+    namespace_prefix: Option<String>,
+}
+
 pub struct OciSource {
     client: oci_wasm::WasmClient,
     oci_registry: String,
@@ -57,7 +69,7 @@ impl OciSource {
     pub fn new(
         registry: String,
         config: OciConfig,
-        registry_meta: RegistryMeta,
+        registry_meta: RegistryMetadata,
     ) -> Result<Self, Error> {
         let OciConfig {
             client_config,
@@ -66,12 +78,15 @@ impl OciSource {
         let client = oci_distribution::Client::new(client_config);
         let client = oci_wasm::WasmClient::new(client);
 
-        let oci_registry = registry_meta.oci_registry.unwrap_or(registry);
+        let oci_meta = registry_meta
+            .protocol_config::<OciRegistryMetadata>("oci")?
+            .unwrap_or_default();
+        let oci_registry = oci_meta.registry.unwrap_or(registry);
 
         Ok(Self {
             client,
             oci_registry,
-            namespace_prefix: registry_meta.oci_namespace_prefix,
+            namespace_prefix: oci_meta.namespace_prefix,
             credentials,
             registry_auth: None,
         })
@@ -96,10 +111,10 @@ impl OciSource {
                     {
                         auth = RegistryAuth::Anonymous;
                     } else {
-                        return Err(err.into());
+                        return Err(oci_registry_error(err));
                     }
                 }
-                Err(err) => return Err(err.into()),
+                Err(err) => return Err(oci_registry_error(err)),
             }
             self.registry_auth = Some(auth);
         }
@@ -162,7 +177,11 @@ impl PackageSource for OciSource {
 
         tracing::debug!(?reference, "Listing tags for OCI reference");
         let auth = self.auth(&reference).await?;
-        let resp = self.client.list_tags(&reference, &auth, None, None).await?;
+        let resp = self
+            .client
+            .list_tags(&reference, &auth, None, None)
+            .await
+            .map_err(oci_registry_error)?;
         tracing::trace!(response = ?resp, "List tags response");
 
         // Return only tags that parse as valid semver versions.
@@ -195,7 +214,8 @@ impl PackageSource for OciSource {
         let (manifest, _config, _digest) = self
             .client
             .pull_manifest_and_config(&reference, &auth)
-            .await?;
+            .await
+            .map_err(Error::RegistryError)?;
         tracing::trace!(?manifest, "Got manifest");
 
         let version = version.to_owned();
@@ -228,7 +248,12 @@ impl PackageSource for OciSource {
         let stream = self
             .client
             .pull_blob_stream(&reference, &descriptor)
-            .await?;
+            .await
+            .map_err(oci_registry_error)?;
         Ok(stream.map_err(Into::into).boxed())
     }
+}
+
+fn oci_registry_error(err: OciDistributionError) -> Error {
+    Error::RegistryError(err.into())
 }
