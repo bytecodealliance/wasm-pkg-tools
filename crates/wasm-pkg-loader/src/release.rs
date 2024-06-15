@@ -2,9 +2,9 @@ use std::path::Path;
 
 use bytes::Bytes;
 use futures_util::{future::ready, stream::once, Stream, StreamExt, TryStream, TryStreamExt};
-use semver::Version;
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
+use wasm_pkg_common::package::Version;
 
 use crate::Error;
 

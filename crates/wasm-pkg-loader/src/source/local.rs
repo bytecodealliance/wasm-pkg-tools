@@ -1,17 +1,19 @@
 use std::path::PathBuf;
 
+use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
-use semver::Version;
+use serde::Deserialize;
 use tokio_util::io::ReaderStream;
+use wasm_pkg_common::{config::RegistryConfig, package::Version};
 
 use crate::{
     source::{PackageSource, VersionInfo},
     ContentDigest, Error, PackageRef, Release,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct LocalConfig {
     pub root: PathBuf,
 }
@@ -24,8 +26,13 @@ pub struct LocalSource {
 }
 
 impl LocalSource {
-    pub fn new(config: LocalConfig) -> Self {
-        Self { root: config.root }
+    pub fn new(registry_config: RegistryConfig) -> Result<Self, Error> {
+        let config = registry_config
+            .backend_config::<LocalConfig>("local")?
+            .ok_or_else(|| {
+                Error::InvalidConfig(anyhow!("'local' backend require configuration"))
+            })?;
+        Ok(Self { root: config.root })
     }
 
     fn package_dir(&self, package: &PackageRef) -> PathBuf {

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use crate::{label::Label, package::PackageRef, Registry};
+use crate::{label::Label, package::PackageRef, registry::Registry};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -37,6 +37,7 @@ impl From<TomlConfig> for super::Config {
             default_registry,
             namespace_registries,
             package_registry_overrides,
+            fallback_namespace_registries: Default::default(),
             registry_configs,
         }
     }

@@ -3821,6 +3821,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasm-pkg-common"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "dirs",
+ "http",
+ "reqwest",
+ "semver",
+ "serde 1.0.202",
+ "serde_json",
+ "thiserror",
+ "toml 0.8.13",
+ "tracing",
+]
+
+[[package]]
 name = "wasm-pkg-loader"
 version = "0.3.0"
 dependencies = [
@@ -3833,9 +3849,7 @@ dependencies = [
  "futures-util",
  "oci-distribution",
  "oci-wasm",
- "reqwest",
  "secrecy",
- "semver",
  "serde 1.0.202",
  "serde_json",
  "sha2",
@@ -3848,6 +3862,7 @@ dependencies = [
  "url",
  "warg-client",
  "warg-protocol",
+ "wasm-pkg-common",
 ]
 
 [[package]]

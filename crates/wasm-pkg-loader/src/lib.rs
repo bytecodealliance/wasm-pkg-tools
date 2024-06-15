@@ -1,56 +1,48 @@
-mod config;
-mod label;
-mod meta;
-mod package;
 mod release;
 mod source;
 
 use std::collections::HashMap;
 
+use anyhow::anyhow;
 use bytes::Bytes;
 use futures_util::stream::BoxStream;
-use oci_distribution::errors::OciDistributionError;
-pub use semver::Version;
-use source::{
-    local::LocalSource,
-    oci::{OciConfig, OciSource},
-    warg::{WargConfig, WargSource},
-    PackageSource, VersionInfo,
+
+use wasm_pkg_common::{
+    metadata::RegistryMetadata,
+    package::{PackageRef, Version},
+    registry::Registry,
+    Error,
+};
+
+use crate::source::{
+    local::LocalSource, oci::OciSource, warg::WargSource, PackageSource, VersionInfo,
 };
 
 /// Re-exported to ease configuration.
 pub use oci_distribution::client as oci_client;
+pub use wasm_pkg_common::config::Config;
 
-pub use crate::{
-    config::ClientConfig,
-    package::PackageRef,
-    release::{ContentDigest, Release},
-};
-use crate::{
-    config::RegistryConfig,
-    label::{InvalidLabel, Label},
-    meta::RegistryMeta,
-};
+pub use crate::release::{ContentDigest, Release};
 
 /// A read-only registry client.
 pub struct Client {
-    config: ClientConfig,
-    sources: HashMap<String, Box<dyn PackageSource>>,
+    config: Config,
+    sources: HashMap<Registry, Box<dyn PackageSource>>,
 }
 
 impl Client {
     /// Returns a new client with the given [`ClientConfig`].
-    pub fn new(config: ClientConfig) -> Self {
+    pub fn new(config: Config) -> Self {
         Self {
             config,
             sources: Default::default(),
         }
     }
 
-    /// Returns a new client configured from the default config file path.
-    /// Returns Ok(None) if the default config file does not exist.
-    pub fn from_default_config_file() -> Result<Option<Self>, Error> {
-        Ok(ClientConfig::from_default_file()?.map(Self::new))
+    /// Returns a new client configured from default global config.
+    pub fn with_global_defaults() -> Result<Self, Error> {
+        let config = Config::global_defaults()?;
+        Ok(Self::new(config))
     }
 
     /// Returns a list of all package [`Version`]s available for the given package.
@@ -87,91 +79,60 @@ impl Client {
         &mut self,
         package: &PackageRef,
     ) -> Result<&mut dyn PackageSource, Error> {
-        let registry = self.config.resolve_package_registry(package)?.to_owned();
+        let registry = self
+            .config
+            .resolve_registry(package)
+            .ok_or_else(|| Error::NoRegistryForNamespace(package.namespace().clone()))?
+            .to_owned();
         if !self.sources.contains_key(&registry) {
-            let registry_config = self.config.registry_configs.get(&registry).cloned();
+            let registry_config = self
+                .config
+                .registry_config(&registry)
+                .cloned()
+                .unwrap_or_default();
 
-            tracing::debug!(?registry_config, "Resolved registry config");
+            // Skip fetching metadata for "local" source
+            let should_fetch_meta = registry_config.backend_type() != Some("local");
+            let registry_meta = if should_fetch_meta {
+                RegistryMetadata::fetch_or_default(&registry).await
+            } else {
+                RegistryMetadata::default()
+            };
 
-            let registry_meta = RegistryMeta::fetch_or_default(&registry).await;
-
-            let registry_config = registry_config.unwrap_or_else(|| {
-                if registry_meta.warg_url.is_some() {
-                    RegistryConfig::Warg(Default::default())
-                } else {
-                    RegistryConfig::Oci(Default::default())
+            // Resolve backend type
+            let backend_type = match registry_config.backend_type() {
+                // If the local config specifies a backend type, use it
+                Some(backend_type) => Some(backend_type),
+                None => {
+                    // If the registry metadata indicates a preferred protocol, use it
+                    let preferred_protocol = registry_meta.preferred_protocol();
+                    // ...except registry metadata cannot force a local backend
+                    if preferred_protocol == Some("local") {
+                        return Err(Error::InvalidRegistryMetadata(anyhow!(
+                            "registry metadata with 'local' protocol not allowed"
+                        )));
+                    }
+                    preferred_protocol
                 }
-            });
+            }
+            // Otherwise use the default backend
+            .unwrap_or("oci");
+            tracing::debug!(?backend_type, "Resolved backend type");
 
-            let source: Box<dyn PackageSource> = match registry_config {
-                config::RegistryConfig::Local(config) => Box::new(LocalSource::new(config)),
-                config::RegistryConfig::Oci(config) => {
-                    Box::new(self.build_oci_client(&registry, registry_meta, config)?)
+            let source: Box<dyn PackageSource> = match backend_type {
+                "local" => Box::new(LocalSource::new(registry_config)?),
+                "oci" => Box::new(OciSource::new(&registry, &registry_config, &registry_meta)?),
+                "warg" => {
+                    Box::new(WargSource::new(&registry, &registry_config, &registry_meta).await?)
                 }
-                config::RegistryConfig::Warg(config) => Box::new(
-                    self.build_warg_client(&registry, registry_meta, config)
-                        .await?,
-                ),
+                other => {
+                    return Err(Error::InvalidConfig(anyhow!(
+                        "unknown backend type {other:?}"
+                    )));
+                }
             };
             self.sources.insert(registry.clone(), source);
         }
         Ok(self.sources.get_mut(&registry).unwrap().as_mut())
     }
-
-    fn build_oci_client(
-        &mut self,
-        registry: &str,
-        registry_meta: RegistryMeta,
-        config: OciConfig,
-    ) -> Result<OciSource, Error> {
-        tracing::debug!(?registry, "Building new OCI client");
-        OciSource::new(registry.to_string(), config, registry_meta)
-    }
-
-    async fn build_warg_client(
-        &mut self,
-        registry: &str,
-        registry_meta: RegistryMeta,
-        config: WargConfig,
-    ) -> Result<WargSource, Error> {
-        tracing::debug!(?registry, "Building new Warg client");
-        WargSource::new(registry.to_string(), config, registry_meta).await
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum Error {
-    #[error("failed to get registry credentials: {0:#}")]
-    CredentialError(anyhow::Error),
-    #[error("invalid config: {0:#}")]
-    InvalidConfig(anyhow::Error),
-    #[error("invalid content: {0}")]
-    InvalidContent(String),
-    #[error("invalid content digest: {0}")]
-    InvalidContentDigest(String),
-    #[error("invalid label: {0}")]
-    InvalidLabel(#[from] InvalidLabel),
-    #[error("invalid package ref: {0}")]
-    InvalidPackageRef(String),
-    #[error("invalid package manifest: {0}")]
-    InvalidPackageManifest(String),
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
-    #[error("OCI error: {0}")]
-    OciError(#[from] OciDistributionError),
-    #[error("no registry configured for namespace {0:?}")]
-    NoRegistryForNamespace(Label),
-    #[error("registry metadata error: {0:#}")]
-    RegistryMeta(#[source] anyhow::Error),
-    #[error("invalid version: {0}")]
-    VersionError(#[from] semver::Error),
-    #[error("version not found: {0}")]
-    VersionNotFound(Version),
-    #[error("version yanked: {0}")]
-    VersionYanked(Version),
-    #[error("Warg error: {0}")]
-    WargError(#[from] warg_client::ClientError),
-    #[error("Warg error: {0}")]
-    WargAnyhowError(#[from] anyhow::Error),
 }

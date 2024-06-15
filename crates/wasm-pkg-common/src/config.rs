@@ -6,11 +6,15 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{label::Label, package::PackageRef, Error, Registry};
+use crate::{label::Label, package::PackageRef, registry::Registry, Error};
 
 mod toml;
 
-pub const DEFAULT_REGISTRY: &str = "bytecodealliance.org";
+const DEFAULT_FALLBACK_NAMESPACE_REGISTRIES: &[(&str, &str)] = &[
+    // TODO: Switch to wasi.dev once that is ready
+    ("wasi", "bytecodealliance.org"),
+    ("ba", "bytecodealliance.org"),
+];
 
 /// Wasm Package registry configuration.
 ///
@@ -23,15 +27,22 @@ pub struct Config {
     default_registry: Option<Registry>,
     namespace_registries: HashMap<Label, Registry>,
     package_registry_overrides: HashMap<PackageRef, Registry>,
+    // Note: these are only used for hard-coded defaults currently
+    fallback_namespace_registries: HashMap<Label, Registry>,
     registry_configs: HashMap<Registry, RegistryConfig>,
 }
 
 impl Default for Config {
     fn default() -> Self {
+        let fallback_namespace_registries = DEFAULT_FALLBACK_NAMESPACE_REGISTRIES
+            .iter()
+            .map(|(k, v)| (k.parse().unwrap(), v.parse().unwrap()))
+            .collect();
         Self {
-            default_registry: Some(DEFAULT_REGISTRY.parse().unwrap()),
+            default_registry: Default::default(),
             namespace_registries: Default::default(),
             package_registry_overrides: Default::default(),
+            fallback_namespace_registries,
             registry_configs: Default::default(),
         }
     }
@@ -42,11 +53,12 @@ impl Config {
     ///
     /// Note that this may differ from the `Default` implementation, which
     /// includes hard-coded global defaults.
-    pub fn new() -> Self {
+    pub fn empty() -> Self {
         Self {
             default_registry: Default::default(),
             namespace_registries: Default::default(),
             package_registry_overrides: Default::default(),
+            fallback_namespace_registries: Default::default(),
             registry_configs: Default::default(),
         }
     }
@@ -68,7 +80,7 @@ impl Config {
         Ok(config)
     }
 
-    /// Reads config from
+    /// Reads config from the default global config file location
     pub fn read_global_config() -> Result<Option<Self>, Error> {
         let Some(config_dir) = dirs::config_dir() else {
             return Ok(None);
@@ -100,14 +112,18 @@ impl Config {
         let Self {
             default_registry,
             namespace_registries,
-            package_registry_overrides: package_registries,
+            package_registry_overrides,
+            fallback_namespace_registries,
             registry_configs,
         } = other;
         if default_registry.is_some() {
             self.default_registry = default_registry;
         }
         self.namespace_registries.extend(namespace_registries);
-        self.package_registry_overrides.extend(package_registries);
+        self.package_registry_overrides
+            .extend(package_registry_overrides);
+        self.fallback_namespace_registries
+            .extend(fallback_namespace_registries);
         for (registry, config) in registry_configs {
             match self.registry_configs.entry(registry) {
                 Entry::Occupied(mut occupied) => occupied.get_mut().merge(config),
@@ -124,12 +140,15 @@ impl Config {
     /// - A package registry exactly matching the package
     /// - A namespace registry matching the package's namespace
     /// - The default registry
+    /// - Hard-coded fallbacks for certain well-known namespaces
     pub fn resolve_registry(&self, package: &PackageRef) -> Option<&Registry> {
         if let Some(reg) = self.package_registry_overrides.get(package) {
             Some(reg)
         } else if let Some(reg) = self.namespace_registries.get(package.namespace()) {
             Some(reg)
         } else if let Some(reg) = self.default_registry.as_ref() {
+            Some(reg)
+        } else if let Some(reg) = self.fallback_namespace_registries.get(package.namespace()) {
             Some(reg)
         } else {
             None
@@ -142,6 +161,8 @@ impl Config {
     }
 
     /// Sets the default registry.
+    ///
+    /// To unset the default registry, pass `None`.
     pub fn set_default_registry(&mut self, registry: Option<Registry>) {
         self.default_registry = registry;
     }
@@ -189,7 +210,7 @@ impl Config {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct RegistryConfig {
     backend_type: Option<String>,
     backend_configs: HashMap<String, ::toml::Table>,
@@ -221,6 +242,8 @@ impl RegistryConfig {
     }
 
     /// Sets the backend type override.
+    ///
+    /// To unset the backend type override, pass `None`.
     pub fn set_backend_type(&mut self, backend_type: Option<String>) {
         self.backend_type = backend_type;
     }
@@ -248,11 +271,11 @@ impl RegistryConfig {
     /// Set the backend config of the given type by serializing the given config.
     pub fn set_backend_config<T: Serialize>(
         &mut self,
-        backend_type: String,
+        backend_type: impl Into<String>,
         backend_config: T,
     ) -> Result<(), Error> {
         let table = ::toml::Table::try_from(backend_config).map_err(Error::invalid_config)?;
-        self.backend_configs.insert(backend_type, table);
+        self.backend_configs.insert(backend_type.into(), table);
         Ok(())
     }
 }
