@@ -1,5 +1,5 @@
 mod release;
-mod source;
+pub mod source;
 
 use std::collections::HashMap;
 
