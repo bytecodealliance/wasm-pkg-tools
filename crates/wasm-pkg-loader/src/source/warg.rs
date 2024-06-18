@@ -134,5 +134,10 @@ fn package_ref_to_name(package_ref: &PackageRef) -> Result<PackageName, Error> {
 }
 
 fn warg_registry_error(err: ClientError) -> Error {
-    Error::RegistryError(err.into())
+    match err {
+        ClientError::PackageDoesNotExist { .. }
+        | ClientError::PackageDoesNotExistWithHintHeader { .. } => Error::PackageNotFound,
+        ClientError::PackageVersionDoesNotExist { version, .. } => Error::VersionNotFound(version),
+        _ => Error::RegistryError(err.into()),
+    }
 }
