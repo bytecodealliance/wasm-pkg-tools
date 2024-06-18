@@ -37,6 +37,8 @@ pub enum Error {
     IoError(#[from] std::io::Error),
     #[error("no registry configured for namespace {0:?}")]
     NoRegistryForNamespace(Label),
+    #[error("Package not found")]
+    PackageNotFound,
     #[error("registry error: {0}")]
     RegistryError(#[source] anyhow::Error),
     #[error("registry metadata error: {0:#}")]

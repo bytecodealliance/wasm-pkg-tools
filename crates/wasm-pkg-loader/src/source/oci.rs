@@ -228,5 +228,9 @@ impl PackageSource for OciSource {
 }
 
 fn oci_registry_error(err: OciDistributionError) -> Error {
-    Error::RegistryError(err.into())
+    match err {
+        // Technically this could be a missing version too, but there really isn't a way to find out
+        OciDistributionError::ImageManifestNotFoundError(_) => Error::PackageNotFound,
+        _ => Error::RegistryError(err.into()),
+    }
 }
