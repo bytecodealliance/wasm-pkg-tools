@@ -1971,6 +1971,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "oci-wasm"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a91502e5352f927156f2b6a28d2558cc59558b1f441b681df3f706ced6937e07"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "oci-distribution",
+ "serde 1.0.202",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "wit-component",
+ "wit-parser",
+]
+
+[[package]]
 name = "olpc-cjson"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3822,7 +3839,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-pkg-common"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -3838,7 +3855,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-pkg-loader"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3848,7 +3865,7 @@ dependencies = [
  "docker_credential",
  "futures-util",
  "oci-distribution",
- "oci-wasm",
+ "oci-wasm 0.0.4",
  "secrecy",
  "serde 1.0.202",
  "serde_json",
@@ -3874,7 +3891,7 @@ dependencies = [
  "futures-util",
  "libtest-mimic",
  "oci-distribution",
- "oci-wasm",
+ "oci-wasm 0.0.3",
  "tempfile",
  "tokio",
  "tokio-test",
