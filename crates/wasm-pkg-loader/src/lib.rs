@@ -7,12 +7,7 @@ use anyhow::anyhow;
 use bytes::Bytes;
 use futures_util::stream::BoxStream;
 
-use wasm_pkg_common::{
-    metadata::RegistryMetadata,
-    package::{PackageRef, Version},
-    registry::Registry,
-    Error,
-};
+use wasm_pkg_common::metadata::RegistryMetadata;
 
 use crate::source::{
     local::LocalSource, oci::OciSource, warg::WargSource, PackageSource, VersionInfo,
@@ -20,7 +15,13 @@ use crate::source::{
 
 /// Re-exported to ease configuration.
 pub use oci_distribution::client as oci_client;
-pub use wasm_pkg_common::config::Config;
+
+pub use wasm_pkg_common::{
+    config::Config,
+    package::{PackageRef, Version},
+    registry::Registry,
+    Error,
+};
 
 pub use crate::release::{ContentDigest, Release};
 
