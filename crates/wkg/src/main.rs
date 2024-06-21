@@ -46,8 +46,8 @@ struct GetCommand {
     #[arg(long)]
     overwrite: bool,
 
-    /// The package to get, specified as <namespace>:<name> plus optional
-    /// @<version>, e.g. "wasi:cli" or "wasi:http@0.2.0".
+    /// The package to get, specified as `<namespace>:<name>` plus optional
+    /// `@<version>`, e.g. `wasi:cli" or `wasi:http@0.2.0`.
     package_spec: PackageSpec,
 
     #[command(flatten)]

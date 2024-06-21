@@ -1,9 +1,6 @@
-mod config;
-
 use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::Bytes;
-use config::WargConfig;
 use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
 use serde::Deserialize;
 use warg_client::{storage::PackageInfo, ClientError, FileSystemClient};
@@ -21,14 +18,16 @@ use crate::{
     Release,
 };
 
+use super::config::WargRegistryConfig;
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct WargRegistryMetadata {
-    url: Option<String>,
+pub(crate) struct WargRegistryMetadata {
+    pub(crate) url: Option<String>,
 }
 
 pub struct WargSource {
-    client: FileSystemClient,
+    pub(crate) client: FileSystemClient,
 }
 
 impl WargSource {
@@ -41,7 +40,7 @@ impl WargSource {
             .protocol_config::<WargRegistryMetadata>("warg")?
             .unwrap_or_default();
         let url = warg_meta.url.unwrap_or_else(|| registry.to_string());
-        let WargConfig {
+        let WargRegistryConfig {
             client_config,
             auth_token,
         } = registry_config.try_into()?;
@@ -60,7 +59,10 @@ impl WargSource {
         Ok(Self { client })
     }
 
-    async fn fetch_package_info(&mut self, package: &PackageRef) -> Result<PackageInfo, Error> {
+    pub(crate) async fn fetch_package_info(
+        &mut self,
+        package: &PackageRef,
+    ) -> Result<PackageInfo, Error> {
         let package_name = package_ref_to_name(package)?;
         self.client
             .package(&package_name)
@@ -128,12 +130,12 @@ impl PackageSource for WargSource {
     }
 }
 
-fn package_ref_to_name(package_ref: &PackageRef) -> Result<PackageName, Error> {
+pub(crate) fn package_ref_to_name(package_ref: &PackageRef) -> Result<PackageName, Error> {
     PackageName::new(package_ref.to_string())
         .map_err(|err| Error::InvalidPackageRef(err.to_string()))
 }
 
-fn warg_registry_error(err: ClientError) -> Error {
+pub(crate) fn warg_registry_error(err: ClientError) -> Error {
     match err {
         ClientError::PackageDoesNotExist { .. }
         | ClientError::PackageDoesNotExistWithHintHeader { .. } => Error::PackageNotFound,

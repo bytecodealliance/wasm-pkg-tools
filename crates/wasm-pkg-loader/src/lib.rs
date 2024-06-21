@@ -1,4 +1,35 @@
-pub mod source;
+//! Wasm Package Loader
+//!
+//! [`Client`] implements a unified interface for loading package content from
+//! multiple kinds of package registries.
+//!
+//! # Example
+//!
+//! ```no_run
+//! # async fn example() -> anyhow::Result<()> {
+//! // Initialize client from global configuration.
+//! let mut client = wasm_pkg_loader::Client::with_global_defaults()?;
+//!
+//! // Get a specific package release version.
+//! let pkg = "example:pkg".parse()?;
+//! let version = "1.0.0".parse()?;
+//! let release = client.get_release(&pkg, &version).await?;
+//!
+//! // Stream release content to a file.
+//! let mut stream = client.stream_content(&pkg, &release).await?;
+//! let mut file = tokio::fs::File::create("output.wasm").await?;
+//! use futures_util::TryStreamExt;
+//! use tokio::io::AsyncWriteExt;
+//! while let Some(chunk) = stream.try_next().await? {
+//!     file.write_all(&chunk).await?;
+//! }
+//! # Ok(()) }
+//! ```
+
+mod local;
+pub mod oci;
+mod source;
+pub mod warg;
 
 use std::collections::HashMap;
 
@@ -8,12 +39,10 @@ use futures_util::stream::BoxStream;
 
 use wasm_pkg_common::metadata::RegistryMetadata;
 
-use crate::source::{
-    local::LocalSource, oci::OciSource, warg::WargSource, PackageSource, VersionInfo,
+use crate::{
+    local::LocalSource, oci::source::OciSource, source::PackageSource, source::VersionInfo,
+    warg::source::WargSource,
 };
-
-/// Re-exported to ease configuration.
-pub use oci_distribution::client as oci_client;
 
 pub use wasm_pkg_common::{
     config::Config,
@@ -30,7 +59,7 @@ pub struct Client {
 }
 
 impl Client {
-    /// Returns a new client with the given [`ClientConfig`].
+    /// Returns a new client with the given [`Config`].
     pub fn new(config: Config) -> Self {
         Self {
             config,
@@ -136,6 +165,9 @@ impl Client {
     }
 }
 
+/// Package release details.
+///
+/// Returned by [`Client::get_release`] and passed to [`Client::stream_content`].
 #[derive(Clone, Debug)]
 pub struct Release {
     pub version: Version,

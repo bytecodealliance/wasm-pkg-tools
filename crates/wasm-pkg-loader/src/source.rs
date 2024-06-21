@@ -10,10 +10,6 @@ use wasm_pkg_common::{
 
 use crate::Release;
 
-pub mod local;
-pub mod oci;
-pub mod warg;
-
 #[derive(Clone, Debug, Eq)]
 pub struct VersionInfo {
     pub version: Version,

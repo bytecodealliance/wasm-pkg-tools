@@ -6,7 +6,9 @@ use crate::{label::Label, Error};
 
 pub use semver::Version;
 
-/// A package reference, consisting of kebab-case namespace and name, e.g. `wasm-pkg:loader`.
+/// A package reference, consisting of kebab-case namespace and name.
+///
+/// Ex: `wasm-pkg:loader`
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
 pub struct PackageRef {

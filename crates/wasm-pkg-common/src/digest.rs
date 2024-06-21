@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 
 use crate::Error;
 
+/// A cryptographic digest (hash) of some content.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ContentDigest {
     Sha256 { hex: String },

@@ -1,8 +1,5 @@
-mod config;
-
 use async_trait::async_trait;
 use bytes::Bytes;
-use config::{BasicCredentials, OciConfig};
 use docker_credential::{CredentialRetrievalError, DockerCredential};
 use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
 use oci_distribution::{
@@ -10,11 +7,9 @@ use oci_distribution::{
 };
 use secrecy::ExposeSecret;
 use serde::Deserialize;
+use warg_protocol::Version;
 use wasm_pkg_common::{
-    config::RegistryConfig,
-    metadata::RegistryMetadata,
-    package::{PackageRef, Version},
-    registry::Registry,
+    config::RegistryConfig, metadata::RegistryMetadata, package::PackageRef, registry::Registry,
     Error,
 };
 
@@ -23,19 +18,21 @@ use crate::{
     Release,
 };
 
+use super::config::{BasicCredentials, OciRegistryConfig};
+
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct OciRegistryMetadata {
-    registry: Option<String>,
-    namespace_prefix: Option<String>,
+pub(crate) struct OciRegistryMetadata {
+    pub(crate) registry: Option<String>,
+    pub(crate) namespace_prefix: Option<String>,
 }
 
-pub struct OciSource {
-    client: oci_wasm::WasmClient,
-    oci_registry: String,
-    namespace_prefix: Option<String>,
-    credentials: Option<BasicCredentials>,
-    registry_auth: Option<RegistryAuth>,
+pub(crate) struct OciSource {
+    pub(crate) client: oci_wasm::WasmClient,
+    pub(crate) oci_registry: String,
+    pub(crate) namespace_prefix: Option<String>,
+    pub(crate) credentials: Option<BasicCredentials>,
+    pub(crate) registry_auth: Option<RegistryAuth>,
 }
 
 impl OciSource {
@@ -44,7 +41,7 @@ impl OciSource {
         registry_config: &RegistryConfig,
         registry_meta: &RegistryMetadata,
     ) -> Result<Self, Error> {
-        let OciConfig {
+        let OciRegistryConfig {
             client_config,
             credentials,
         } = registry_config.try_into()?;
@@ -65,7 +62,7 @@ impl OciSource {
         })
     }
 
-    async fn auth(&mut self, reference: &Reference) -> Result<RegistryAuth, Error> {
+    pub(crate) async fn auth(&mut self, reference: &Reference) -> Result<RegistryAuth, Error> {
         if self.registry_auth.is_none() {
             let mut auth = self.get_credentials()?;
             // Preflight auth to check for validity; this isn't wasted
@@ -94,7 +91,7 @@ impl OciSource {
         Ok(self.registry_auth.clone().unwrap())
     }
 
-    fn get_credentials(&self) -> Result<RegistryAuth, Error> {
+    pub(crate) fn get_credentials(&self) -> Result<RegistryAuth, Error> {
         if let Some(BasicCredentials { username, password }) = &self.credentials {
             return Ok(RegistryAuth::Basic(
                 username.clone(),
@@ -129,7 +126,11 @@ impl OciSource {
         Ok(RegistryAuth::Anonymous)
     }
 
-    fn make_reference(&self, package: &PackageRef, version: Option<&Version>) -> Reference {
+    pub(crate) fn make_reference(
+        &self,
+        package: &PackageRef,
+        version: Option<&Version>,
+    ) -> Reference {
         let repository = format!(
             "{}{}/{}",
             self.namespace_prefix.as_deref().unwrap_or_default(),
@@ -227,7 +228,7 @@ impl PackageSource for OciSource {
     }
 }
 
-fn oci_registry_error(err: OciDistributionError) -> Error {
+pub(crate) fn oci_registry_error(err: OciDistributionError) -> Error {
     match err {
         // Technically this could be a missing version too, but there really isn't a way to find out
         OciDistributionError::ImageManifestNotFoundError(_) => Error::PackageNotFound,

@@ -2,11 +2,11 @@ use http::uri::InvalidUri;
 use label::Label;
 
 pub mod config;
+pub mod digest;
 pub mod label;
 pub mod metadata;
 pub mod package;
 pub mod registry;
-pub mod digest;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
