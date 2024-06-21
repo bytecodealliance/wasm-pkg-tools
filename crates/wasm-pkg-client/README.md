@@ -2,32 +2,15 @@
 
 A minimal Package Registry interface for multiple registry backends.
 
-## CLI
-
-`wasm-pkg-client` is intended to be used primarily as a library, but it also
-provides a simple CLI interface:
-
-```console
-$ wasm-pkg-client wasi:preview1-command-adapter
-Package: wasi:preview1-command-adapter
-Versions:
-  0.2.0
-$ wasm-pkg-client wasi:preview-command-adapter fetch 0.2.0
-Fetching release details for wasi:preview1-command-adapter@0.2.0...
-Downloading content to "wasi-preview1-command-adapter-0.2.0.wasm"...
-```
-
 ## Running Tests
 
-The e2e tests require:
-- The [`oras`](https://github.com/oras-project/oras) CLI tool to be available in
-  your local `PATH`
-- An [OCI Distribution Spec](https://github.com/opencontainers/distribution-spec)-compliant
-  registry to be running at `localhost:5000`. An ephemeral registry can be run with:
+The e2e tests require an [OCI Distribution
+Spec](https://github.com/opencontainers/distribution-spec)-compliant registry to
+be running at `localhost:5000`. An ephemeral registry can be run with:
 
-  ```console
-  $ docker run --rm -p 5000:5000 distribution/distribution:edge
-  ```
+```console
+$ docker run --rm -p 5000:5000 distribution/distribution:edge
+```
 
 The e2e tests themselves are in the separate [`tests/e2e`](./tests/e2e/) crate:
 
