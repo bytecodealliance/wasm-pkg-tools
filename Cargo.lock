@@ -3768,13 +3768,17 @@ name = "wasm-pkg-common"
 version = "0.4.1"
 dependencies = [
  "anyhow",
+ "bytes",
  "dirs",
+ "futures-util",
  "http",
  "reqwest",
  "semver",
  "serde 1.0.201",
  "serde_json",
+ "sha2",
  "thiserror",
+ "tokio",
  "toml 0.8.13",
  "tracing",
 ]

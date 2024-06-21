@@ -1,4 +1,3 @@
-mod release;
 pub mod source;
 
 use std::collections::HashMap;
@@ -18,12 +17,11 @@ pub use oci_distribution::client as oci_client;
 
 pub use wasm_pkg_common::{
     config::Config,
+    digest::ContentDigest,
     package::{PackageRef, Version},
     registry::Registry,
     Error,
 };
-
-pub use crate::release::{ContentDigest, Release};
 
 /// A read-only registry client.
 pub struct Client {
@@ -136,4 +134,10 @@ impl Client {
         }
         Ok(self.sources.get_mut(&registry).unwrap().as_mut())
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct Release {
+    pub version: Version,
+    pub content_digest: ContentDigest,
 }
