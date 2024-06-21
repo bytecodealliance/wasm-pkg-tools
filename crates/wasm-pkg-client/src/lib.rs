@@ -1,4 +1,4 @@
-//! Wasm Package Loader
+//! Wasm Package Client
 //!
 //! [`Client`] implements a unified interface for loading package content from
 //! multiple kinds of package registries.
@@ -8,7 +8,7 @@
 //! ```no_run
 //! # async fn example() -> anyhow::Result<()> {
 //! // Initialize client from global configuration.
-//! let mut client = wasm_pkg_loader::Client::with_global_defaults()?;
+//! let mut client = wasm_pkg_client::Client::with_global_defaults()?;
 //!
 //! // Get a specific package release version.
 //! let pkg = "example:pkg".parse()?;
@@ -26,9 +26,9 @@
 //! # Ok(()) }
 //! ```
 
+mod loader;
 mod local;
 pub mod oci;
-mod source;
 pub mod warg;
 
 use std::collections::HashMap;
@@ -40,8 +40,8 @@ use futures_util::stream::BoxStream;
 use wasm_pkg_common::metadata::RegistryMetadata;
 
 use crate::{
-    local::LocalSource, oci::source::OciSource, source::PackageSource, source::VersionInfo,
-    warg::source::WargSource,
+    loader::PackageLoader, loader::VersionInfo, local::LocalBackend, oci::OciBackend,
+    warg::WargBackend,
 };
 
 pub use wasm_pkg_common::{
@@ -55,7 +55,7 @@ pub use wasm_pkg_common::{
 /// A read-only registry client.
 pub struct Client {
     config: Config,
-    sources: HashMap<Registry, Box<dyn PackageSource>>,
+    sources: HashMap<Registry, Box<dyn PackageLoader>>,
 }
 
 impl Client {
@@ -106,7 +106,7 @@ impl Client {
     async fn resolve_source(
         &mut self,
         package: &PackageRef,
-    ) -> Result<&mut dyn PackageSource, Error> {
+    ) -> Result<&mut dyn PackageLoader, Error> {
         let registry = self
             .config
             .resolve_registry(package)
@@ -147,11 +147,15 @@ impl Client {
             .unwrap_or("oci");
             tracing::debug!(?backend_type, "Resolved backend type");
 
-            let source: Box<dyn PackageSource> = match backend_type {
-                "local" => Box::new(LocalSource::new(registry_config)?),
-                "oci" => Box::new(OciSource::new(&registry, &registry_config, &registry_meta)?),
+            let source: Box<dyn PackageLoader> = match backend_type {
+                "local" => Box::new(LocalBackend::new(registry_config)?),
+                "oci" => Box::new(OciBackend::new(
+                    &registry,
+                    &registry_config,
+                    &registry_meta,
+                )?),
                 "warg" => {
-                    Box::new(WargSource::new(&registry, &registry_config, &registry_meta).await?)
+                    Box::new(WargBackend::new(&registry, &registry_config, &registry_meta).await?)
                 }
                 other => {
                     return Err(Error::InvalidConfig(anyhow!(

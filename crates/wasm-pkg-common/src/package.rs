@@ -8,7 +8,7 @@ pub use semver::Version;
 
 /// A package reference, consisting of kebab-case namespace and name.
 ///
-/// Ex: `wasm-pkg:loader`
+/// Ex: `wasm-pkg:client`
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
 pub struct PackageRef {

@@ -1,41 +1,45 @@
-use async_trait::async_trait;
-use bytes::Bytes;
+//! OCI package client.
+//!
+//! This follows the CNCF TAG Runtime guidance for [Wasm OCI Artifacts][1].
+//!
+//! [1]: https://tag-runtime.cncf.io/wgs/wasm/deliverables/wasm-oci-artifact/
+
+mod config;
+mod loader;
+
 use docker_credential::{CredentialRetrievalError, DockerCredential};
-use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
-use oci_distribution::{
-    errors::OciDistributionError, manifest::OciDescriptor, secrets::RegistryAuth, Reference,
-};
+use oci_distribution::{errors::OciDistributionError, secrets::RegistryAuth, Reference};
 use secrecy::ExposeSecret;
 use serde::Deserialize;
-use warg_protocol::Version;
 use wasm_pkg_common::{
-    config::RegistryConfig, metadata::RegistryMetadata, package::PackageRef, registry::Registry,
+    config::RegistryConfig,
+    metadata::RegistryMetadata,
+    package::{PackageRef, Version},
+    registry::Registry,
     Error,
 };
 
-use crate::{
-    source::{PackageSource, VersionInfo},
-    Release,
-};
+/// Re-exported for convenience.
+pub use oci_distribution::client;
 
-use super::config::{BasicCredentials, OciRegistryConfig};
+pub use config::{BasicCredentials, OciRegistryConfig};
 
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct OciRegistryMetadata {
-    pub(crate) registry: Option<String>,
-    pub(crate) namespace_prefix: Option<String>,
+struct OciRegistryMetadata {
+    registry: Option<String>,
+    namespace_prefix: Option<String>,
 }
 
-pub(crate) struct OciSource {
-    pub(crate) client: oci_wasm::WasmClient,
-    pub(crate) oci_registry: String,
-    pub(crate) namespace_prefix: Option<String>,
-    pub(crate) credentials: Option<BasicCredentials>,
-    pub(crate) registry_auth: Option<RegistryAuth>,
+pub(crate) struct OciBackend {
+    client: oci_wasm::WasmClient,
+    oci_registry: String,
+    namespace_prefix: Option<String>,
+    credentials: Option<BasicCredentials>,
+    registry_auth: Option<RegistryAuth>,
 }
 
-impl OciSource {
+impl OciBackend {
     pub fn new(
         registry: &Registry,
         registry_config: &RegistryConfig,
@@ -141,90 +145,6 @@ impl OciSource {
             .map(|ver| ver.to_string())
             .unwrap_or_else(|| "latest".into());
         Reference::with_tag(self.oci_registry.clone(), repository, tag)
-    }
-}
-
-#[async_trait]
-impl PackageSource for OciSource {
-    async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
-        let reference = self.make_reference(package, None);
-
-        tracing::debug!(?reference, "Listing tags for OCI reference");
-        let auth = self.auth(&reference).await?;
-        let resp = self
-            .client
-            .list_tags(&reference, &auth, None, None)
-            .await
-            .map_err(oci_registry_error)?;
-        tracing::trace!(response = ?resp, "List tags response");
-
-        // Return only tags that parse as valid semver versions.
-        let versions = resp
-            .tags
-            .iter()
-            .flat_map(|tag| match Version::parse(tag) {
-                Ok(version) => Some(VersionInfo {
-                    version,
-                    yanked: false,
-                }),
-                Err(err) => {
-                    tracing::warn!(?tag, error = ?err, "Ignoring invalid version tag");
-                    None
-                }
-            })
-            .collect();
-        Ok(versions)
-    }
-
-    async fn get_release(
-        &mut self,
-        package: &PackageRef,
-        version: &Version,
-    ) -> Result<Release, Error> {
-        let reference = self.make_reference(package, Some(version));
-
-        tracing::debug!(?reference, "Fetching image manifest for OCI reference");
-        let auth = self.auth(&reference).await?;
-        let (manifest, _config, _digest) = self
-            .client
-            .pull_manifest_and_config(&reference, &auth)
-            .await
-            .map_err(Error::RegistryError)?;
-        tracing::trace!(?manifest, "Got manifest");
-
-        let version = version.to_owned();
-        let content_digest = manifest
-            .layers
-            .into_iter()
-            .next()
-            .ok_or_else(|| {
-                Error::InvalidPackageManifest("Returned manifest had no layers".to_string())
-            })?
-            .digest
-            .parse()?;
-        Ok(Release {
-            version,
-            content_digest,
-        })
-    }
-
-    async fn stream_content_unvalidated(
-        &mut self,
-        package: &PackageRef,
-        release: &Release,
-    ) -> Result<BoxStream<Result<Bytes, Error>>, Error> {
-        let reference = self.make_reference(package, None);
-        let descriptor = OciDescriptor {
-            digest: release.content_digest.to_string(),
-            ..Default::default()
-        };
-        self.auth(&reference).await?;
-        let stream = self
-            .client
-            .pull_blob_stream(&reference, &descriptor)
-            .await
-            .map_err(oci_registry_error)?;
-        Ok(stream.map_err(Into::into).boxed())
     }
 }
 

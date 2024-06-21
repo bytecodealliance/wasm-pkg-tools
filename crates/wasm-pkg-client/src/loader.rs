@@ -41,7 +41,7 @@ impl std::fmt::Display for VersionInfo {
 }
 
 #[async_trait]
-pub trait PackageSource: Send {
+pub trait PackageLoader: Send {
     async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error>;
 
     async fn get_release(

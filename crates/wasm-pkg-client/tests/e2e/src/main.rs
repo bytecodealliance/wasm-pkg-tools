@@ -4,7 +4,7 @@ use anyhow::Context;
 use futures_util::TryStreamExt;
 use libtest_mimic::{Arguments, Failed, Trial};
 use oci_wasm::{WasmClient, WasmConfig};
-use wasm_pkg_loader::{oci_client, Client, Config};
+use wasm_pkg_client::{Client, Config};
 
 macro_rules! tests {
     [$($name:ident),+] => { vec![$(Trial::test(stringify!($name), || run_test($name))),+] };
@@ -69,7 +69,9 @@ async fn fetch_smoke_test() {
 
 fn get_client() -> WasmClient {
     let client = oci_distribution::Client::new(oci_distribution::client::ClientConfig {
-        protocol: oci_client::ClientProtocol::HttpsExcept(vec!["localhost:5001".to_string()]),
+        protocol: oci_distribution::client::ClientProtocol::HttpsExcept(vec![
+            "localhost:5001".to_string()
+        ]),
         ..Default::default()
     });
     WasmClient::new(client)

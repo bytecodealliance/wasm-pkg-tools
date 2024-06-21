@@ -1,18 +1,18 @@
-# Wasm Package Loader
+# Wasm Package Client
 
-A minimal Package Registry interface for read-only consumers.
+A minimal Package Registry interface for multiple registry backends.
 
 ## CLI
 
-`wasm-pkg-loader` is intended to be used primarily as a library, but it also
+`wasm-pkg-client` is intended to be used primarily as a library, but it also
 provides a simple CLI interface:
 
 ```console
-$ wasm-pkg-loader wasi:preview1-command-adapter
+$ wasm-pkg-client wasi:preview1-command-adapter
 Package: wasi:preview1-command-adapter
 Versions:
   0.2.0
-$ wasm-pkg-loader wasi:preview-command-adapter fetch 0.2.0
+$ wasm-pkg-client wasi:preview-command-adapter fetch 0.2.0
 Fetching release details for wasi:preview1-command-adapter@0.2.0...
 Downloading content to "wasi-preview1-command-adapter-0.2.0.wasm"...
 ```

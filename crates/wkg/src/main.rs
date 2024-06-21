@@ -5,8 +5,8 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
 use tokio::io::AsyncWriteExt;
 use tracing::level_filters::LevelFilter;
+use wasm_pkg_client::Client;
 use wasm_pkg_common::{config::Config, package::PackageSpec, registry::Registry};
-use wasm_pkg_loader::Client;
 use wit_component::DecodedWasm;
 
 #[derive(Parser, Debug)]
