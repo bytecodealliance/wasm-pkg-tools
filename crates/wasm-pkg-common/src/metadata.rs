@@ -40,12 +40,19 @@ impl RegistryMetadata {
     /// The preferred protocol is:
     /// - the `preferredProtocol` metadata field, if given
     /// - the protocol configuration key, if only one configuration is given
+    /// - the protocol backward-compatible aliases configuration, if only one configuration is given
     pub fn preferred_protocol(&self) -> Option<&str> {
         if let Some(protocol) = self.preferred_protocol.as_deref() {
             return Some(protocol);
         }
         if self.protocol_configs.len() == 1 {
             return self.protocol_configs.keys().next().map(|x| x.as_str());
+        } else if self.protocol_configs.is_empty() {
+            match (self.oci_registry.is_some(), self.warg_url.is_some()) {
+                (true, false) => return Some(OCI_PROTOCOL),
+                (false, true) => return Some(WARG_PROTOCOL),
+                _ => {}
+            }
         }
         None
     }
@@ -197,12 +204,40 @@ mod tests {
     }
 
     #[test]
-    fn preferred_protocol_implicit() {
+    fn preferred_protocol_implicit_oci() {
         let meta: RegistryMetadata = serde_json::from_value(json!({
             "oci": {"registry": "oci.example.com"},
         }))
         .unwrap();
         assert_eq!(meta.preferred_protocol(), Some("oci"));
+    }
+
+    #[test]
+    fn preferred_protocol_implicit_warg() {
+        let meta: RegistryMetadata = serde_json::from_value(json!({
+            "warg": {"url": "https://warg.example.com"},
+        }))
+        .unwrap();
+        assert_eq!(meta.preferred_protocol(), Some("warg"));
+    }
+
+    #[test]
+    fn backward_compat_preferred_protocol_implicit_oci() {
+        let meta: RegistryMetadata = serde_json::from_value(json!({
+            "ociRegistry": "oci.example.com",
+            "ociNamespacePrefix": "prefix/",
+        }))
+        .unwrap();
+        assert_eq!(meta.preferred_protocol(), Some("oci"));
+    }
+
+    #[test]
+    fn backward_compat_preferred_protocol_implicit_warg() {
+        let meta: RegistryMetadata = serde_json::from_value(json!({
+            "wargUrl": "https://warg.example.com",
+        }))
+        .unwrap();
+        assert_eq!(meta.preferred_protocol(), Some("warg"));
     }
 
     #[test]
