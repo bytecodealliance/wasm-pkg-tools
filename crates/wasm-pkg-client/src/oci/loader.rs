@@ -6,8 +6,8 @@ use warg_protocol::Version;
 use wasm_pkg_common::{package::PackageRef, Error};
 
 use crate::{
-    loader::{PackageLoader, VersionInfo},
-    Release,
+    loader::PackageLoader,
+    release::{Release, VersionInfo},
 };
 
 use super::{oci_registry_error, OciBackend};

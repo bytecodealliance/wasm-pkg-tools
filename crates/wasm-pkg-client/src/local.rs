@@ -1,3 +1,7 @@
+//! Local filesystem-based package backend.
+//!
+//! Each package release is a file: `<root>/<namespace>/<name>/<version>.wasm`
+
 use std::path::PathBuf;
 
 use anyhow::anyhow;
@@ -6,11 +10,16 @@ use bytes::Bytes;
 use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
 use serde::Deserialize;
 use tokio_util::io::ReaderStream;
-use wasm_pkg_common::{config::RegistryConfig, package::Version};
+use wasm_pkg_common::{
+    config::RegistryConfig,
+    digest::ContentDigest,
+    package::{PackageRef, Version},
+    Error,
+};
 
 use crate::{
-    loader::{PackageLoader, VersionInfo},
-    ContentDigest, Error, PackageRef, Release,
+    loader::PackageLoader,
+    release::{Release, VersionInfo},
 };
 
 #[derive(Clone, Debug, Deserialize)]
@@ -18,10 +27,7 @@ pub struct LocalConfig {
     pub root: PathBuf,
 }
 
-/// A simple local filesystem-based backend.
-///
-/// Each package release is a file: `<root>/<namespace>/<name>/<version>.wasm`
-pub struct LocalBackend {
+pub(crate) struct LocalBackend {
     root: PathBuf,
 }
 

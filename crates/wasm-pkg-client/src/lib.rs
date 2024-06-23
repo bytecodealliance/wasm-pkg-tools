@@ -27,8 +27,9 @@
 //! ```
 
 mod loader;
-mod local;
+pub mod local;
 pub mod oci;
+mod release;
 pub mod warg;
 
 use std::collections::HashMap;
@@ -39,10 +40,7 @@ use futures_util::stream::BoxStream;
 
 use wasm_pkg_common::metadata::RegistryMetadata;
 
-use crate::{
-    loader::PackageLoader, loader::VersionInfo, local::LocalBackend, oci::OciBackend,
-    warg::WargBackend,
-};
+use crate::{loader::PackageLoader, local::LocalBackend, oci::OciBackend, warg::WargBackend};
 
 pub use wasm_pkg_common::{
     config::Config,
@@ -51,6 +49,8 @@ pub use wasm_pkg_common::{
     registry::Registry,
     Error,
 };
+
+pub use release::{Release, VersionInfo};
 
 /// A read-only registry client.
 pub struct Client {
@@ -167,13 +167,4 @@ impl Client {
         }
         Ok(self.sources.get_mut(&registry).unwrap().as_mut())
     }
-}
-
-/// Package release details.
-///
-/// Returned by [`Client::get_release`] and passed to [`Client::stream_content`].
-#[derive(Clone, Debug)]
-pub struct Release {
-    pub version: Version,
-    pub content_digest: ContentDigest,
 }
