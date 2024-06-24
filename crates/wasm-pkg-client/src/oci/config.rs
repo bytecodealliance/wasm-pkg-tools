@@ -8,13 +8,16 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use wasm_pkg_common::{config::RegistryConfig, Error};
 
+/// Registry configuration for OCI backends.
+///
+/// See: [`RegistryConfig::backend_config`]
 #[derive(Default)]
-pub struct OciConfig {
+pub struct OciRegistryConfig {
     pub client_config: ClientConfig,
     pub credentials: Option<BasicCredentials>,
 }
 
-impl Clone for OciConfig {
+impl Clone for OciRegistryConfig {
     fn clone(&self) -> Self {
         let client_config = ClientConfig {
             protocol: self.client_config.protocol.clone(),
@@ -29,7 +32,7 @@ impl Clone for OciConfig {
     }
 }
 
-impl std::fmt::Debug for OciConfig {
+impl std::fmt::Debug for OciRegistryConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OciConfig")
             .field("client_config", &"...")
@@ -38,7 +41,7 @@ impl std::fmt::Debug for OciConfig {
     }
 }
 
-impl TryFrom<&RegistryConfig> for OciConfig {
+impl TryFrom<&RegistryConfig> for OciRegistryConfig {
     type Error = Error;
 
     fn try_from(registry_config: &RegistryConfig) -> Result<Self, Self::Error> {
@@ -143,7 +146,7 @@ mod tests {
         "#;
         let cfg = wasm_pkg_common::config::Config::from_toml(toml_config).unwrap();
 
-        let oci_config: OciConfig = cfg
+        let oci_config: OciRegistryConfig = cfg
             .registry_config(&"example.com".parse().unwrap())
             .unwrap()
             .try_into()
@@ -156,7 +159,7 @@ mod tests {
             oci_config.client_config.protocol
         );
 
-        let oci_config: OciConfig = cfg
+        let oci_config: OciRegistryConfig = cfg
             .registry_config(&"wasi.dev".parse().unwrap())
             .unwrap()
             .try_into()

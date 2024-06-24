@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::Error;
 
-/// A registry identifier, which should be a valid HTTP Host.
+/// A registry identifier.
+///
+/// This must be a valid HTTP Host.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
 pub struct Registry(Authority);

@@ -3838,24 +3838,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "wasm-pkg-common"
-version = "0.4.0"
-dependencies = [
- "anyhow",
- "dirs",
- "http",
- "reqwest",
- "semver",
- "serde 1.0.202",
- "serde_json",
- "thiserror",
- "toml 0.8.13",
- "tracing",
-]
-
-[[package]]
-name = "wasm-pkg-loader"
-version = "0.4.0"
+name = "wasm-pkg-client"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3883,7 +3867,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "wasm-pkg-loader-e2e-tests"
+name = "wasm-pkg-client-e2e-tests"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -3895,7 +3879,27 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-test",
- "wasm-pkg-loader",
+ "wasm-pkg-client",
+]
+
+[[package]]
+name = "wasm-pkg-common"
+version = "0.4.1"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "dirs",
+ "futures-util",
+ "http",
+ "reqwest",
+ "semver",
+ "serde 1.0.202",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "tokio",
+ "toml 0.8.13",
+ "tracing",
 ]
 
 [[package]]

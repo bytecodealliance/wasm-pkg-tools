@@ -3,24 +3,19 @@ use std::path::Path;
 use bytes::Bytes;
 use futures_util::{future::ready, stream::once, Stream, StreamExt, TryStream, TryStreamExt};
 use sha2::{Digest, Sha256};
-use tokio::io::AsyncReadExt;
-use wasm_pkg_common::package::Version;
 
 use crate::Error;
 
-#[derive(Clone, Debug)]
-pub struct Release {
-    pub version: Version,
-    pub content_digest: ContentDigest,
-}
-
+/// A cryptographic digest (hash) of some content.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ContentDigest {
     Sha256 { hex: String },
 }
 
 impl ContentDigest {
+    #[cfg(feature = "tokio")]
     pub async fn sha256_from_file(path: impl AsRef<Path>) -> Result<Self, std::io::Error> {
+        use tokio::io::AsyncReadExt;
         let mut file = tokio::fs::File::open(path).await?;
         let mut hasher = Sha256::new();
         let mut buf = [0; 4096];

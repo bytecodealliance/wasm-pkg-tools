@@ -169,7 +169,8 @@ impl Config {
 
     /// Returns a registry for the given namespace.
     ///
-    /// Does not fall back to the default registry; see [`Self::resolve`].
+    /// Does not fall back to the default registry; see
+    /// [`Self::resolve_registry`].
     pub fn namespace_registry(&self, namespace: &Label) -> Option<&Registry> {
         self.namespace_registries.get(namespace)
     }
@@ -181,7 +182,8 @@ impl Config {
 
     /// Returns a registry override configured for the given package.
     ///
-    /// Does not fall back to namespace or default registries; see [`Self::resolve`].
+    /// Does not fall back to namespace or default registries; see
+    /// [`Self::resolve_registry`].
     pub fn package_registry_override(&self, package: &PackageRef) -> Option<&Registry> {
         self.package_registry_overrides.get(package)
     }

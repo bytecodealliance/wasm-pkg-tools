@@ -4,13 +4,16 @@ use secrecy::SecretString;
 use serde::Deserialize;
 use wasm_pkg_common::{config::RegistryConfig, Error};
 
+/// Registry configuration for Warg backends.
+///
+/// See: [`RegistryConfig::backend_config`]
 #[derive(Clone, Debug, Default)]
-pub struct WargConfig {
+pub struct WargRegistryConfig {
     pub client_config: Option<warg_client::Config>,
     pub auth_token: Option<SecretString>,
 }
 
-impl TryFrom<&RegistryConfig> for WargConfig {
+impl TryFrom<&RegistryConfig> for WargRegistryConfig {
     type Error = Error;
 
     fn try_from(registry_config: &RegistryConfig) -> Result<Self, Self::Error> {

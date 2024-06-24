@@ -3764,23 +3764,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "wasm-pkg-common"
-version = "0.4.1"
-dependencies = [
- "anyhow",
- "dirs",
- "http",
- "reqwest",
- "semver",
- "serde 1.0.201",
- "serde_json",
- "thiserror",
- "toml 0.8.13",
- "tracing",
-]
-
-[[package]]
-name = "wasm-pkg-loader"
+name = "wasm-pkg-client"
 version = "0.4.1"
 dependencies = [
  "anyhow",
@@ -3806,6 +3790,26 @@ dependencies = [
  "warg-client",
  "warg-protocol",
  "wasm-pkg-common",
+]
+
+[[package]]
+name = "wasm-pkg-common"
+version = "0.4.1"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "dirs",
+ "futures-util",
+ "http",
+ "reqwest",
+ "semver",
+ "serde 1.0.201",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "tokio",
+ "toml 0.8.13",
+ "tracing",
 ]
 
 [[package]]
@@ -4192,8 +4196,8 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "wasm-pkg-client",
  "wasm-pkg-common",
- "wasm-pkg-loader",
  "wit-component 0.207.0",
 ]
 

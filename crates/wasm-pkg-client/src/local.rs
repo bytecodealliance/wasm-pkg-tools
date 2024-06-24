@@ -1,3 +1,7 @@
+//! Local filesystem-based package backend.
+//!
+//! Each package release is a file: `<root>/<namespace>/<name>/<version>.wasm`
+
 use std::path::PathBuf;
 
 use anyhow::anyhow;
@@ -6,11 +10,16 @@ use bytes::Bytes;
 use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
 use serde::Deserialize;
 use tokio_util::io::ReaderStream;
-use wasm_pkg_common::{config::RegistryConfig, package::Version};
+use wasm_pkg_common::{
+    config::RegistryConfig,
+    digest::ContentDigest,
+    package::{PackageRef, Version},
+    Error,
+};
 
 use crate::{
-    source::{PackageSource, VersionInfo},
-    ContentDigest, Error, PackageRef, Release,
+    loader::PackageLoader,
+    release::{Release, VersionInfo},
 };
 
 #[derive(Clone, Debug, Deserialize)]
@@ -18,14 +27,11 @@ pub struct LocalConfig {
     pub root: PathBuf,
 }
 
-/// A simple local filesystem-based PackageSource.
-///
-/// Each package release is a file: `<root>/<namespace>/<name>/<version>.wasm`
-pub struct LocalSource {
+pub(crate) struct LocalBackend {
     root: PathBuf,
 }
 
-impl LocalSource {
+impl LocalBackend {
     pub fn new(registry_config: RegistryConfig) -> Result<Self, Error> {
         let config = registry_config
             .backend_config::<LocalConfig>("local")?
@@ -47,7 +53,7 @@ impl LocalSource {
 }
 
 #[async_trait]
-impl PackageSource for LocalSource {
+impl PackageLoader for LocalBackend {
     async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
         let mut versions = vec![];
         let package_dir = self.package_dir(package);

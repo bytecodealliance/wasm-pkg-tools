@@ -17,4 +17,4 @@ tracing-subscriber = { version = "0.3.18", default-features = false, features = 
     "env-filter",
 ] }
 wasm-pkg-common = { version = "0.4.1", path = "crates/wasm-pkg-common" }
-wasm-pkg-loader = { version = "0.4.1", path = "crates/wasm-pkg-loader" }
+wasm-pkg-client = { version = "0.4.1", path = "crates/wasm-pkg-client" }
