@@ -26,6 +26,7 @@
 //! # Ok(()) }
 //! ```
 
+pub mod caching;
 mod loader;
 pub mod local;
 pub mod oci;

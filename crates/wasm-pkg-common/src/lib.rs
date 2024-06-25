@@ -10,6 +10,8 @@ pub mod registry;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("error interacting with cache: {0}")]
+    CacheError(#[source] anyhow::Error),
     #[error("error reading config file: {0}")]
     ConfigFileIoError(#[source] std::io::Error),
     #[error("failed to get registry credentials: {0:#}")]
