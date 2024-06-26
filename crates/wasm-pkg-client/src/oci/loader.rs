@@ -1,12 +1,11 @@
 use async_trait::async_trait;
-use bytes::Bytes;
-use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
+use futures_util::{StreamExt, TryStreamExt};
 use oci_distribution::manifest::OciDescriptor;
 use warg_protocol::Version;
 use wasm_pkg_common::{package::PackageRef, Error};
 
 use crate::{
-    loader::PackageLoader,
+    loader::{ContentStream, PackageLoader},
     release::{Release, VersionInfo},
 };
 
@@ -14,7 +13,7 @@ use super::{oci_registry_error, OciBackend};
 
 #[async_trait]
 impl PackageLoader for OciBackend {
-    async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
+    async fn list_all_versions(&self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
         let reference = self.make_reference(package, None);
 
         tracing::debug!(?reference, "Listing tags for OCI reference");
@@ -44,11 +43,7 @@ impl PackageLoader for OciBackend {
         Ok(versions)
     }
 
-    async fn get_release(
-        &mut self,
-        package: &PackageRef,
-        version: &Version,
-    ) -> Result<Release, Error> {
+    async fn get_release(&self, package: &PackageRef, version: &Version) -> Result<Release, Error> {
         let reference = self.make_reference(package, Some(version));
 
         tracing::debug!(?reference, "Fetching image manifest for OCI reference");
@@ -77,10 +72,10 @@ impl PackageLoader for OciBackend {
     }
 
     async fn stream_content_unvalidated(
-        &mut self,
+        &self,
         package: &PackageRef,
         release: &Release,
-    ) -> Result<BoxStream<Result<Bytes, Error>>, Error> {
+    ) -> Result<ContentStream, Error> {
         let reference = self.make_reference(package, None);
         let descriptor = OciDescriptor {
             digest: release.content_digest.to_string(),

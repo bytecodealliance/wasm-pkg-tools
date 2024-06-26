@@ -73,7 +73,7 @@ impl GetArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         let PackageSpec { package, version } = self.package_spec;
 
-        let mut client = {
+        let client = {
             let mut config = Config::global_defaults()?;
             if let Some(registry) = self.registry_args.registry.clone() {
                 tracing::debug!(%package, %registry, "overriding package registry");

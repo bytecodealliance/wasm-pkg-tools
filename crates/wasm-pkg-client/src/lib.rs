@@ -34,10 +34,10 @@ mod release;
 pub mod warg;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::anyhow;
-use bytes::Bytes;
-use futures_util::stream::BoxStream;
+use tokio::sync::RwLock;
 
 use wasm_pkg_common::metadata::RegistryMetadata;
 
@@ -51,12 +51,16 @@ pub use wasm_pkg_common::{
     Error,
 };
 
+pub use loader::ContentStream;
 pub use release::{Release, VersionInfo};
+
+type RegistrySources = HashMap<Registry, Arc<Loader>>;
+type Loader = Box<dyn PackageLoader + Sync>;
 
 /// A read-only registry client.
 pub struct Client {
     config: Config,
-    sources: HashMap<Registry, Box<dyn PackageLoader>>,
+    sources: RwLock<RegistrySources>,
 }
 
 impl Client {
@@ -75,17 +79,14 @@ impl Client {
     }
 
     /// Returns a list of all package [`Version`]s available for the given package.
-    pub async fn list_all_versions(
-        &mut self,
-        package: &PackageRef,
-    ) -> Result<Vec<VersionInfo>, Error> {
+    pub async fn list_all_versions(&self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
         let source = self.resolve_source(package).await?;
         source.list_all_versions(package).await
     }
 
     /// Returns a [`Release`] for the given package version.
     pub async fn get_release(
-        &mut self,
+        &self,
         package: &PackageRef,
         version: &Version,
     ) -> Result<Release, Error> {
@@ -93,27 +94,28 @@ impl Client {
         source.get_release(package, version).await
     }
 
-    /// Returns a [`BoxStream`] of content chunks. Contents are validated
+    /// Returns a [`ContentStream`] of content chunks. Contents are validated
     /// against the given [`Release::content_digest`].
-    pub async fn stream_content(
-        &mut self,
-        package: &PackageRef,
-        release: &Release,
-    ) -> Result<BoxStream<Result<Bytes, Error>>, Error> {
+    pub async fn stream_content<'a>(
+        &'a self,
+        package: &'a PackageRef,
+        release: &'a Release,
+    ) -> Result<ContentStream, Error> {
         let source = self.resolve_source(package).await?;
         source.stream_content(package, release).await
     }
 
-    async fn resolve_source(
-        &mut self,
-        package: &PackageRef,
-    ) -> Result<&mut dyn PackageLoader, Error> {
+    async fn resolve_source(&self, package: &PackageRef) -> Result<Arc<Loader>, Error> {
         let registry = self
             .config
             .resolve_registry(package)
             .ok_or_else(|| Error::NoRegistryForNamespace(package.namespace().clone()))?
             .to_owned();
-        if !self.sources.contains_key(&registry) {
+        let has_key = {
+            let sources = self.sources.read().await;
+            sources.contains_key(&registry)
+        };
+        if !has_key {
             let registry_config = self
                 .config
                 .registry_config(&registry)
@@ -148,7 +150,7 @@ impl Client {
             .unwrap_or("oci");
             tracing::debug!(?backend_type, "Resolved backend type");
 
-            let source: Box<dyn PackageLoader> = match backend_type {
+            let source: Loader = match backend_type {
                 "local" => Box::new(LocalBackend::new(registry_config)?),
                 "oci" => Box::new(OciBackend::new(
                     &registry,
@@ -164,8 +166,11 @@ impl Client {
                     )));
                 }
             };
-            self.sources.insert(registry.clone(), source);
+            self.sources
+                .write()
+                .await
+                .insert(registry.clone(), Arc::new(source));
         }
-        Ok(self.sources.get_mut(&registry).unwrap().as_mut())
+        Ok(self.sources.read().await.get(&registry).unwrap().clone())
     }
 }

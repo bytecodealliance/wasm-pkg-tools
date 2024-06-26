@@ -6,8 +6,7 @@ use std::path::PathBuf;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
-use bytes::Bytes;
-use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
+use futures_util::{StreamExt, TryStreamExt};
 use serde::Deserialize;
 use tokio_util::io::ReaderStream;
 use wasm_pkg_common::{
@@ -18,7 +17,7 @@ use wasm_pkg_common::{
 };
 
 use crate::{
-    loader::PackageLoader,
+    loader::{ContentStream, PackageLoader},
     release::{Release, VersionInfo},
 };
 
@@ -54,7 +53,7 @@ impl LocalBackend {
 
 #[async_trait]
 impl PackageLoader for LocalBackend {
-    async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
+    async fn list_all_versions(&self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
         let mut versions = vec![];
         let package_dir = self.package_dir(package);
         tracing::debug!(?package_dir, "Reading versions from path");
@@ -81,11 +80,7 @@ impl PackageLoader for LocalBackend {
         Ok(versions)
     }
 
-    async fn get_release(
-        &mut self,
-        package: &PackageRef,
-        version: &Version,
-    ) -> Result<Release, Error> {
+    async fn get_release(&self, package: &PackageRef, version: &Version) -> Result<Release, Error> {
         let path = self.version_path(package, version);
         tracing::debug!(path = %path.display(), "Reading content from path");
         let content_digest = ContentDigest::sha256_from_file(path).await?;
@@ -96,10 +91,10 @@ impl PackageLoader for LocalBackend {
     }
 
     async fn stream_content_unvalidated(
-        &mut self,
+        &self,
         package: &PackageRef,
         content: &Release,
-    ) -> Result<BoxStream<Result<Bytes, Error>>, Error> {
+    ) -> Result<ContentStream, Error> {
         let path = self.version_path(package, &content.version);
         tracing::debug!("Streaming content from {path:?}");
         let file = tokio::fs::File::open(path).await?;

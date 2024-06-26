@@ -11,6 +11,7 @@ use docker_credential::{CredentialRetrievalError, DockerCredential};
 use oci_distribution::{errors::OciDistributionError, secrets::RegistryAuth, Reference};
 use secrecy::ExposeSecret;
 use serde::Deserialize;
+use tokio::sync::OnceCell;
 use wasm_pkg_common::{
     config::RegistryConfig,
     metadata::RegistryMetadata,
@@ -36,7 +37,7 @@ pub(crate) struct OciBackend {
     oci_registry: String,
     namespace_prefix: Option<String>,
     credentials: Option<BasicCredentials>,
-    registry_auth: Option<RegistryAuth>,
+    registry_auth: OnceCell<RegistryAuth>,
 }
 
 impl OciBackend {
@@ -62,37 +63,39 @@ impl OciBackend {
             oci_registry,
             namespace_prefix: oci_meta.namespace_prefix,
             credentials,
-            registry_auth: None,
+            registry_auth: OnceCell::new(),
         })
     }
 
-    pub(crate) async fn auth(&mut self, reference: &Reference) -> Result<RegistryAuth, Error> {
-        if self.registry_auth.is_none() {
-            let mut auth = self.get_credentials()?;
-            // Preflight auth to check for validity; this isn't wasted
-            // effort because the oci_distribution::Client caches it
-            use oci_distribution::errors::OciDistributionError::AuthenticationFailure;
-            use oci_distribution::RegistryOperation::Pull;
-            match self.client.auth(reference, &auth, Pull).await {
-                Ok(_) => (),
-                Err(err @ AuthenticationFailure(_)) if auth != RegistryAuth::Anonymous => {
-                    // The failed credentials might not even be required for this image; retry anonymously
-                    if self
-                        .client
-                        .auth(reference, &RegistryAuth::Anonymous, Pull)
-                        .await
-                        .is_ok()
-                    {
-                        auth = RegistryAuth::Anonymous;
-                    } else {
-                        return Err(oci_registry_error(err));
+    pub(crate) async fn auth(&self, reference: &Reference) -> Result<RegistryAuth, Error> {
+        self.registry_auth
+            .get_or_try_init(|| async {
+                let mut auth = self.get_credentials()?;
+                // Preflight auth to check for validity; this isn't wasted
+                // effort because the oci_distribution::Client caches it
+                use oci_distribution::errors::OciDistributionError::AuthenticationFailure;
+                use oci_distribution::RegistryOperation::Pull;
+                match self.client.auth(reference, &auth, Pull).await {
+                    Ok(_) => (),
+                    Err(err @ AuthenticationFailure(_)) if auth != RegistryAuth::Anonymous => {
+                        // The failed credentials might not even be required for this image; retry anonymously
+                        if self
+                            .client
+                            .auth(reference, &RegistryAuth::Anonymous, Pull)
+                            .await
+                            .is_ok()
+                        {
+                            auth = RegistryAuth::Anonymous;
+                        } else {
+                            return Err(oci_registry_error(err));
+                        }
                     }
+                    Err(err) => return Err(oci_registry_error(err)),
                 }
-                Err(err) => return Err(oci_registry_error(err)),
-            }
-            self.registry_auth = Some(auth);
-        }
-        Ok(self.registry_auth.clone().unwrap())
+                Ok(auth)
+            })
+            .await
+            .cloned()
     }
 
     pub(crate) fn get_credentials(&self) -> Result<RegistryAuth, Error> {
