@@ -1,10 +1,8 @@
 use std::future::Future;
 
-use bytes::Bytes;
-use futures_util::stream::BoxStream;
 use wasm_pkg_common::{digest::ContentDigest, package::PackageRef, Error};
 
-use crate::{Client, Release};
+use crate::{loader::ContentStream, Client, Release};
 
 mod file;
 
@@ -16,13 +14,13 @@ pub trait Cache {
     fn put_data(
         &self,
         digest: ContentDigest,
-        data: BoxStream<Result<Bytes, Error>>,
+        data: ContentStream,
     ) -> impl Future<Output = Result<(), Error>> + Send;
     /// Gets the data with the given hash from the cache. Returns None if the data is not in the cache.
     fn get_data(
         &self,
         digest: &ContentDigest,
-    ) -> impl Future<Output = Result<Option<BoxStream<Result<Bytes, Error>>>, Error>> + Send;
+    ) -> impl Future<Output = Result<Option<ContentStream>, Error>> + Send;
 }
 
 pub struct CachingClient<T> {
@@ -42,7 +40,7 @@ impl<T: Cache> CachingClient<T> {
         Self { client, cache }
     }
 
-    /// Returns a [`BoxStream`] of content chunks. If the data is in the cache, it will be returned,
+    /// Returns a [`ContentStream`] of content chunks. If the data is in the cache, it will be returned,
     /// otherwise it will be fetched from an upstream registry and then cached. This is the same as
     /// [`Client::stream_content`] but named differently to avoid confusion when trying to use this
     /// as a normal [`Client`].
@@ -50,7 +48,7 @@ impl<T: Cache> CachingClient<T> {
         &mut self,
         package: &PackageRef,
         release: &Release,
-    ) -> Result<BoxStream<Result<Bytes, Error>>, Error> {
+    ) -> Result<ContentStream, Error> {
         if let Some(data) = self.cache.get_data(&release.content_digest).await? {
             return Ok(data);
         }

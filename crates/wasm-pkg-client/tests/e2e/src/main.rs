@@ -43,7 +43,7 @@ async fn fetch_smoke_test() {
     "#,
     )
     .unwrap();
-    let mut client = Client::new(config);
+    let client = Client::new(config);
 
     let package = FIXTURE_PACKAGE.parse().unwrap();
     let versions = client.list_all_versions(&package).await.unwrap();

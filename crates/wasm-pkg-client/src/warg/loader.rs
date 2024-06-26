@@ -1,14 +1,13 @@
 use anyhow::anyhow;
 use async_trait::async_trait;
-use bytes::Bytes;
-use futures_util::{stream::BoxStream, StreamExt, TryStreamExt};
+use futures_util::{StreamExt, TryStreamExt};
 use wasm_pkg_common::{
     package::{PackageRef, Version},
     Error,
 };
 
 use crate::{
-    loader::PackageLoader,
+    loader::{ContentStream, PackageLoader},
     release::{Release, VersionInfo},
 };
 
@@ -16,7 +15,7 @@ use super::{package_ref_to_name, warg_registry_error, WargBackend};
 
 #[async_trait]
 impl PackageLoader for WargBackend {
-    async fn list_all_versions(&mut self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
+    async fn list_all_versions(&self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
         let info = self.fetch_package_info(package).await?;
         Ok(info
             .state
@@ -28,11 +27,7 @@ impl PackageLoader for WargBackend {
             .collect())
     }
 
-    async fn get_release(
-        &mut self,
-        package: &PackageRef,
-        version: &Version,
-    ) -> Result<Release, Error> {
+    async fn get_release(&self, package: &PackageRef, version: &Version) -> Result<Release, Error> {
         let info = self.fetch_package_info(package).await?;
         let release = info
             .state
@@ -49,18 +44,18 @@ impl PackageLoader for WargBackend {
     }
 
     async fn stream_content_unvalidated(
-        &mut self,
+        &self,
         package: &PackageRef,
         release: &Release,
-    ) -> Result<BoxStream<Result<Bytes, Error>>, Error> {
+    ) -> Result<ContentStream, Error> {
         self.stream_content(package, release).await
     }
 
     async fn stream_content(
-        &mut self,
+        &self,
         package: &PackageRef,
         release: &Release,
-    ) -> Result<BoxStream<Result<Bytes, Error>>, Error> {
+    ) -> Result<ContentStream, Error> {
         let package_name = package_ref_to_name(package)?;
 
         // warg client validates the digest matches the content

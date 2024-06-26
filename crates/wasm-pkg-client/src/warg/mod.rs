@@ -56,7 +56,7 @@ impl WargBackend {
     }
 
     pub(crate) async fn fetch_package_info(
-        &mut self,
+        &self,
         package: &PackageRef,
     ) -> Result<PackageInfo, Error> {
         let package_name = package_ref_to_name(package)?;
