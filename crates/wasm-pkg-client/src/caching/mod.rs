@@ -45,7 +45,7 @@ impl<T: Cache> CachingClient<T> {
     /// [`Client::stream_content`] but named differently to avoid confusion when trying to use this
     /// as a normal [`Client`].
     pub async fn get_content(
-        &mut self,
+        &self,
         package: &PackageRef,
         release: &Release,
     ) -> Result<ContentStream, Error> {
