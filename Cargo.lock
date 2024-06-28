@@ -2756,9 +2756,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.117"
+version = "1.0.118"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "455182ea6142b14f93f4bc5320a2b31c1f266b66a4a5c858b013302a5d8cbfc3"
+checksum = "d947f6b3163d8857ea16c4fa0dd4840d52f3041039a85decd46867eb1abef2e4"
 dependencies = [
  "itoa",
  "ryu",
@@ -4190,11 +4190,13 @@ name = "wkg"
 version = "0.4.1"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "clap",
  "docker_credential",
  "futures-util",
  "oci-distribution",
  "oci-wasm",
+ "serde_json",
  "tempfile",
  "tokio",
  "tracing",

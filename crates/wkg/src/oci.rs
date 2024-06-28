@@ -36,16 +36,20 @@ impl Auth {
         match (self.username, self.password) {
             (Some(username), Some(password)) => Ok(RegistryAuth::Basic(username, password)),
             (None, None) => {
-                let server_url = format!("https://{}", reference.registry());
-                match docker_credential::get_credential(&server_url) {
-                    Ok(DockerCredential::UsernamePassword(username, password)) => {
-                        return Ok(RegistryAuth::Basic(username, password));
-                    }
-                    Ok(DockerCredential::IdentityToken(_)) => {
-                        return Err(anyhow::anyhow!("identity tokens not supported"));
-                    }
-                    Err(err) => {
-                        tracing::debug!("Failed to look up OCI credentials: {err}");
+                let server_url = format!("https://{}", reference.resolve_registry());
+                for server_url in [&server_url, &format!("{server_url}/v1/")] {
+                    match docker_credential::get_credential(server_url) {
+                        Ok(DockerCredential::UsernamePassword(username, password)) => {
+                            return Ok(RegistryAuth::Basic(username, password));
+                        }
+                        Ok(DockerCredential::IdentityToken(_)) => {
+                            return Err(anyhow::anyhow!("identity tokens not supported"));
+                        }
+                        Err(err) => {
+                            tracing::debug!(
+                                "Failed to look up OCI credentials with key `{server_url}`: {err}"
+                            );
+                        }
                     }
                 }
                 Ok(RegistryAuth::Anonymous)
@@ -182,4 +186,49 @@ fn get_client(common: Common) -> WasmClient {
     });
 
     WasmClient::new(client)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::oci::Auth;
+    use base64::{engine::general_purpose, Engine};
+    use oci_distribution::{secrets::RegistryAuth, Reference};
+    use serde_json::json;
+    use tempfile::tempdir;
+
+    #[test]
+    fn into_auth_should_read_docker_registry_credentials() {
+        let reference: Reference = "dockeraccount/image".parse().unwrap();
+        verify_docker_config_credentials(&reference, "https://index.docker.io/v1/");
+    }
+
+    #[test]
+    fn into_auth_should_other_registry_credentials() {
+        let reference: Reference = "example.com/dockeraccount/image".parse().unwrap();
+        verify_docker_config_credentials(&reference, "https://example.com");
+    }
+
+    fn verify_docker_config_credentials(reference: &Reference, key: &str) {
+        let auth = Auth {
+            username: None,
+            password: None,
+        };
+        let temp_docker_config = tempdir().unwrap();
+        let docker_config = temp_docker_config.path().join("config.json");
+        let username = "some_user".to_string();
+        let password = "some_password".to_string();
+        let encoded_auth =
+            general_purpose::STANDARD_NO_PAD.encode(format!("{username}:{password}"));
+        let auths = json!({
+            "auths": {
+                key: {
+                    "auth": encoded_auth
+                },
+            }
+        });
+        std::fs::write(docker_config, auths.to_string()).unwrap();
+        std::env::set_var("DOCKER_CONFIG", temp_docker_config.path().as_os_str());
+        let auth = auth.into_auth(reference).unwrap();
+        assert_eq!(RegistryAuth::Basic(username, password), auth);
+    }
 }
