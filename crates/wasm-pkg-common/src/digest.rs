@@ -1,13 +1,15 @@
 use std::path::Path;
+use std::str::FromStr;
 
 use bytes::Bytes;
 use futures_util::{future::ready, stream::once, Stream, StreamExt, TryStream, TryStreamExt};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::Error;
 
 /// A cryptographic digest (hash) of some content.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ContentDigest {
     Sha256 { hex: String },
 }
@@ -100,11 +102,26 @@ impl<'a> TryFrom<&'a str> for ContentDigest {
     }
 }
 
-impl std::str::FromStr for ContentDigest {
+impl FromStr for ContentDigest {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         s.try_into()
+    }
+}
+
+impl Serialize for ContentDigest {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentDigest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Self::from_str(&String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
     }
 }
 
