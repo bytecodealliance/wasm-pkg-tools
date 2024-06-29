@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{borrow::Cow, ops::Deref, path::PathBuf};
 
 use anyhow::Context;
 use clap::{Args, Subcommand};
@@ -36,25 +36,31 @@ impl Auth {
         match (self.username, self.password) {
             (Some(username), Some(password)) => Ok(RegistryAuth::Basic(username, password)),
             (None, None) => {
-                let server_url = format!("https://{}", reference.resolve_registry());
-                for server_url in [&server_url, &format!("{server_url}/v1/")] {
-                    match docker_credential::get_credential(server_url) {
-                        Ok(DockerCredential::UsernamePassword(username, password)) => {
-                            return Ok(RegistryAuth::Basic(username, password));
-                        }
-                        Ok(DockerCredential::IdentityToken(_)) => {
-                            return Err(anyhow::anyhow!("identity tokens not supported"));
-                        }
-                        Err(err) => {
-                            tracing::debug!(
-                                "Failed to look up OCI credentials with key `{server_url}`: {err}"
-                            );
-                        }
+                let server_url = Self::get_docker_config_auth_key(reference);
+                match docker_credential::get_credential(server_url.deref()) {
+                    Ok(DockerCredential::UsernamePassword(username, password)) => {
+                        return Ok(RegistryAuth::Basic(username, password));
+                    }
+                    Ok(DockerCredential::IdentityToken(_)) => {
+                        return Err(anyhow::anyhow!("identity tokens not supported"));
+                    }
+                    Err(err) => {
+                        tracing::debug!(
+                            "Failed to look up OCI credentials with key `{server_url}`: {err}"
+                        );
                     }
                 }
                 Ok(RegistryAuth::Anonymous)
             }
             _ => Err(anyhow::anyhow!("Must provide both a username and password")),
+        }
+    }
+
+    /// Translate the registry into a key for the auth lookup.
+    fn get_docker_config_auth_key(reference: &Reference) -> Cow<str> {
+        match reference.resolve_registry() {
+            "index.docker.io" => Cow::Borrowed("https://index.docker.io/v1/"), // Default registry uses this key.
+            other => Cow::Owned(format!("https://{other}")),
         }
     }
 }
