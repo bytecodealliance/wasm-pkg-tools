@@ -1,4 +1,4 @@
-use std::{borrow::Cow, ops::Deref, path::PathBuf};
+use std::path::PathBuf;
 
 use anyhow::Context;
 use clap::{Args, Subcommand};
@@ -37,7 +37,7 @@ impl Auth {
             (Some(username), Some(password)) => Ok(RegistryAuth::Basic(username, password)),
             (None, None) => {
                 let server_url = Self::get_docker_config_auth_key(reference);
-                match docker_credential::get_credential(server_url.deref()) {
+                match docker_credential::get_credential(server_url) {
                     Ok(DockerCredential::UsernamePassword(username, password)) => {
                         return Ok(RegistryAuth::Basic(username, password));
                     }
@@ -57,10 +57,10 @@ impl Auth {
     }
 
     /// Translate the registry into a key for the auth lookup.
-    fn get_docker_config_auth_key(reference: &Reference) -> Cow<str> {
+    fn get_docker_config_auth_key(reference: &Reference) -> &str {
         match reference.resolve_registry() {
-            "index.docker.io" => Cow::Borrowed("https://index.docker.io/v1/"), // Default registry uses this key.
-            other => Cow::Owned(format!("https://{other}")),
+            "index.docker.io" => "https://index.docker.io/v1/", // Default registry uses this key.
+            other => other, // All other registries are keyed by their domain name without the `https://` prefix or any path suffix.
         }
     }
 }
@@ -210,8 +210,8 @@ mod tests {
 
     #[test]
     fn into_auth_should_other_registry_credentials() {
-        let reference: Reference = "example.com/dockeraccount/image".parse().unwrap();
-        verify_docker_config_credentials(&reference, "https://example.com");
+        let reference: Reference = "ghcr.io/githubaccount/image".parse().unwrap();
+        verify_docker_config_credentials(&reference, "ghcr.io");
     }
 
     fn verify_docker_config_credentials(reference: &Reference, key: &str) {
