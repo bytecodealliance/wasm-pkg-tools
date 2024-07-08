@@ -5,7 +5,7 @@ use base64::{
 };
 use oci_distribution::client::ClientConfig;
 use secrecy::{ExposeSecret, SecretString};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize, Serializer};
 use wasm_pkg_common::{config::RegistryConfig, Error};
 
 /// Registry configuration for OCI backends.
@@ -29,6 +29,25 @@ impl Clone for OciRegistryConfig {
             client_config,
             credentials: self.credentials.clone(),
         }
+    }
+}
+
+impl Serialize for OciRegistryConfig {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let converted = OciRegistryConfigToml {
+            auth: self
+                .credentials
+                .clone()
+                .map(|c| TomlAuth::UsernamePassword {
+                    username: c.username,
+                    password: c.password,
+                }),
+            protocol: Some(oci_protocol_string(&self.client_config.protocol)),
+        };
+        converted.serialize(serializer)
     }
 }
 
@@ -62,19 +81,21 @@ impl TryFrom<&RegistryConfig> for OciRegistryConfig {
     }
 }
 
-#[derive(Default, Deserialize)]
+#[derive(Default, Deserialize, Serialize)]
 struct OciRegistryConfigToml {
     auth: Option<TomlAuth>,
     protocol: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 enum TomlAuth {
+    #[serde(serialize_with = "serialize_secret")]
     Base64(SecretString),
     UsernamePassword {
         username: String,
+        #[serde(serialize_with = "serialize_secret")]
         password: SecretString,
     },
 }
@@ -126,6 +147,22 @@ fn oci_client_protocol(text: &str) -> Result<oci_distribution::client::ClientPro
     }
 }
 
+fn oci_protocol_string(protocol: &oci_distribution::client::ClientProtocol) -> String {
+    match protocol {
+        oci_distribution::client::ClientProtocol::Http => "http".into(),
+        oci_distribution::client::ClientProtocol::Https => "https".into(),
+        // Default to https if not specified
+        _ => "https".into(),
+    }
+}
+
+fn serialize_secret<S: Serializer>(
+    secret: &SecretString,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    secret.expose_secret().serialize(serializer)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,5 +204,47 @@ mod tests {
         let BasicCredentials { username, password } = oci_config.credentials.as_ref().unwrap();
         assert_eq!(username, "ping");
         assert_eq!(password.expose_secret(), "pong");
+    }
+
+    #[test]
+    fn test_roundtrip() {
+        let config = OciRegistryConfig {
+            client_config: oci_distribution::client::ClientConfig {
+                protocol: oci_distribution::client::ClientProtocol::Http,
+                ..Default::default()
+            },
+            credentials: Some(BasicCredentials {
+                username: "open".into(),
+                password: SecretString::new("sesame".into()),
+            }),
+        };
+
+        // Set the data and then try to load it back
+        let mut conf = crate::Config::empty();
+
+        let registry: crate::Registry = "example.com:8080".parse().unwrap();
+        let reg_conf = conf.get_or_insert_registry_config_mut(&registry);
+        reg_conf
+            .set_backend_config("oci", &config)
+            .expect("Unable to set config");
+
+        let reg_conf = conf.registry_config(&registry).unwrap();
+
+        let roundtripped = OciRegistryConfig::try_from(reg_conf).expect("Unable to load config");
+        assert_eq!(
+            roundtripped.client_config.protocol, config.client_config.protocol,
+            "Home url should be set to the right value"
+        );
+        let creds = config.credentials.unwrap();
+        let roundtripped_creds = roundtripped.credentials.expect("Should have creds");
+        assert_eq!(
+            creds.username, roundtripped_creds.username,
+            "Username should be set to the right value"
+        );
+        assert_eq!(
+            creds.password.expose_secret(),
+            roundtripped_creds.password.expose_secret(),
+            "Password should be set to the right value"
+        );
     }
 }

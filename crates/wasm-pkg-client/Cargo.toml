@@ -31,3 +31,6 @@ url = "2.5.0"
 warg-client = "0.7.0"
 warg-protocol = "0.7.0"
 wasm-pkg-common = { workspace = true, features = ["metadata-client", "tokio"] }
+
+[dev-dependencies]
+tempfile = "3"

@@ -39,15 +39,9 @@ impl WargBackend {
         let WargRegistryConfig {
             client_config,
             auth_token,
+            ..
         } = registry_config.try_into()?;
 
-        let client_config = if let Some(client_config) = client_config {
-            client_config
-        } else {
-            warg_client::Config::from_default_file()
-                .map_err(Error::InvalidConfig)?
-                .unwrap_or_default()
-        };
         let client =
             FileSystemClient::new_with_config(Some(url.as_str()), &client_config, auth_token)
                 .await
