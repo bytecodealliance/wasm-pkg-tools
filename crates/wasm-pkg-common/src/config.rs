@@ -22,7 +22,7 @@ const DEFAULT_FALLBACK_NAMESPACE_REGISTRIES: &[(&str, &str)] = &[
 /// provide a consistent baseline user experience. Where needed, these defaults
 /// can be overridden with application-specific config via [`Config::merge`] or
 /// other mutation methods.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Config {
     default_registry: Option<Registry>,
     namespace_registries: HashMap<Label, Registry>,
