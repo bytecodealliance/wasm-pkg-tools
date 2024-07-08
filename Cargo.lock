@@ -3780,6 +3780,7 @@ dependencies = [
  "serde 1.0.201",
  "serde_json",
  "sha2",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
