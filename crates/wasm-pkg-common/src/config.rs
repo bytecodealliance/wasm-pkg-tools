@@ -107,6 +107,13 @@ impl Config {
         Ok(toml_cfg.into())
     }
 
+    /// Writes the config to a TOML file at the given path.
+    pub fn to_file(&self, path: impl AsRef<Path>) -> Result<(), Error> {
+        let toml_cfg = toml::TomlConfig::from(self.to_owned());
+        let toml_str = ::toml::to_string(&toml_cfg).map_err(Error::invalid_config)?;
+        std::fs::write(path, toml_str).map_err(Error::ConfigFileIoError)
+    }
+
     /// Merges the given other config into this one.
     pub fn merge(&mut self, other: Self) {
         let Self {
