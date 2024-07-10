@@ -3,11 +3,11 @@
 
 use std::collections::HashMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{label::Label, package::PackageRef, registry::Registry};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TomlConfig {
     default_registry: Option<Registry>,
@@ -43,7 +43,23 @@ impl From<TomlConfig> for super::Config {
     }
 }
 
-#[derive(Deserialize)]
+impl From<super::Config> for TomlConfig {
+    fn from(value: super::Config) -> Self {
+        let registry = value
+            .registry_configs
+            .into_iter()
+            .map(|(reg, config)| (reg, config.into()))
+            .collect();
+        Self {
+            default_registry: value.default_registry,
+            namespace_registries: value.namespace_registries,
+            package_registry_overrides: value.package_registry_overrides,
+            registry,
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize)]
 struct TomlRegistryConfig {
     #[serde(rename = "type")]
     type_: Option<String>,
@@ -59,6 +75,19 @@ impl From<TomlRegistryConfig> for super::RegistryConfig {
         } = value;
         Self {
             backend_type: type_,
+            backend_configs,
+        }
+    }
+}
+
+impl From<super::RegistryConfig> for TomlRegistryConfig {
+    fn from(value: super::RegistryConfig) -> Self {
+        let super::RegistryConfig {
+            backend_type,
+            backend_configs,
+        } = value;
+        Self {
+            type_: backend_type,
             backend_configs,
         }
     }
