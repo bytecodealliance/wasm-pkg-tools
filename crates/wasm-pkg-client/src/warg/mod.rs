@@ -35,12 +35,22 @@ impl WargBackend {
         let warg_meta = registry_meta
             .protocol_config::<WargRegistryMetadata>("warg")?
             .unwrap_or_default();
-        let url = warg_meta.url.unwrap_or_else(|| registry.to_string());
+
         let WargRegistryConfig {
             client_config,
             auth_token,
             ..
         } = registry_config.try_into()?;
+
+        let url = warg_meta.url.unwrap_or_else(|| {
+            // If we just pass registry plain, warg will assume it is https. This is a workaround to
+            // assume that a local registry is http.
+            if registry.host() == "localhost" || registry.host() == "127.0.0.1" {
+                format!("http://{registry}")
+            } else {
+                format!("https://{registry}")
+            }
+        });
 
         let client =
             FileSystemClient::new_with_config(Some(url.as_str()), &client_config, auth_token)
