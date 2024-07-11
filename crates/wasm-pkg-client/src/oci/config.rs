@@ -11,7 +11,8 @@ use wasm_pkg_common::{config::RegistryConfig, Error};
 /// Registry configuration for OCI backends.
 ///
 /// See: [`RegistryConfig::backend_config`]
-#[derive(Default)]
+#[derive(Default, Serialize)]
+#[serde(into = "OciRegistryConfigToml")]
 pub struct OciRegistryConfig {
     pub client_config: ClientConfig,
     pub credentials: Option<BasicCredentials>,
@@ -29,25 +30,6 @@ impl Clone for OciRegistryConfig {
             client_config,
             credentials: self.credentials.clone(),
         }
-    }
-}
-
-impl Serialize for OciRegistryConfig {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let converted = OciRegistryConfigToml {
-            auth: self
-                .credentials
-                .clone()
-                .map(|c| TomlAuth::UsernamePassword {
-                    username: c.username,
-                    password: c.password,
-                }),
-            protocol: Some(oci_protocol_string(&self.client_config.protocol)),
-        };
-        converted.serialize(serializer)
     }
 }
 
@@ -85,6 +67,18 @@ impl TryFrom<&RegistryConfig> for OciRegistryConfig {
 struct OciRegistryConfigToml {
     auth: Option<TomlAuth>,
     protocol: Option<String>,
+}
+
+impl From<OciRegistryConfig> for OciRegistryConfigToml {
+    fn from(value: OciRegistryConfig) -> Self {
+        OciRegistryConfigToml {
+            auth: value.credentials.map(|c| TomlAuth::UsernamePassword {
+                username: c.username,
+                password: c.password,
+            }),
+            protocol: Some(oci_protocol_string(&value.client_config.protocol)),
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize)]

@@ -22,7 +22,8 @@ const DEFAULT_FALLBACK_NAMESPACE_REGISTRIES: &[(&str, &str)] = &[
 /// provide a consistent baseline user experience. Where needed, these defaults
 /// can be overridden with application-specific config via [`Config::merge`] or
 /// other mutation methods.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(into = "toml::TomlConfig")]
 pub struct Config {
     default_registry: Option<Registry>,
     namespace_registries: HashMap<Label, Registry>,
@@ -109,8 +110,7 @@ impl Config {
 
     /// Writes the config to a TOML file at the given path.
     pub fn to_file(&self, path: impl AsRef<Path>) -> Result<(), Error> {
-        let toml_cfg = toml::TomlConfig::from(self.to_owned());
-        let toml_str = ::toml::to_string(&toml_cfg).map_err(Error::invalid_config)?;
+        let toml_str = ::toml::to_string(&self).map_err(Error::invalid_config)?;
         std::fs::write(path, toml_str).map_err(Error::ConfigFileIoError)
     }
 
