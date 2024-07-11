@@ -7,7 +7,8 @@ use wasm_pkg_common::{config::RegistryConfig, Error};
 /// Registry configuration for Warg backends.
 ///
 /// See: [`RegistryConfig::backend_config`]
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(into = "WargRegistryConfigToml")]
 pub struct WargRegistryConfig {
     /// The configuration for the Warg client.
     pub client_config: warg_client::Config,
@@ -15,19 +16,6 @@ pub struct WargRegistryConfig {
     pub auth_token: Option<SecretString>,
     /// The path to the Warg config file, if specified.
     pub config_file: Option<PathBuf>,
-}
-
-impl Serialize for WargRegistryConfig {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        WargRegistryConfigToml {
-            auth_token: self.auth_token.clone(),
-            config_file: self.config_file.clone(),
-        }
-        .serialize(serializer)
-    }
 }
 
 impl TryFrom<&RegistryConfig> for WargRegistryConfig {
@@ -72,6 +60,15 @@ struct WargRegistryConfigToml {
         serialize_with = "serialize_secret"
     )]
     auth_token: Option<SecretString>,
+}
+
+impl From<WargRegistryConfig> for WargRegistryConfigToml {
+    fn from(value: WargRegistryConfig) -> Self {
+        WargRegistryConfigToml {
+            auth_token: value.auth_token,
+            config_file: value.config_file,
+        }
+    }
 }
 
 fn serialize_secret<S: Serializer>(
