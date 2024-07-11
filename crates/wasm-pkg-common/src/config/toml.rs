@@ -61,8 +61,8 @@ impl From<super::Config> for TomlConfig {
 
 #[derive(Deserialize, Serialize)]
 struct TomlRegistryConfig {
-    #[serde(rename = "type")]
-    type_: Option<String>,
+    #[serde(alias = "type")]
+    default: Option<String>,
     #[serde(flatten)]
     backend_configs: HashMap<String, toml::Table>,
 }
@@ -70,11 +70,11 @@ struct TomlRegistryConfig {
 impl From<TomlRegistryConfig> for super::RegistryConfig {
     fn from(value: TomlRegistryConfig) -> Self {
         let TomlRegistryConfig {
-            type_,
+            default,
             backend_configs,
         } = value;
         Self {
-            backend_type: type_,
+            default_backend: default,
             backend_configs,
         }
     }
@@ -83,11 +83,11 @@ impl From<TomlRegistryConfig> for super::RegistryConfig {
 impl From<super::RegistryConfig> for TomlRegistryConfig {
     fn from(value: super::RegistryConfig) -> Self {
         let super::RegistryConfig {
-            backend_type,
+            default_backend: backend_default,
             backend_configs,
         } = value;
         Self {
-            type_: backend_type,
+            default: backend_default,
             backend_configs,
         }
     }
@@ -142,5 +142,102 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(test_cfg.token, "top_secret");
+    }
+
+    #[test]
+    fn type_parses_correctly() {
+        let toml_config = toml::toml! {
+            [namespace_registries]
+            test = "localhost:1234"
+
+            [package_registry_overrides]
+
+            [registry."localhost:1234".warg]
+            config_file = "/a/path"
+        };
+
+        let toml_cfg: TomlConfig = toml_config.try_into().unwrap();
+        let cfg = crate::config::Config::from(toml_cfg);
+        let reg_conf = cfg
+            .registry_config(&"localhost:1234".parse().unwrap())
+            .expect("Should have config for registry");
+        assert_eq!(
+            reg_conf
+                .default_backend()
+                .expect("Should have a default set"),
+            "warg"
+        );
+
+        let toml_config = toml::toml! {
+            [namespace_registries]
+            test = "localhost:1234"
+
+            [package_registry_overrides]
+
+            [registry."localhost:1234".warg]
+            config_file = "/a/path"
+            [registry."localhost:1234".oci]
+            auth = { username = "open", password = "sesame" }
+        };
+
+        let toml_cfg: TomlConfig = toml_config.try_into().unwrap();
+        let cfg = crate::config::Config::from(toml_cfg);
+        let reg_conf = cfg
+            .registry_config(&"localhost:1234".parse().unwrap())
+            .expect("Should have config for registry");
+        assert!(
+            reg_conf.default_backend().is_none(),
+            "Should not have a type set when two configs exist"
+        );
+
+        let toml_config = toml::toml! {
+            [namespace_registries]
+            test = "localhost:1234"
+
+            [package_registry_overrides]
+
+            [registry."localhost:1234"]
+            type = "foobar"
+            [registry."localhost:1234".warg]
+            config_file = "/a/path"
+            [registry."localhost:1234".oci]
+            auth = { username = "open", password = "sesame" }
+        };
+
+        let toml_cfg: TomlConfig = toml_config.try_into().unwrap();
+        let cfg = crate::config::Config::from(toml_cfg);
+        let reg_conf = cfg
+            .registry_config(&"localhost:1234".parse().unwrap())
+            .expect("Should have config for registry");
+        assert_eq!(
+            reg_conf
+                .default_backend()
+                .expect("Should have a default set using the type alias"),
+            "foobar"
+        );
+
+        let toml_config = toml::toml! {
+            [namespace_registries]
+            test = "localhost:1234"
+
+            [registry."localhost:1234"]
+            default = "foobar"
+            [registry."localhost:1234".warg]
+            config_file = "/a/path"
+            [registry."localhost:1234".oci]
+            auth = { username = "open", password = "sesame" }
+        };
+
+        let toml_cfg: TomlConfig = toml_config.try_into().unwrap();
+        let cfg = crate::config::Config::from(toml_cfg);
+        let reg_conf = cfg
+            .registry_config(&"localhost:1234".parse().unwrap())
+            .expect("Should have config for registry");
+        assert_eq!(
+            reg_conf
+                .default_backend()
+                .expect("Should have a default set"),
+            "foobar"
+        );
     }
 }
