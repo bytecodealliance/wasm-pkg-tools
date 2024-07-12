@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// A Component Model kebab-case label.
-#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
 pub struct Label(String);
 

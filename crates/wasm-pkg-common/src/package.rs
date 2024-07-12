@@ -9,7 +9,7 @@ pub use semver::Version;
 /// A package reference, consisting of kebab-case namespace and name.
 ///
 /// Ex: `wasm-pkg:client`
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
 pub struct PackageRef {
     namespace: Label,
