@@ -54,6 +54,16 @@ impl WargBackend {
         package: &PackageRef,
     ) -> Result<PackageInfo, Error> {
         let package_name = package_ref_to_name(package)?;
+        // NOTE(thomastaylor312): We need to make sure we're up to date with all packages, but if we
+        // bypass the cache every time, we'll have to fetch the whole package log every time rather
+        // than loading from cache on disk. The remaining question here is the performance impact.
+        // At scale, we don't know if this will result in a lot of HTTP requests even though the
+        // packages were updated on a previous call. This should be good enough for now, but we
+        // might need to revisit this later.
+        self.client
+            .update()
+            .await
+            .map_err(|e| Error::RegistryError(e.into()))?;
         self.client
             .package(&package_name)
             .await
