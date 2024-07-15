@@ -9,6 +9,7 @@ use oci_distribution::{
     Reference,
 };
 use oci_wasm::{WasmClient, WasmConfig};
+use std::error::Error;
 
 #[derive(Debug, Args)]
 pub struct Auth {
@@ -129,6 +130,24 @@ pub struct PushArgs {
 
     /// The path to the file to push
     pub file: PathBuf,
+
+    /// Add an OCI annotation to the image manifest
+    #[clap(long = "annotation", value_parser = parse_key_val::<String, String>)]
+    pub annotation: Vec<(String, String)>,
+}
+
+/// Parse a single key-value pair
+fn parse_key_val<T, U>(s: &str) -> Result<(T, U), Box<dyn Error + Send + Sync + 'static>>
+where
+    T: std::str::FromStr,
+    T::Err: Error + Send + Sync + 'static,
+    U: std::str::FromStr,
+    U::Err: Error + Send + Sync + 'static,
+{
+    let pos = s
+        .find('=')
+        .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
+    Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
 }
 
 impl PushArgs {
@@ -137,9 +156,18 @@ impl PushArgs {
         let (conf, layer) = WasmConfig::from_component(&self.file, self.author)
             .await
             .context("Unable to parse component")?;
+
+        let annotations = match self.annotation.len() {
+            0 => None,
+            _ => {
+                let map = self.annotation.into_iter().collect();
+                Some(map)
+            }
+        };
+
         let auth = self.auth.into_auth(&self.reference)?;
         client
-            .push(&self.reference, &auth, layer, conf, None)
+            .push(&self.reference, &auth, layer, conf, annotations)
             .await
             .context("Unable to push image")?;
         println!("Pushed {}", self.reference);
