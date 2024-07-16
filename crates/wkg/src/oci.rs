@@ -9,7 +9,6 @@ use oci_distribution::{
     Reference,
 };
 use oci_wasm::{WasmClient, WasmConfig};
-use std::error::Error;
 
 #[derive(Debug, Args)]
 pub struct Auth {
@@ -132,22 +131,16 @@ pub struct PushArgs {
     pub file: PathBuf,
 
     /// Add an OCI annotation to the image manifest
-    #[clap(long = "annotation", value_parser = parse_key_val::<String, String>)]
+    #[clap(long = "annotation", value_parser = parse_key_val)]
     pub annotation: Vec<(String, String)>,
 }
 
 /// Parse a single key-value pair
-fn parse_key_val<T, U>(s: &str) -> Result<(T, U), Box<dyn Error + Send + Sync + 'static>>
-where
-    T: std::str::FromStr,
-    T::Err: Error + Send + Sync + 'static,
-    U: std::str::FromStr,
-    U::Err: Error + Send + Sync + 'static,
-{
-    let pos = s
-        .find('=')
-        .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
-    Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
+fn parse_key_val(s: &str) -> anyhow::Result<(String, String)> {
+    match s.split_once('=') {
+        Some((key, value)) => Ok((key.to_owned(), value.to_owned())),
+        _ => anyhow::bail!("invalid KEY=value: no `=` found in `{s}`"),
+    }
 }
 
 impl PushArgs {
@@ -159,10 +152,7 @@ impl PushArgs {
 
         let annotations = match self.annotation.len() {
             0 => None,
-            _ => {
-                let map = self.annotation.into_iter().collect();
-                Some(map)
-            }
+            _ => Some(self.annotation.into_iter().collect()),
         };
 
         let auth = self.auth.into_auth(&self.reference)?;
