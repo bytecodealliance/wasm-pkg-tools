@@ -123,7 +123,7 @@ impl Client {
                 .unwrap_or_default();
 
             // Skip fetching metadata for "local" source
-            let should_fetch_meta = registry_config.backend_type() != Some("local");
+            let should_fetch_meta = registry_config.default_backend() != Some("local");
             let registry_meta = if should_fetch_meta {
                 RegistryMetadata::fetch_or_default(&registry).await
             } else {
@@ -131,7 +131,7 @@ impl Client {
             };
 
             // Resolve backend type
-            let backend_type = match registry_config.backend_type() {
+            let backend_type = match registry_config.default_backend() {
                 // If the local config specifies a backend type, use it
                 Some(backend_type) => Some(backend_type),
                 None => {

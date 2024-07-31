@@ -221,7 +221,7 @@ impl Config {
 
 #[derive(Clone, Default)]
 pub struct RegistryConfig {
-    backend_type: Option<String>,
+    default_backend: Option<String>,
     backend_configs: HashMap<String, ::toml::Table>,
 }
 
@@ -229,11 +229,11 @@ impl RegistryConfig {
     /// Merges the given other config into this one.
     pub fn merge(&mut self, other: Self) {
         let Self {
-            backend_type,
+            default_backend: backend_type,
             backend_configs,
         } = other;
         if backend_type.is_some() {
-            self.backend_type = backend_type;
+            self.default_backend = backend_type;
         }
         for (ty, config) in backend_configs {
             match self.backend_configs.entry(ty) {
@@ -245,16 +245,26 @@ impl RegistryConfig {
         }
     }
 
-    /// Returns the backend type override.
-    pub fn backend_type(&self) -> Option<&str> {
-        self.backend_type.as_deref()
+    /// Returns default backend type, if one is configured. If none are configured and there is only
+    /// one type of configured backend, this will return that type.
+    pub fn default_backend(&self) -> Option<&str> {
+        match self.default_backend.as_deref() {
+            Some(ty) => Some(ty),
+            None => {
+                if self.backend_configs.len() == 1 {
+                    self.backend_configs.keys().next().map(|ty| ty.as_str())
+                } else {
+                    None
+                }
+            }
+        }
     }
 
-    /// Sets the backend type override.
+    /// Sets the default backend type.
     ///
-    /// To unset the backend type override, pass `None`.
-    pub fn set_backend_type(&mut self, backend_type: Option<String>) {
-        self.backend_type = backend_type;
+    /// To unset the default backend type, pass `None`.
+    pub fn set_default_backend(&mut self, default_backend: Option<String>) {
+        self.default_backend = default_backend;
     }
 
     /// Returns an iterator of configured backend types.
@@ -292,7 +302,7 @@ impl RegistryConfig {
 impl std::fmt::Debug for RegistryConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RegistryConfig")
-            .field("backend_type", &self.backend_type)
+            .field("backend_type", &self.default_backend)
             .field(
                 "backend_configs",
                 &DebugBackendConfigs(&self.backend_configs),
