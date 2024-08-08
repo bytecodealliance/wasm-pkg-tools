@@ -57,6 +57,11 @@ impl<T: Cache> CachingClient<T> {
         Self { client, cache }
     }
 
+    /// Returns whether or not the client is in read-only mode.
+    pub fn is_readonly(&self) -> bool {
+        self.client.is_none()
+    }
+
     /// Returns a list of all package [`VersionInfo`]s available for the given package. This will
     /// always fail if no client was provided.
     pub async fn list_all_versions(&self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
