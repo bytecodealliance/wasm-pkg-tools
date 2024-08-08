@@ -5,9 +5,13 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use futures_util::{StreamExt, TryStreamExt};
 use tokio_util::io::{ReaderStream, StreamReader};
-use wasm_pkg_common::{digest::ContentDigest, Error};
+use wasm_pkg_common::{
+    digest::ContentDigest,
+    package::{PackageRef, Version},
+    Error,
+};
 
-use crate::loader::ContentStream;
+use crate::{loader::ContentStream, Release};
 
 use super::Cache;
 
@@ -23,6 +27,36 @@ impl FileCache {
         Ok(Self {
             root: root.as_ref().to_path_buf(),
         })
+    }
+}
+
+#[derive(serde::Serialize)]
+struct ReleaseInfoBorrowed<'a> {
+    version: &'a Version,
+    content_digest: &'a ContentDigest,
+}
+
+impl<'a> From<&'a Release> for ReleaseInfoBorrowed<'a> {
+    fn from(release: &'a Release) -> Self {
+        Self {
+            version: &release.version,
+            content_digest: &release.content_digest,
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct ReleaseInfoOwned {
+    version: Version,
+    content_digest: ContentDigest,
+}
+
+impl From<ReleaseInfoOwned> for Release {
+    fn from(info: ReleaseInfoOwned) -> Self {
+        Self {
+            version: info.version,
+            content_digest: info.content_digest,
+        }
     }
 }
 
@@ -55,5 +89,41 @@ impl Cache for FileCache {
         Ok(Some(
             ReaderStream::new(file).map_err(Error::IoError).boxed(),
         ))
+    }
+
+    async fn put_release(&self, package: &PackageRef, release: &Release) -> Result<(), Error> {
+        let path = self
+            .root
+            .join(format!("{}-{}.json", package, release.version));
+        tokio::fs::write(
+            path,
+            serde_json::to_string(&ReleaseInfoBorrowed::from(release)).map_err(|e| {
+                Error::CacheError(anyhow::anyhow!("Error serializing data to disk: {e}"))
+            })?,
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| Error::CacheError(anyhow::anyhow!("Error writing to disk: {e}")))
+    }
+
+    async fn get_release(
+        &self,
+        package: &PackageRef,
+        version: &Version,
+    ) -> Result<Option<Release>, Error> {
+        let path = self.root.join(format!("{}-{}.json", package, version));
+        let exists = tokio::fs::try_exists(&path).await.map_err(|e| {
+            Error::CacheError(anyhow::anyhow!("Error checking if file exists: {e}"))
+        })?;
+        if !exists {
+            return Ok(None);
+        }
+        let data = tokio::fs::read(path)
+            .await
+            .map_err(|e| Error::CacheError(anyhow::anyhow!("Error reading from disk: {e}")))?;
+        let release: ReleaseInfoOwned = serde_json::from_slice(&data).map_err(|e| {
+            Error::CacheError(anyhow::anyhow!("Error deserializing data from disk: {e}"))
+        })?;
+        Ok(Some(release.into()))
     }
 }
