@@ -7,8 +7,9 @@ use wasm_pkg_common::{
 };
 
 use crate::{
-    loader::{ContentStream, PackageLoader},
+    loader::PackageLoader,
     release::{Release, VersionInfo},
+    ContentStream,
 };
 
 use super::{package_ref_to_name, warg_registry_error, WargBackend};

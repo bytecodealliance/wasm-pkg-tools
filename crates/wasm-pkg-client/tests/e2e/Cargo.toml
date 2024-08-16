@@ -8,8 +8,8 @@ anyhow = "1.0.79"
 bytes = "1.5.0"
 futures-util = { version = "0.3.29", features = ["io"] }
 libtest-mimic = "0.7.0"
-oci-distribution = "0.11.0"
-oci-wasm = "0.0.3"
+oci-client = "0.12"
+oci-wasm = "0.0.5"
 tempfile = "3.9.0"
 tokio = { version = "1", default-features = false, features = ["fs"] }
 tokio-test = "0.4.3"

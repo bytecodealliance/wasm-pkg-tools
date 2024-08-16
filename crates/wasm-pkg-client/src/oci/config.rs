@@ -3,7 +3,7 @@ use base64::{
     engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig},
     Engine,
 };
-use oci_distribution::client::ClientConfig;
+use oci_client::client::ClientConfig;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize, Serializer};
 use wasm_pkg_common::{config::RegistryConfig, Error};
@@ -131,20 +131,20 @@ impl TryFrom<TomlAuth> for BasicCredentials {
     }
 }
 
-fn oci_client_protocol(text: &str) -> Result<oci_distribution::client::ClientProtocol, Error> {
+fn oci_client_protocol(text: &str) -> Result<oci_client::client::ClientProtocol, Error> {
     match text {
-        "http" => Ok(oci_distribution::client::ClientProtocol::Http),
-        "https" => Ok(oci_distribution::client::ClientProtocol::Https),
+        "http" => Ok(oci_client::client::ClientProtocol::Http),
+        "https" => Ok(oci_client::client::ClientProtocol::Https),
         _ => Err(Error::InvalidConfig(anyhow::anyhow!(
             "Unknown OCI protocol {text:?}"
         ))),
     }
 }
 
-fn oci_protocol_string(protocol: &oci_distribution::client::ClientProtocol) -> String {
+fn oci_protocol_string(protocol: &oci_client::client::ClientProtocol) -> String {
     match protocol {
-        oci_distribution::client::ClientProtocol::Http => "http".into(),
-        oci_distribution::client::ClientProtocol::Https => "https".into(),
+        oci_client::client::ClientProtocol::Http => "http".into(),
+        oci_client::client::ClientProtocol::Https => "https".into(),
         // Default to https if not specified
         _ => "https".into(),
     }
@@ -186,7 +186,7 @@ mod tests {
         assert_eq!(username, "open");
         assert_eq!(password.expose_secret(), "sesame");
         assert_eq!(
-            oci_distribution::client::ClientProtocol::Http,
+            oci_client::client::ClientProtocol::Http,
             oci_config.client_config.protocol
         );
 
@@ -203,8 +203,8 @@ mod tests {
     #[test]
     fn test_roundtrip() {
         let config = OciRegistryConfig {
-            client_config: oci_distribution::client::ClientConfig {
-                protocol: oci_distribution::client::ClientProtocol::Http,
+            client_config: oci_client::client::ClientConfig {
+                protocol: oci_client::client::ClientProtocol::Http,
                 ..Default::default()
             },
             credentials: Some(BasicCredentials {

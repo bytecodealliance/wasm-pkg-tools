@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::Context;
 use clap::{Args, Subcommand};
 use docker_credential::DockerCredential;
-use oci_distribution::{
+use oci_client::{
     client::{ClientConfig, ClientProtocol},
     secrets::RegistryAuth,
     Reference,
@@ -200,7 +200,7 @@ impl PullArgs {
 }
 
 fn get_client(common: Common) -> WasmClient {
-    let client = oci_distribution::Client::new(ClientConfig {
+    let client = oci_client::Client::new(ClientConfig {
         protocol: if common.insecure.is_empty() {
             ClientProtocol::Https
         } else {
@@ -216,7 +216,7 @@ fn get_client(common: Common) -> WasmClient {
 mod tests {
     use crate::oci::Auth;
     use base64::{engine::general_purpose, Engine};
-    use oci_distribution::{secrets::RegistryAuth, Reference};
+    use oci_client::{secrets::RegistryAuth, Reference};
     use serde_json::json;
     use tempfile::tempdir;
 

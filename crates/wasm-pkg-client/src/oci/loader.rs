@@ -1,12 +1,13 @@
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
-use oci_distribution::manifest::OciDescriptor;
+use oci_client::{manifest::OciDescriptor, RegistryOperation};
 use warg_protocol::Version;
 use wasm_pkg_common::{package::PackageRef, Error};
 
 use crate::{
-    loader::{ContentStream, PackageLoader},
+    loader::PackageLoader,
     release::{Release, VersionInfo},
+    ContentStream,
 };
 
 use super::{oci_registry_error, OciBackend};
@@ -17,7 +18,7 @@ impl PackageLoader for OciBackend {
         let reference = self.make_reference(package, None);
 
         tracing::debug!(?reference, "Listing tags for OCI reference");
-        let auth = self.auth(&reference).await?;
+        let auth = self.auth(&reference, RegistryOperation::Pull).await?;
         let resp = self
             .client
             .list_tags(&reference, &auth, None, None)
@@ -47,7 +48,7 @@ impl PackageLoader for OciBackend {
         let reference = self.make_reference(package, Some(version));
 
         tracing::debug!(?reference, "Fetching image manifest for OCI reference");
-        let auth = self.auth(&reference).await?;
+        let auth = self.auth(&reference, RegistryOperation::Pull).await?;
         let (manifest, _config, _digest) = self
             .client
             .pull_manifest_and_config(&reference, &auth)
@@ -81,7 +82,7 @@ impl PackageLoader for OciBackend {
             digest: release.content_digest.to_string(),
             ..Default::default()
         };
-        self.auth(&reference).await?;
+        self.auth(&reference, RegistryOperation::Pull).await?;
         let stream = self
             .client
             .pull_blob_stream(&reference, &descriptor)
