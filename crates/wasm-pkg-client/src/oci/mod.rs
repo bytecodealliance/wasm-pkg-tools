@@ -6,9 +6,12 @@
 
 mod config;
 mod loader;
+mod publisher;
 
 use docker_credential::{CredentialRetrievalError, DockerCredential};
-use oci_distribution::{errors::OciDistributionError, secrets::RegistryAuth, Reference};
+use oci_client::{
+    errors::OciDistributionError, secrets::RegistryAuth, Reference, RegistryOperation,
+};
 use secrecy::ExposeSecret;
 use serde::Deserialize;
 use tokio::sync::OnceCell;
@@ -21,7 +24,7 @@ use wasm_pkg_common::{
 };
 
 /// Re-exported for convenience.
-pub use oci_distribution::client;
+pub use oci_client::client;
 
 pub use config::{BasicCredentials, OciRegistryConfig};
 
@@ -50,7 +53,7 @@ impl OciBackend {
             client_config,
             credentials,
         } = registry_config.try_into()?;
-        let client = oci_distribution::Client::new(client_config);
+        let client = oci_client::Client::new(client_config);
         let client = oci_wasm::WasmClient::new(client);
 
         let oci_meta = registry_meta
@@ -67,21 +70,24 @@ impl OciBackend {
         })
     }
 
-    pub(crate) async fn auth(&self, reference: &Reference) -> Result<RegistryAuth, Error> {
+    pub(crate) async fn auth(
+        &self,
+        reference: &Reference,
+        operation: RegistryOperation,
+    ) -> Result<RegistryAuth, Error> {
         self.registry_auth
             .get_or_try_init(|| async {
                 let mut auth = self.get_credentials()?;
                 // Preflight auth to check for validity; this isn't wasted
-                // effort because the oci_distribution::Client caches it
-                use oci_distribution::errors::OciDistributionError::AuthenticationFailure;
-                use oci_distribution::RegistryOperation::Pull;
-                match self.client.auth(reference, &auth, Pull).await {
+                // effort because the oci_client::Client caches it
+                use oci_client::errors::OciDistributionError::AuthenticationFailure;
+                match self.client.auth(reference, &auth, operation).await {
                     Ok(_) => (),
                     Err(err @ AuthenticationFailure(_)) if auth != RegistryAuth::Anonymous => {
                         // The failed credentials might not even be required for this image; retry anonymously
                         if self
                             .client
-                            .auth(reference, &RegistryAuth::Anonymous, Pull)
+                            .auth(reference, &RegistryAuth::Anonymous, operation)
                             .await
                             .is_ok()
                         {

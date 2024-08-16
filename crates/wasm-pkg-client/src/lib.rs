@@ -30,16 +30,22 @@ pub mod caching;
 mod loader;
 pub mod local;
 pub mod oci;
+mod publisher;
 mod release;
 pub mod warg;
 
-use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
+use std::{collections::HashMap, pin::Pin};
 
 use anyhow::anyhow;
+use bytes::Bytes;
+use futures_util::Stream;
+use publisher::PackagePublisher;
 use tokio::sync::RwLock;
 
 use wasm_pkg_common::metadata::RegistryMetadata;
+use wit_component::DecodedWasm;
 
 use crate::{loader::PackageLoader, local::LocalBackend, oci::OciBackend, warg::WargBackend};
 
@@ -51,11 +57,17 @@ pub use wasm_pkg_common::{
     Error,
 };
 
-pub use loader::ContentStream;
 pub use release::{Release, VersionInfo};
 
-type RegistrySources = HashMap<Registry, Arc<Loader>>;
-type Loader = Box<dyn PackageLoader + Sync>;
+/// An alias for a stream of content bytes
+pub type ContentStream = Pin<Box<dyn Stream<Item = Result<Bytes, Error>> + Send + 'static>>;
+
+trait LoaderPublisher: PackageLoader + PackagePublisher {}
+
+impl<T> LoaderPublisher for T where T: PackageLoader + PackagePublisher {}
+
+type RegistrySources = HashMap<Registry, Arc<InnerClient>>;
+type InnerClient = Box<dyn LoaderPublisher + Sync>;
 
 /// A read-only registry client.
 pub struct Client {
@@ -105,7 +117,23 @@ impl Client {
         source.stream_content(package, release).await
     }
 
-    async fn resolve_source(&self, package: &PackageRef) -> Result<Arc<Loader>, Error> {
+    /// Publishes the given file as a package release. The package name and version will be read
+    /// from the component
+    pub async fn publish_release_file(&self, file: impl AsRef<Path>) -> Result<(), Error> {
+        let data = tokio::fs::read(file).await?;
+
+        self.publish_release_data(data).await
+    }
+
+    /// Publishes the given data as a package release. The package name and version will be read
+    /// from the component
+    pub async fn publish_release_data(&self, data: Vec<u8>) -> Result<(), Error> {
+        let (package, version) = resolve_package(&data)?;
+        let source = self.resolve_source(&package).await?;
+        source.publish(&package, &version, data).await
+    }
+
+    async fn resolve_source(&self, package: &PackageRef) -> Result<Arc<InnerClient>, Error> {
         let registry = self
             .config
             .resolve_registry(package)
@@ -150,7 +178,7 @@ impl Client {
             .unwrap_or("oci");
             tracing::debug!(?backend_type, "Resolved backend type");
 
-            let source: Loader = match backend_type {
+            let source: InnerClient = match backend_type {
                 "local" => Box::new(LocalBackend::new(registry_config)?),
                 "oci" => Box::new(OciBackend::new(
                     &registry,
@@ -173,4 +201,47 @@ impl Client {
         }
         Ok(self.sources.read().await.get(&registry).unwrap().clone())
     }
+}
+
+fn resolve_package(data: &[u8]) -> Result<(PackageRef, Version), Error> {
+    let (resolve, package_id) =
+        match wit_component::decode(data).map_err(crate::Error::InvalidComponent)? {
+            DecodedWasm::Component(resolve, world_id) => {
+                let package_id = resolve
+                    .worlds
+                    .iter()
+                    .find_map(|(id, w)| if id == world_id { w.package } else { None })
+                    .ok_or_else(|| {
+                        crate::Error::InvalidComponent(anyhow::anyhow!(
+                            "component world or package not found"
+                        ))
+                    })?;
+                (resolve, package_id)
+            }
+            DecodedWasm::WitPackage(resolve, package_id) => (resolve, package_id),
+        };
+    let (package, version) = resolve
+        .package_names
+        .into_iter()
+        .find_map(|(pkg, id)| {
+            // SAFETY: We just parsed this from wit and should be able to unwrap. If it
+            // isn't a valid identifier, something else is majorly wrong
+            (id == package_id).then(|| {
+                (
+                    PackageRef::new(
+                        pkg.namespace.try_into().unwrap(),
+                        pkg.name.try_into().unwrap(),
+                    ),
+                    pkg.version,
+                )
+            })
+        })
+        .ok_or_else(|| {
+            crate::Error::InvalidComponent(anyhow::anyhow!("component package not found"))
+        })?;
+
+    let version = version.ok_or_else(|| {
+        crate::Error::InvalidComponent(anyhow::anyhow!("component package version not found"))
+    })?;
+    Ok((package, version))
 }

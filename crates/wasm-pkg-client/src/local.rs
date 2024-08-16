@@ -17,8 +17,10 @@ use wasm_pkg_common::{
 };
 
 use crate::{
-    loader::{ContentStream, PackageLoader},
+    loader::PackageLoader,
+    publisher::PackagePublisher,
     release::{Release, VersionInfo},
+    ContentStream,
 };
 
 #[derive(Clone, Debug, Deserialize)]
@@ -99,5 +101,21 @@ impl PackageLoader for LocalBackend {
         tracing::debug!("Streaming content from {path:?}");
         let file = tokio::fs::File::open(path).await?;
         Ok(ReaderStream::new(file).map_err(Into::into).boxed())
+    }
+}
+
+#[async_trait::async_trait]
+impl PackagePublisher for LocalBackend {
+    async fn publish(
+        &self,
+        package: &PackageRef,
+        version: &Version,
+        data: Vec<u8>,
+    ) -> Result<(), Error> {
+        let package_dir = self.package_dir(package);
+        // Ensure the package directory exists.
+        tokio::fs::create_dir_all(package_dir).await?;
+        let path = self.version_path(package, version);
+        tokio::fs::write(path, data).await.map_err(Error::IoError)
     }
 }

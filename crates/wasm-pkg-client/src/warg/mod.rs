@@ -2,6 +2,7 @@
 
 mod config;
 mod loader;
+mod publisher;
 
 use serde::Deserialize;
 use warg_client::{storage::PackageInfo, ClientError, FileSystemClient};

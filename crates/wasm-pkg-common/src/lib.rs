@@ -16,6 +16,8 @@ pub enum Error {
     ConfigFileIoError(#[source] std::io::Error),
     #[error("failed to get registry credentials: {0:#}")]
     CredentialError(#[source] anyhow::Error),
+    #[error("malformed component: {0:#}")]
+    InvalidComponent(#[source] anyhow::Error),
     #[error("invalid config: {0}")]
     InvalidConfig(#[source] anyhow::Error),
     #[error("invalid content: {0}")]

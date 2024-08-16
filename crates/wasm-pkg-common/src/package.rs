@@ -17,6 +17,11 @@ pub struct PackageRef {
 }
 
 impl PackageRef {
+    /// Create a new package reference from a namespace and name.
+    pub fn new(namespace: Label, name: Label) -> Self {
+        Self { namespace, name }
+    }
+
     /// Returns the namespace of the package.
     pub fn namespace(&self) -> &Label {
         &self.namespace

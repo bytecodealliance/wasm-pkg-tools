@@ -26,6 +26,7 @@ tokio = { workspace = true, features = ["io-util", "fs"], optional = true }
 toml = "0.8.13"
 thiserror = "1.0"
 tracing = "0.1"
+wit-parser = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

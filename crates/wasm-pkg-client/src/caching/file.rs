@@ -11,7 +11,7 @@ use wasm_pkg_common::{
     Error,
 };
 
-use crate::{loader::ContentStream, Release};
+use crate::{ContentStream, Release};
 
 use super::Cache;
 

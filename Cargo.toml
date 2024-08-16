@@ -11,8 +11,8 @@ license = "Apache-2.0 WITH LLVM-exception"
 [workspace.dependencies]
 anyhow = "1"
 docker_credential = "1.2.1"
-oci-distribution = "0.11.0"
-oci-wasm = "0.0.4"
+oci-client = "0.12"
+oci-wasm = "0.0.5"
 tokio = "1.35.1"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", default-features = false, features = [
@@ -21,3 +21,5 @@ tracing-subscriber = { version = "0.3.18", default-features = false, features = 
 ] }
 wasm-pkg-common = { version = "0.4.1", path = "crates/wasm-pkg-common" }
 wasm-pkg-client = { version = "0.4.1", path = "crates/wasm-pkg-client" }
+wit-component = "0.215"
+wit-parser = "0.215"

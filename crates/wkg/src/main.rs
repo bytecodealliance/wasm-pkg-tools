@@ -30,8 +30,12 @@ struct RegistryArgs {
 #[derive(Subcommand, Debug)]
 #[allow(clippy::large_enum_variant)]
 enum Commands {
-    /// Load a package. This is for use in debugging dependency fetching. For pulling a component, use `wit get`
+    /// Load a package. This is for use in debugging dependency fetching. For pulling a component,
+    /// use `wit get`
     Get(GetArgs),
+    /// Publish a package to a registry. This will read the package ID from the wasm file and use
+    /// that for publishing
+    Publish(PublishArgs),
     /// Commands for interacting with OCI registries
     #[clap(subcommand)]
     Oci(OciCommands),
@@ -60,6 +64,31 @@ struct GetArgs {
 
     #[command(flatten)]
     registry_args: RegistryArgs,
+}
+
+#[derive(Args, Debug)]
+struct PublishArgs {
+    file: PathBuf,
+    // TODO: Figure out how to plumb through a registry override
+    // #[command(flatten)]
+    // registry_args: RegistryArgs,
+}
+
+impl PublishArgs {
+    pub async fn run(self) -> anyhow::Result<()> {
+        let client = {
+            let config = Config::global_defaults()?;
+            // TODO: Figure out how to plumb through a registry override
+            // if let Some(registry) = self.registry_args.registry.clone() {
+            //     tracing::debug!(%package, %registry, "overriding package registry");
+            //     config.set_package_registry_override(package.clone(), registry);
+            // }
+            Client::new(config)
+        };
+
+        client.publish_release_file(&self.file).await?;
+        Ok(())
+    }
 }
 
 #[derive(ValueEnum, Clone, Debug, PartialEq)]
@@ -147,7 +176,7 @@ impl GetArgs {
             match wit_component::decode_reader(&mut file) {
                 Ok(DecodedWasm::WitPackage(resolve, pkg)) => {
                     tracing::debug!(?pkg, "decoded WIT package");
-                    Some(wit_component::WitPrinter::default().print(&resolve, pkg)?)
+                    Some(wit_component::WitPrinter::default().print(&resolve, pkg, &[])?)
                 }
                 Ok(_) => None,
                 Err(err) => {
@@ -204,6 +233,7 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Get(args) => args.run().await,
+        Commands::Publish(args) => args.run().await,
         Commands::Oci(args) => args.run().await,
     }
 }

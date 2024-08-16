@@ -1929,10 +1929,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "oci-distribution"
-version = "0.11.0"
+name = "oci-client"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b95a2c51531af0cb93761f66094044ca6ea879320bccd35ab747ff3fcab3f422"
+checksum = "0f5098b86f972ac3484f7c9011bbbbd64aaa7e21d10d2c1a91fefb4ad0ba2ad9"
 dependencies = [
  "bytes",
  "chrono",
@@ -1955,30 +1955,13 @@ dependencies = [
 
 [[package]]
 name = "oci-wasm"
-version = "0.0.3"
+version = "0.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e1930a0cc13337feec6dfcc223d51707b0228189c1c9ac27fab0cf38487acb8"
+checksum = "1d3493d1985a31c5fbd4b37f72a319aab88b55908185a5a799219c6152e9da9b"
 dependencies = [
  "anyhow",
  "chrono",
- "oci-distribution",
- "serde 1.0.202",
- "serde_json",
- "sha2",
- "tokio",
- "wit-component",
- "wit-parser",
-]
-
-[[package]]
-name = "oci-wasm"
-version = "0.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a91502e5352f927156f2b6a28d2558cc59558b1f441b681df3f706ced6937e07"
-dependencies = [
- "anyhow",
- "chrono",
- "oci-distribution",
+ "oci-client",
  "serde 1.0.202",
  "serde_json",
  "sha2",
@@ -3814,18 +3797,19 @@ dependencies = [
 
 [[package]]
 name = "wasm-encoder"
-version = "0.209.1"
+version = "0.215.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b4a05336882dae732ce6bd48b7e11fe597293cb72c13da4f35d7d5f8d53b2a7"
+checksum = "4fb56df3e06b8e6b77e37d2969a50ba51281029a9aeb3855e76b7f49b6418847"
 dependencies = [
  "leb128",
+ "wasmparser 0.215.0",
 ]
 
 [[package]]
 name = "wasm-metadata"
-version = "0.209.1"
+version = "0.215.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d32029ce424f6d3c2b39b4419fb45a0e2d84fb0751e0c0a32b7ce8bd5d97f46"
+checksum = "0c6bb07c5576b608f7a2a9baa2294c1a3584a249965d695a9814a496cb6d232f"
 dependencies = [
  "anyhow",
  "indexmap 2.2.6",
@@ -3833,8 +3817,8 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "spdx",
- "wasm-encoder 0.209.1",
- "wasmparser 0.209.1",
+ "wasm-encoder 0.215.0",
+ "wasmparser 0.215.0",
 ]
 
 [[package]]
@@ -3848,8 +3832,8 @@ dependencies = [
  "dirs",
  "docker_credential",
  "futures-util",
- "oci-distribution",
- "oci-wasm 0.0.4",
+ "oci-client",
+ "oci-wasm",
  "secrecy",
  "serde 1.0.202",
  "serde_json",
@@ -3864,6 +3848,7 @@ dependencies = [
  "warg-client",
  "warg-protocol",
  "wasm-pkg-common",
+ "wit-component",
 ]
 
 [[package]]
@@ -3874,8 +3859,8 @@ dependencies = [
  "bytes",
  "futures-util",
  "libtest-mimic",
- "oci-distribution",
- "oci-wasm 0.0.3",
+ "oci-client",
+ "oci-wasm",
  "tempfile",
  "tokio",
  "tokio-test",
@@ -3900,6 +3885,7 @@ dependencies = [
  "tokio",
  "toml 0.8.13",
  "tracing",
+ "wit-parser",
 ]
 
 [[package]]
@@ -3928,9 +3914,9 @@ dependencies = [
 
 [[package]]
 name = "wasmparser"
-version = "0.209.1"
+version = "0.215.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07035cc9a9b41e62d3bb3a3815a66ab87c993c06fe1cf6b2a3f2a18499d937db"
+checksum = "53fbde0881f24199b81cf49b6ff8f9c145ac8eb1b7fc439adb5c099734f7d90e"
 dependencies = [
  "ahash",
  "bitflags 2.5.0",
@@ -4190,9 +4176,9 @@ dependencies = [
 
 [[package]]
 name = "wit-component"
-version = "0.209.1"
+version = "0.215.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25a2bb5b039f9cb03425e1d5a6e54b441ca4ca1b1d4fa6a0924db67a55168f99"
+checksum = "f725e3885fc5890648be5c5cbc1353b755dc932aa5f1aa7de968b912a3280743"
 dependencies = [
  "anyhow",
  "bitflags 2.5.0",
@@ -4201,17 +4187,17 @@ dependencies = [
  "serde 1.0.202",
  "serde_derive",
  "serde_json",
- "wasm-encoder 0.209.1",
+ "wasm-encoder 0.215.0",
  "wasm-metadata",
- "wasmparser 0.209.1",
+ "wasmparser 0.215.0",
  "wit-parser",
 ]
 
 [[package]]
 name = "wit-parser"
-version = "0.209.1"
+version = "0.215.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e79b9e3c0b6bb589dec46317e645851e0db2734c44e2be5e251b03ff4a51269"
+checksum = "935a97eaffd57c3b413aa510f8f0b550a4a9fe7d59e79cd8b89a83dcb860321f"
 dependencies = [
  "anyhow",
  "id-arena",
@@ -4222,7 +4208,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "unicode-xid",
- "wasmparser 0.209.1",
+ "wasmparser 0.215.0",
 ]
 
 [[package]]

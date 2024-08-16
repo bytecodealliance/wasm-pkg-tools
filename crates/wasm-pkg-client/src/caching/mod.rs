@@ -6,7 +6,7 @@ use wasm_pkg_common::{
     Error,
 };
 
-use crate::{loader::ContentStream, Client, Release, VersionInfo};
+use crate::{Client, ContentStream, Release, VersionInfo};
 
 mod file;
 

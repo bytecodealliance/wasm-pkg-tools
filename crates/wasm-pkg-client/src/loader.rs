@@ -1,17 +1,14 @@
-use std::pin::Pin;
-
 use async_trait::async_trait;
-use bytes::Bytes;
-use futures_util::{Stream, StreamExt};
+use futures_util::StreamExt;
 use wasm_pkg_common::{
     package::{PackageRef, Version},
     Error,
 };
 
-use crate::release::{Release, VersionInfo};
-
-/// An alias for a stream of content bytes
-pub type ContentStream = Pin<Box<dyn Stream<Item = Result<Bytes, Error>> + Send + 'static>>;
+use crate::{
+    release::{Release, VersionInfo},
+    ContentStream,
+};
 
 #[async_trait]
 pub trait PackageLoader: Send {

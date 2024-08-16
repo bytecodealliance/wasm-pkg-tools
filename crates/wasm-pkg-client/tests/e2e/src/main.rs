@@ -68,8 +68,8 @@ async fn fetch_smoke_test() {
 }
 
 fn get_client() -> WasmClient {
-    let client = oci_distribution::Client::new(oci_distribution::client::ClientConfig {
-        protocol: oci_distribution::client::ClientProtocol::HttpsExcept(vec![
+    let client = oci_client::Client::new(oci_client::client::ClientConfig {
+        protocol: oci_client::client::ClientProtocol::HttpsExcept(vec![
             "localhost:5001".to_string()
         ]),
         ..Default::default()
@@ -82,16 +82,15 @@ async fn prepare_fixtures() -> anyhow::Result<()> {
     let client = get_client();
 
     let image =
-        oci_distribution::Reference::try_from(format!("localhost:5001/{pkg}:{FIXTURE_VERSION}"))
-            .unwrap();
+        oci_client::Reference::try_from(format!("localhost:5001/{pkg}:{FIXTURE_VERSION}")).unwrap();
 
-    let (conf, component) = WasmConfig::from_component(FIXTURE_WASM, Some("proxy"), None)
+    let (conf, component) = WasmConfig::from_component(FIXTURE_WASM, None)
         .await
         .context("Should be able to parse component and create config")?;
     client
         .push(
             &image,
-            &oci_distribution::secrets::RegistryAuth::Anonymous,
+            &oci_client::secrets::RegistryAuth::Anonymous,
             component,
             conf,
             None,
