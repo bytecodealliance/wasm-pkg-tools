@@ -1,6 +1,7 @@
 [package]
 name = "wkg"
 description = "Wasm Package Tools CLI"
+repository = "https://github.com/bytecodealliance/wasm-pkg-tools/tree/main/crates/wkg"
 edition.workspace = true
 version.workspace = true
 authors.workspace = true
