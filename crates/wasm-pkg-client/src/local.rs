@@ -37,7 +37,7 @@ impl LocalBackend {
         let config = registry_config
             .backend_config::<LocalConfig>("local")?
             .ok_or_else(|| {
-                Error::InvalidConfig(anyhow!("'local' backend require configuration"))
+                Error::InvalidConfig(anyhow!("'local' backend requires configuration"))
             })?;
         Ok(Self { root: config.root })
     }

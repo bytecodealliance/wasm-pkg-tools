@@ -27,6 +27,13 @@ struct RegistryArgs {
     registry: Option<Registry>,
 }
 
+#[derive(Args, Debug)]
+struct Common {
+    /// The path to the configuration file.
+    #[arg(long = "config", value_name = "CONFIG", env = "WKG_CONFIG_FILE")]
+    config: Option<PathBuf>,
+}
+
 #[derive(Subcommand, Debug)]
 #[allow(clippy::large_enum_variant)]
 enum Commands {
@@ -64,6 +71,9 @@ struct GetArgs {
 
     #[command(flatten)]
     registry_args: RegistryArgs,
+
+    #[command(flatten)]
+    common: Common,
 }
 
 #[derive(Args, Debug)]
@@ -122,7 +132,12 @@ impl GetArgs {
         let PackageSpec { package, version } = self.package_spec;
 
         let client = {
-            let mut config = Config::global_defaults()?;
+            let mut config = if let Some(config_file) = self.common.config {
+                Config::from_file(&config_file)
+                    .context(format!("error loading config file {config_file:?}"))?
+            } else {
+                Config::global_defaults()?
+            };
             if let Some(registry) = self.registry_args.registry.clone() {
                 tracing::debug!(%package, %registry, "overriding package registry");
                 config.set_package_registry_override(package.clone(), registry);
