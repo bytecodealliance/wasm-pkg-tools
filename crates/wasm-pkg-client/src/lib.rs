@@ -42,7 +42,9 @@ use anyhow::anyhow;
 use bytes::Bytes;
 use futures_util::Stream;
 use publisher::PackagePublisher;
+use tokio::io::AsyncSeekExt;
 use tokio::sync::RwLock;
+use tokio_util::io::SyncIoBridge;
 
 use wasm_pkg_common::metadata::RegistryMetadata;
 use wit_component::DecodedWasm;
@@ -62,12 +64,28 @@ pub use release::{Release, VersionInfo};
 /// An alias for a stream of content bytes
 pub type ContentStream = Pin<Box<dyn Stream<Item = Result<Bytes, Error>> + Send + 'static>>;
 
+/// An alias for a PublishingSource (generally a file)
+pub type PublishingSource = Pin<Box<dyn ReaderSeeker + Send + Sync + 'static>>;
+
+/// A supertrait combining tokio's AsyncRead and AsyncSeek.
+pub trait ReaderSeeker: tokio::io::AsyncRead + tokio::io::AsyncSeek {}
+impl<T> ReaderSeeker for T where T: tokio::io::AsyncRead + tokio::io::AsyncSeek {}
+
 trait LoaderPublisher: PackageLoader + PackagePublisher {}
 
 impl<T> LoaderPublisher for T where T: PackageLoader + PackagePublisher {}
 
 type RegistrySources = HashMap<Registry, Arc<InnerClient>>;
 type InnerClient = Box<dyn LoaderPublisher + Sync>;
+
+/// Additional options for publishing a package.
+#[derive(Clone, Debug, Default)]
+pub struct PublishOpts {
+    /// Override the package name and version to publish with.
+    pub package: Option<(PackageRef, Version)>,
+    /// Override the registry to publish to.
+    pub registry: Option<Registry>,
+}
 
 /// A read-only registry client.
 pub struct Client {
@@ -92,7 +110,7 @@ impl Client {
 
     /// Returns a list of all package [`Version`]s available for the given package.
     pub async fn list_all_versions(&self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
-        let source = self.resolve_source(package).await?;
+        let source = self.resolve_source(package, None).await?;
         source.list_all_versions(package).await
     }
 
@@ -102,7 +120,7 @@ impl Client {
         package: &PackageRef,
         version: &Version,
     ) -> Result<Release, Error> {
-        let source = self.resolve_source(package).await?;
+        let source = self.resolve_source(package, None).await?;
         source.get_release(package, version).await
     }
 
@@ -113,32 +131,70 @@ impl Client {
         package: &'a PackageRef,
         release: &'a Release,
     ) -> Result<ContentStream, Error> {
-        let source = self.resolve_source(package).await?;
+        let source = self.resolve_source(package, None).await?;
         source.stream_content(package, release).await
     }
 
     /// Publishes the given file as a package release. The package name and version will be read
-    /// from the component
-    pub async fn publish_release_file(&self, file: impl AsRef<Path>) -> Result<(), Error> {
-        let data = tokio::fs::read(file).await?;
+    /// from the component if not given as part of `additional_options`. Returns the package name
+    /// and version of the published release.
+    pub async fn publish_release_file(
+        &self,
+        file: impl AsRef<Path>,
+        additional_options: PublishOpts,
+    ) -> Result<(PackageRef, Version), Error> {
+        let data = tokio::fs::OpenOptions::new().read(true).open(file).await?;
 
-        self.publish_release_data(data).await
+        self.publish_release_data(Box::pin(data), additional_options)
+            .await
     }
 
-    /// Publishes the given data as a package release. The package name and version will be read
-    /// from the component
-    pub async fn publish_release_data(&self, data: Vec<u8>) -> Result<(), Error> {
-        let (package, version) = resolve_package(&data)?;
-        let source = self.resolve_source(&package).await?;
-        source.publish(&package, &version, data).await
+    /// Publishes the given reader as a package release. TThe package name and version will be read
+    /// from the component if not given as part of `additional_options`. Returns the package name
+    /// and version of the published release.
+    pub async fn publish_release_data(
+        &self,
+        data: PublishingSource,
+        additional_options: PublishOpts,
+    ) -> Result<(PackageRef, Version), Error> {
+        let (data, package, version) = if let Some((p, v)) = additional_options.package {
+            (data, p, v)
+        } else {
+            let data = SyncIoBridge::new(data);
+            let (mut data, p, v) = tokio::task::spawn_blocking(|| resolve_package(data))
+                .await
+                .map_err(|e| {
+                    crate::Error::IoError(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Error when performing blocking IO: {e:?}"),
+                    ))
+                })??;
+            // We must rewind the reader because we read to the end to parse the component.
+            data.rewind().await?;
+            (data, p, v)
+        };
+        let source = self
+            .resolve_source(&package, additional_options.registry)
+            .await?;
+        source
+            .publish(&package, &version, data)
+            .await
+            .map(|_| (package, version))
     }
 
-    async fn resolve_source(&self, package: &PackageRef) -> Result<Arc<InnerClient>, Error> {
-        let registry = self
-            .config
-            .resolve_registry(package)
-            .ok_or_else(|| Error::NoRegistryForNamespace(package.namespace().clone()))?
-            .to_owned();
+    async fn resolve_source(
+        &self,
+        package: &PackageRef,
+        registry_override: Option<Registry>,
+    ) -> Result<Arc<InnerClient>, Error> {
+        let registry = if let Some(registry) = registry_override {
+            registry
+        } else {
+            self.config
+                .resolve_registry(package)
+                .ok_or_else(|| Error::NoRegistryForNamespace(package.namespace().clone()))?
+                .to_owned()
+        };
         let has_key = {
             let sources = self.sources.read().await;
             sources.contains_key(&registry)
@@ -203,9 +259,14 @@ impl Client {
     }
 }
 
-fn resolve_package(data: &[u8]) -> Result<(PackageRef, Version), Error> {
+/// Resolves the package name and version from the given source. This takes a wrapped publishing
+/// source to it can do a blocking read with wit_component. It returns back the underlying
+/// PublishingSource but should be rewound to the beginning of the source
+fn resolve_package(
+    mut data: SyncIoBridge<PublishingSource>,
+) -> Result<(PublishingSource, PackageRef, Version), Error> {
     let (resolve, package_id) =
-        match wit_component::decode(data).map_err(crate::Error::InvalidComponent)? {
+        match wit_component::decode_reader(&mut data).map_err(crate::Error::InvalidComponent)? {
             DecodedWasm::Component(resolve, world_id) => {
                 let package_id = resolve
                     .worlds
@@ -243,5 +304,5 @@ fn resolve_package(data: &[u8]) -> Result<(PackageRef, Version), Error> {
     let version = version.ok_or_else(|| {
         crate::Error::InvalidComponent(anyhow::anyhow!("component package version not found"))
     })?;
-    Ok((package, version))
+    Ok((data.into_inner(), package, version))
 }

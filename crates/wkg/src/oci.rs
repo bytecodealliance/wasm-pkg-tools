@@ -221,12 +221,18 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
+    fn test_auth() {
+        // NOTE(thomastaylor312): These have to run serially because we are setting an env var
+        into_auth_should_read_docker_registry_credentials();
+        into_auth_should_other_registry_credentials();
+        std::env::remove_var("DOCKER_CONFIG");
+    }
+
     fn into_auth_should_read_docker_registry_credentials() {
         let reference: Reference = "dockeraccount/image".parse().unwrap();
         verify_docker_config_credentials(&reference, "https://index.docker.io/v1/");
     }
 
-    #[test]
     fn into_auth_should_other_registry_credentials() {
         let reference: Reference = "ghcr.io/githubaccount/image".parse().unwrap();
         verify_docker_config_credentials(&reference, "ghcr.io");
