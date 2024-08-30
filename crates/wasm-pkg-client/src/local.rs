@@ -20,7 +20,7 @@ use crate::{
     loader::PackageLoader,
     publisher::PackagePublisher,
     release::{Release, VersionInfo},
-    ContentStream,
+    ContentStream, PublishingSource,
 };
 
 #[derive(Clone, Debug, Deserialize)]
@@ -110,12 +110,16 @@ impl PackagePublisher for LocalBackend {
         &self,
         package: &PackageRef,
         version: &Version,
-        data: Vec<u8>,
+        mut data: PublishingSource,
     ) -> Result<(), Error> {
         let package_dir = self.package_dir(package);
         // Ensure the package directory exists.
         tokio::fs::create_dir_all(package_dir).await?;
         let path = self.version_path(package, version);
-        tokio::fs::write(path, data).await.map_err(Error::IoError)
+        let mut out = tokio::fs::File::create(path).await?;
+        tokio::io::copy(&mut data, &mut out)
+            .await
+            .map_err(Error::IoError)
+            .map(|_| ())
     }
 }

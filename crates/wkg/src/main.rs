@@ -5,7 +5,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
 use tokio::io::AsyncWriteExt;
 use tracing::level_filters::LevelFilter;
-use wasm_pkg_client::Client;
+use wasm_pkg_client::{Client, PublishOpts};
 use wasm_pkg_common::{config::Config, package::PackageSpec, registry::Registry};
 use wit_component::DecodedWasm;
 
@@ -68,25 +68,44 @@ struct GetArgs {
 
 #[derive(Args, Debug)]
 struct PublishArgs {
+    /// The file to publish
     file: PathBuf,
-    // TODO: Figure out how to plumb through a registry override
-    // #[command(flatten)]
-    // registry_args: RegistryArgs,
+    #[command(flatten)]
+    registry_args: RegistryArgs,
+
+    /// The package id to publish to, overriding the package ID from the file. This must be of the
+    /// form `<namespace>:<name>@<version>`.
+    #[arg(long, env = "WKG_PACKAGE")]
+    package: Option<PackageSpec>,
 }
 
 impl PublishArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         let client = {
             let config = Config::global_defaults()?;
-            // TODO: Figure out how to plumb through a registry override
-            // if let Some(registry) = self.registry_args.registry.clone() {
-            //     tracing::debug!(%package, %registry, "overriding package registry");
-            //     config.set_package_registry_override(package.clone(), registry);
-            // }
             Client::new(config)
         };
 
-        client.publish_release_file(&self.file).await?;
+        let package = if let Some(package) = self.package {
+            Some((
+                package.package,
+                package.version.ok_or_else(|| {
+                    anyhow::anyhow!("version is required when manually overriding the package ID")
+                })?,
+            ))
+        } else {
+            None
+        };
+        let (package, version) = client
+            .publish_release_file(
+                &self.file,
+                PublishOpts {
+                    package,
+                    registry: self.registry_args.registry,
+                },
+            )
+            .await?;
+        println!("Published {}@{}", package, version);
         Ok(())
     }
 }

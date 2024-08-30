@@ -23,15 +23,16 @@ serde_json = "1.0.110"
 sha2 = "0.10.8"
 thiserror = "1.0.51"
 tokio = { workspace = true, features = ["rt", "macros"] }
-tokio-util = { version = "0.7.10", features = ["io"] }
+tokio-util = { version = "0.7.10", features = ["io", "io-util", "codec"] }
 toml = "0.8.8"
 tracing = "0.1.40"
 tracing-subscriber = { workspace = true }
 url = "2.5.0"
-warg-client = "0.7.0"
-warg-protocol = "0.7.0"
+warg-client = "0.8.0"
+warg-protocol = "0.8.0"
 wasm-pkg-common = { workspace = true, features = ["metadata-client", "tokio"] }
 wit-component = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+testcontainers = "0.22.0"

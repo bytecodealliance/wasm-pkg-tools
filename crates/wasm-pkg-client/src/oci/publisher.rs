@@ -1,7 +1,8 @@
 use oci_client::{Reference, RegistryOperation};
+use tokio::io::AsyncReadExt;
 
 use crate::publisher::PackagePublisher;
-use crate::{PackageRef, Version};
+use crate::{PackageRef, PublishingSource, Version};
 
 use super::OciBackend;
 
@@ -11,9 +12,14 @@ impl PackagePublisher for OciBackend {
         &self,
         package: &PackageRef,
         version: &Version,
-        data: Vec<u8>,
+        mut data: PublishingSource,
     ) -> Result<(), crate::Error> {
-        let (config, layer) = oci_wasm::WasmConfig::from_raw_component(data, None)
+        // NOTE(thomastaylor312): oci-client doesn't support publishing from a stream or reader, so
+        // we have to read all the data in for now. Once we can address that upstream, we'll be able
+        // to remove this and use the stream directly.
+        let mut buf = Vec::new();
+        data.read_to_end(&mut buf).await?;
+        let (config, layer) = oci_wasm::WasmConfig::from_raw_component(buf, None)
             .map_err(crate::Error::InvalidComponent)?;
 
         let reference: Reference = self.make_reference(package, Some(version));
