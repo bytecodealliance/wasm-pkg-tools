@@ -1,16 +1,19 @@
 //! Warg package backend.
 
-mod config;
-mod loader;
-mod publisher;
+use std::sync::Arc;
 
 use serde::Deserialize;
 use warg_client::{storage::PackageInfo, ClientError, FileSystemClient};
+use warg_crypto::signing::PrivateKey;
 use warg_protocol::registry::PackageName;
 use wasm_pkg_common::{
     config::RegistryConfig, metadata::RegistryMetadata, package::PackageRef, registry::Registry,
     Error,
 };
+
+mod config;
+mod loader;
+mod publisher;
 
 /// Re-exported for convenience.
 pub use warg_client as client;
@@ -25,6 +28,7 @@ struct WargRegistryMetadata {
 
 pub(crate) struct WargBackend {
     client: FileSystemClient,
+    signing_key: Option<Arc<PrivateKey>>,
 }
 
 impl WargBackend {
@@ -40,6 +44,7 @@ impl WargBackend {
         let WargRegistryConfig {
             client_config,
             auth_token,
+            signing_key,
             ..
         } = registry_config.try_into()?;
 
@@ -57,7 +62,10 @@ impl WargBackend {
             FileSystemClient::new_with_config(Some(url.as_str()), &client_config, auth_token)
                 .await
                 .map_err(warg_registry_error)?;
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            signing_key,
+        })
     }
 
     pub(crate) async fn fetch_package_info(

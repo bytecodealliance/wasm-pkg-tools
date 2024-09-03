@@ -87,6 +87,12 @@ default = "warg"
 # A path to a valid warg config file. If this is not set, the `wkg` CLI (but not the libraries) 
 # will attempt to load the config from the default location(s).
 config_file = "/a/path"
+# An optional authentication token to use when authenticating with a registry.
+auth_token = "an-auth-token"
+# An optional key for signing the component. Ideally, you should just let warg use the keychain
+# or programmatically set this key in the config without writing to disk. This offers an escape
+# hatch for when you need to use a key that isn't in the keychain.
+signing_key = "ecdsa-p256:2CV1EpLaSYEn4In4OAEDAj5O4Hzu8AFAxgHXuG310Ew="
 [registry."acme.registry.com".oci]
 # The auth field can either be a username/password pair, or a base64 encoded `username:password` 
 # string. If no auth is set, the `wkg` CLI (but not the libraries) will also attempt to load the

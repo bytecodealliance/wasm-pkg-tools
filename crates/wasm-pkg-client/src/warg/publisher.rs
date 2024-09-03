@@ -39,15 +39,17 @@ impl PackagePublisher for WargBackend {
 
         // start Warg publish, using the keyring to sign
         let version = version.clone();
-        let record_id = self
-            .client
-            .sign_with_keyring_and_publish(Some(PublishInfo {
-                name: name.clone(),
-                head: None,
-                entries: vec![PublishEntry::Release { version, content }],
-            }))
-            .await
-            .map_err(super::warg_registry_error)?;
+        let info = PublishInfo {
+            name: name.clone(),
+            head: None,
+            entries: vec![PublishEntry::Release { version, content }],
+        };
+        let record_id = if let Some(key) = self.signing_key.as_ref() {
+            self.client.publish_with_info(key, info).await
+        } else {
+            self.client.sign_with_keyring_and_publish(Some(info)).await
+        }
+        .map_err(super::warg_registry_error)?;
 
         // wait for the Warg publish to finish
         self.client
