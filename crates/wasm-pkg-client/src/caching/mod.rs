@@ -114,9 +114,20 @@ impl<T: Cache> CachingClient<T> {
             })
     }
 
-    fn client(&self) -> Result<&Client, Error> {
+    /// Returns a reference to the underlying client. Returns an error if the client is in read-only
+    /// mode.
+    ///
+    /// Please note that using the client directly will bypass the cache.
+    pub fn client(&self) -> Result<&Client, Error> {
         self.client
             .as_ref()
+            .ok_or_else(|| Error::CacheError(anyhow::anyhow!("Client is in read only mode")))
+    }
+
+    /// Consumes the caching client and returns the underlying client. Returns an error if the
+    /// client is in read-only mode.
+    pub fn into_client(self) -> Result<Client, Error> {
+        self.client
             .ok_or_else(|| Error::CacheError(anyhow::anyhow!("Client is in read only mode")))
     }
 }
