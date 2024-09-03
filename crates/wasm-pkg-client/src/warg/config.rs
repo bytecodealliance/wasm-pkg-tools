@@ -1,21 +1,37 @@
-use std::path::PathBuf;
+use std::{fmt::Debug, path::PathBuf, sync::Arc};
 
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize, Serializer};
+use warg_crypto::signing::PrivateKey;
 use wasm_pkg_common::{config::RegistryConfig, Error};
 
 /// Registry configuration for Warg backends.
 ///
 /// See: [`RegistryConfig::backend_config`]
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Default, Serialize)]
 #[serde(into = "WargRegistryConfigToml")]
 pub struct WargRegistryConfig {
     /// The configuration for the Warg client.
     pub client_config: warg_client::Config,
     /// The authentication token for the Warg registry.
     pub auth_token: Option<SecretString>,
+    /// A signing key to use for publishing packages.
+    // NOTE(thomastaylor312): This couldn't be wrapped in a secret because the outer type doesn't
+    // implement Zeroize. However, the inner type is zeroized.
+    pub signing_key: Option<Arc<PrivateKey>>,
     /// The path to the Warg config file, if specified.
     pub config_file: Option<PathBuf>,
+}
+
+impl Debug for WargRegistryConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WargRegistryConfig")
+            .field("client_config", &self.client_config)
+            .field("auth_token", &self.auth_token)
+            .field("signing_key", &"[redacted]")
+            .field("config_file", &self.config_file)
+            .finish()
+    }
 }
 
 impl TryFrom<&RegistryConfig> for WargRegistryConfig {
@@ -24,6 +40,7 @@ impl TryFrom<&RegistryConfig> for WargRegistryConfig {
     fn try_from(registry_config: &RegistryConfig) -> Result<Self, Self::Error> {
         let WargRegistryConfigToml {
             auth_token,
+            signing_key,
             config_file,
         } = registry_config.backend_config("warg")?.unwrap_or_default();
         let (client_config, config_file) = match config_file {
@@ -43,9 +60,16 @@ impl TryFrom<&RegistryConfig> for WargRegistryConfig {
                 )
             }
         };
+
         Ok(Self {
             client_config,
             auth_token,
+            signing_key: signing_key
+                .map(|k| PrivateKey::decode(k).map(Arc::new))
+                .transpose()
+                .map_err(|e| {
+                    Error::InvalidConfig(anyhow::anyhow!("invalid signing key in config file: {e}"))
+                })?,
             config_file,
         })
     }
@@ -60,6 +84,11 @@ struct WargRegistryConfigToml {
         serialize_with = "serialize_secret"
     )]
     auth_token: Option<SecretString>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_secret"
+    )]
+    signing_key: Option<SecretString>,
 }
 
 impl From<WargRegistryConfig> for WargRegistryConfigToml {
@@ -67,6 +96,9 @@ impl From<WargRegistryConfig> for WargRegistryConfigToml {
         WargRegistryConfigToml {
             auth_token: value.auth_token,
             config_file: value.config_file,
+            signing_key: value
+                .signing_key
+                .map(|k| SecretString::new(k.encode().to_string())),
         }
     }
 }
@@ -90,12 +122,14 @@ mod tests {
     async fn test_warg_config_roundtrip() {
         let dir = tempfile::tempdir().expect("Unable to create tempdir");
         let warg_config_path = dir.path().join("warg_config.json");
+        let (_, key) = warg_crypto::signing::generate_p256_pair();
         let config = WargRegistryConfig {
             client_config: warg_client::Config {
                 home_url: Some("https://example.com".to_owned()),
                 ..Default::default()
             },
             auth_token: Some("imsecret".to_owned().into()),
+            signing_key: Some(Arc::new(key)),
             config_file: Some(warg_config_path.clone()),
         };
 
@@ -134,6 +168,14 @@ mod tests {
                 .expose_secret(),
             config.auth_token.unwrap().expose_secret(),
             "Auth token should be set to the right value"
+        );
+        assert_eq!(
+            roundtripped
+                .signing_key
+                .expect("Should have a signing key set")
+                .encode(),
+            config.signing_key.unwrap().encode(),
+            "Signing key should be set to the right value"
         );
     }
 }

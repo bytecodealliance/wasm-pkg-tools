@@ -4004,6 +4004,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "warg-client",
+ "warg-crypto",
  "warg-protocol",
  "wasm-pkg-common",
  "wit-component 0.216.0",
