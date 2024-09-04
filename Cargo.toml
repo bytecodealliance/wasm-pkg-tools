@@ -4,7 +4,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-version = "0.4.1"
+version = "0.5.0"
 authors = ["The Wasmtime Project Developers"]
 license = "Apache-2.0 WITH LLVM-exception"
 
@@ -23,7 +23,7 @@ tracing-subscriber = { version = "0.3.18", default-features = false, features = 
     "fmt",
     "env-filter",
 ] }
-wasm-pkg-common = { version = "0.4.1", path = "crates/wasm-pkg-common" }
-wasm-pkg-client = { version = "0.4.1", path = "crates/wasm-pkg-client" }
+wasm-pkg-common = { version = "0.5.0", path = "crates/wasm-pkg-common" }
+wasm-pkg-client = { version = "0.5.0", path = "crates/wasm-pkg-client" }
 wit-component = "0.216"
 wit-parser = "0.216"
