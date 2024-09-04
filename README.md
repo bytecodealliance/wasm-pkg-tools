@@ -47,11 +47,11 @@ The default location is `$XDG_CONFIG_HOME/wkg/config.toml` on unix-like systems 
 `{FOLDERID_RoamingAppData}\wkg\config.toml` on Windows but this can be overridden with the
 `--config` flag. Examples of this are found below:
 
-| Platform | Path                                          |
-| -------- | --------------------------------------------- |
-| Linux    | /home/<username>/.config                      |
-| macOS    | /Users/<username>/Library/Application Support |
-| Windows  | C:\Users\<username>\AppData\Roaming           |
+| Platform | Path                                            |
+| -------- | ----------------------------------------------- |
+| Linux    | `/home/<username>/.config`                      |
+| macOS    | `/Users/<username>/Library/Application Support` |
+| Windows  | `C:\Users\<username>\AppData\Roaming`           |
 
 The configuration file is TOML and currently must be edited manually. A future release will include
 an interactive CLI for editing the configuration.
