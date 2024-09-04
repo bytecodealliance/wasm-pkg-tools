@@ -28,9 +28,9 @@ toml = "0.8.8"
 tracing = "0.1.40"
 tracing-subscriber = { workspace = true }
 url = "2.5.0"
-warg-client = "0.8.0"
-warg-crypto = "0.8.0"
-warg-protocol = "0.8.0"
+warg-client = "0.9.0"
+warg-crypto = "0.9.0"
+warg-protocol = "0.9.0"
 wasm-pkg-common = { workspace = true, features = ["metadata-client", "tokio"] }
 wit-component = { workspace = true }
 
