@@ -101,3 +101,24 @@ jobs:
         shell: bash
         run: gh auth login --with-token < <(echo ${{ secrets.GITHUB_TOKEN }})
       - run: gh release upload -R bytecodealliance/wasm-pkg-tools --clobber ${{ github.ref_name }} target/${{ matrix.rust-target }}/release/wkg-${{ matrix.rust-target }}
+  
+  publish_crates:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'bytecodealliance/wasm-pkg-tools'
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup update stable --no-self-update && rustup default stable
+      - name: Publish wasm-pkg-common
+        working-directory: ./crates/wasm-pkg-common
+        run: cargo publish
+      - name: Publish wasm-pkg-client
+        working-directory: ./crates/wasm-pkg-client
+        run: cargo publish
+      - name: Publish wkg
+        working-directory: ./crates/wkg
+        run: cargo publish
+
