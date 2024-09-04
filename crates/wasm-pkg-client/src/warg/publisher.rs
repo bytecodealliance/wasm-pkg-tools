@@ -39,19 +39,10 @@ impl PackagePublisher for WargBackend {
 
         // start Warg publish, using the keyring to sign
         let version = version.clone();
-        // Check if the package already exists so we can init it if needed
-        let release = PublishEntry::Release { version, content };
-        let entries = if let Err(warg_client::ClientError::PackageDoesNotExist { .. }) =
-            self.client.fetch_package(&name).await
-        {
-            vec![PublishEntry::Init, release]
-        } else {
-            vec![release]
-        };
         let info = PublishInfo {
             name: name.clone(),
             head: None,
-            entries,
+            entries: vec![PublishEntry::Release { version, content }],
         };
         let record_id = if let Some(key) = self.signing_key.as_ref() {
             self.client.publish_with_info(key, info).await
