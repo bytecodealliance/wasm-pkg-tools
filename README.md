@@ -43,8 +43,8 @@ component tooling that wants to fetch from registries. This should allow for a s
 file that can be used by all tooling, whether that be `wkg` or some other tool that isn't written in
 Rust.
 
-The default location is `$XDG_CONFIG_HOME/wkg/config.toml` on unix-like systems and
-`{FOLDERID_RoamingAppData}\wkg\config.toml` on Windows but this can be overridden with the
+The default location is `$XDG_CONFIG_HOME/wasm-pkg/config.toml` on unix-like systems and
+`{FOLDERID_RoamingAppData}\wasm-pkg\config.toml` on Windows but this can be overridden with the
 `--config` flag. Examples of this are found below:
 
 | Platform | Path                                            |
