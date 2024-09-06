@@ -37,11 +37,9 @@ struct Common {
 #[derive(Subcommand, Debug)]
 #[allow(clippy::large_enum_variant)]
 enum Commands {
-    /// Load a package. This is for use in debugging dependency fetching. For pulling a component,
-    /// use `wit get`
+    /// Download a package from a registry
     Get(GetArgs),
-    /// Publish a package to a registry. This will read the package ID from the wasm file and use
-    /// that for publishing
+    /// Publish a package to a registry
     Publish(PublishArgs),
     /// Commands for interacting with OCI registries
     #[clap(subcommand)]
@@ -80,11 +78,12 @@ struct GetArgs {
 struct PublishArgs {
     /// The file to publish
     file: PathBuf,
+
     #[command(flatten)]
     registry_args: RegistryArgs,
 
-    /// The package id to publish to, overriding the package ID from the file. This must be of the
-    /// form `<namespace>:<name>@<version>`.
+    /// If not provided, the package name and version will be inferred from the Wasm file.
+    /// Expected format: `<namespace>:<name>@<version>`
     #[arg(long, env = "WKG_PACKAGE")]
     package: Option<PackageSpec>,
 }
