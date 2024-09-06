@@ -5,14 +5,13 @@ name: CI
 jobs:
   run-ci:
     name: Run CI
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install dependencies
-        run: |
-          ci/get-oras.sh
-          echo "/tmp/ci-bin" >> $GITHUB_PATH
       - name: Run cargo test
         run: cargo test --all --workspace
       - name: Run cargo clippy

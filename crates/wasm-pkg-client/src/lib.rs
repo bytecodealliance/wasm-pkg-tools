@@ -45,19 +45,17 @@ use publisher::PackagePublisher;
 use tokio::io::AsyncSeekExt;
 use tokio::sync::RwLock;
 use tokio_util::io::SyncIoBridge;
-
-use wasm_pkg_common::metadata::RegistryMetadata;
-use wit_component::DecodedWasm;
-
-use crate::{loader::PackageLoader, local::LocalBackend, oci::OciBackend, warg::WargBackend};
-
 pub use wasm_pkg_common::{
     config::Config,
     digest::ContentDigest,
+    metadata::RegistryMetadata,
     package::{PackageRef, Version},
     registry::Registry,
     Error,
 };
+use wit_component::DecodedWasm;
+
+use crate::{loader::PackageLoader, local::LocalBackend, oci::OciBackend, warg::WargBackend};
 
 pub use release::{Release, VersionInfo};
 
