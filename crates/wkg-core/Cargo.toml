@@ -1,0 +1,38 @@
+[package]
+name = "wkg-core"
+description = "Wasm Package Tools core libraries for wkg"
+repository = "https://github.com/bytecodealliance/wasm-pkg-tools/tree/main/crates/wkg-core"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+futures-util = { workspace = true }
+semver = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
+toml = { workspace = true }
+tracing = { workspace = true }
+wasm-pkg-common = { workspace = true }
+wasm-pkg-client = { workspace = true }
+
+[target.'cfg(unix)'.dependencies.libc]
+version = "0.2.153"
+
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.52"
+features = [
+    "Win32_Foundation",
+    "Win32_Storage",
+    "Win32_Storage_FileSystem",
+    "Win32_System",
+    "Win32_System_IO",
+    "Win32_Security",
+    "Win32_System_Console",
+]
+
+[dev-dependencies]
+tempfile = { workspace = true }
+sha2 = { workspace = true }
