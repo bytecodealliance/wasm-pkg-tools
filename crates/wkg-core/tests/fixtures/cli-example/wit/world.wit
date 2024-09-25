@@ -1,0 +1,8 @@
+package test:plugin;
+
+world plugin {
+  include wasi:cli/imports@0.2.0;
+  import wasi:http/outgoing-handler@0.2.0;
+
+  export wasi:cli/run@0.2.0;
+}

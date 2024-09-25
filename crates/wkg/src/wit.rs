@@ -1,6 +1,7 @@
 //! Args and commands for interacting with WIT files and dependencies
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use anyhow::Context;
 use clap::{Args, Subcommand};
 use wkg_core::{
     lock::LockFile,
@@ -85,6 +86,7 @@ pub struct UpdateArgs {
 
 impl BuildArgs {
     pub async fn run(self) -> anyhow::Result<()> {
+        check_dir(&self.dir).await?;
         let client = self.common.get_client().await?;
         let wkg_config = wkg_core::config::Config::load().await?;
         let mut lock_file = LockFile::load(false).await?;
@@ -111,6 +113,7 @@ impl BuildArgs {
 
 impl FetchArgs {
     pub async fn run(self) -> anyhow::Result<()> {
+        check_dir(&self.dir).await?;
         let client = self.common.get_client().await?;
         let wkg_config = wkg_core::config::Config::load().await?;
         let mut lock_file = LockFile::load(false).await?;
@@ -130,6 +133,7 @@ impl FetchArgs {
 
 impl UpdateArgs {
     pub async fn run(self) -> anyhow::Result<()> {
+        check_dir(&self.dir).await?;
         let client = self.common.get_client().await?;
         let wkg_config = wkg_core::config::Config::load().await?;
         let mut lock_file = LockFile::load(false).await?;
@@ -147,4 +151,8 @@ impl UpdateArgs {
         lock_file.write().await?;
         todo!()
     }
+}
+
+async fn check_dir(dir: impl AsRef<Path>) -> anyhow::Result<()> {
+    tokio::fs::metadata(dir).await.context("Unable to read wit directory. This command should be run from the parent directory of the wit directory or a directory can be overridden with the --wit-dir argument").map(|_|())
 }
