@@ -1,10 +1,6 @@
 //! Functions for building WIT packages and fetching their dependencies.
 
-use std::{
-    collections::HashSet,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::{collections::HashSet, path::Path, str::FromStr};
 
 use anyhow::{Context, Result};
 use semver::{Version, VersionReq};
@@ -12,7 +8,7 @@ use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     PackageRef,
 };
-use wit_component::{DecodedWasm, WitPrinter};
+use wit_component::WitPrinter;
 use wit_parser::{PackageId, PackageName, Resolve};
 
 use crate::{
@@ -28,9 +24,9 @@ use crate::{
 #[derive(Debug, Clone, Copy, Default)]
 pub enum OutputType {
     /// Output each dependency as a WIT file in the deps directory.
+    #[default]
     Wit,
     /// Output each dependency as a wasm binary file in the deps directory.
-    #[default]
     Wasm,
 }
 
@@ -226,19 +222,23 @@ pub async fn populate_dependencies(
     }
     tokio::fs::create_dir_all(&deps_path).await?;
 
+    // For wit output, generate the resolve and then output each package in the resolve
+    if let OutputType::Wit = output {
+        let (resolve, pkg_id) = deps.generate_resolve(&path).await?;
+        return print_wit_from_resolve(&resolve, pkg_id, &deps_path).await;
+    }
+
+    // If we got binary output, write them instead of the wit
     let decoded_deps = deps.decode_dependencies().await?;
 
     for (name, dep) in decoded_deps.iter() {
-        let mut output_path = deps_path.join(name.to_string());
+        let mut output_path = deps_path.join(name_from_package_name(name));
 
-        match (dep, output) {
-            (
-                DecodedDependency::Wit {
-                    resolution: DependencyResolution::Local(local),
-                    ..
-                },
-                _,
-            ) => {
+        match dep {
+            DecodedDependency::Wit {
+                resolution: DependencyResolution::Local(local),
+                ..
+            } => {
                 // Local deps always need to be written to a subdirectory of deps so create that here
                 tokio::fs::create_dir_all(&output_path).await?;
                 write_local_dep(local, output_path).await?;
@@ -246,39 +246,16 @@ pub async fn populate_dependencies(
             // This case shouldn't happen because registries only support wit packages. We can't get
             // a resolve from the unresolved group, so error out here. Ideally we could print the
             // unresolved group, but WitPrinter doesn't support that yet
-            (
-                DecodedDependency::Wit {
-                    resolution: DependencyResolution::Registry(_),
-                    ..
-                },
-                _,
-            ) => {
+            DecodedDependency::Wit {
+                resolution: DependencyResolution::Registry(_),
+                ..
+            } => {
                 anyhow::bail!("Unable to resolve dependency, this is a programmer error");
-            }
-            (DecodedDependency::Wasm { decoded, .. }, OutputType::Wit) => {
-                tokio::fs::create_dir_all(&output_path).await?;
-                let (resolve, pkg) = match decoded {
-                    DecodedWasm::WitPackage(r, p) => (r, *p),
-                    DecodedWasm::Component(r, world_id) => {
-                        let pkg_id = r
-                            .worlds
-                            .iter()
-                            .find_map(|(id, w)| {
-                                (id == *world_id).then_some(w).and_then(|w| w.package)
-                            })
-                            .ok_or_else(|| {
-                                anyhow::anyhow!("Unable to find package for the component's world")
-                            })?;
-                        (r, pkg_id)
-                    }
-                };
-                // Print all the deps
-                print_wit_deps(resolve, pkg, name, &deps_path).await?;
             }
             // Right now WIT packages include all of their dependencies, so we don't need to fetch
             // those too. In the future, we'll need to look for unsatisfied dependencies and fetch
             // them
-            (DecodedDependency::Wasm { resolution, .. }, OutputType::Wasm) => {
+            DecodedDependency::Wasm { resolution, .. } => {
                 // This is going to be written to a single file, so we don't create a directory here
                 // NOTE(thomastaylor312): This janky looking thing is to avoid chopping off the
                 // patch number from the release. Once `add_extension` is stabilized, we can use
@@ -373,30 +350,29 @@ async fn write_local_dep(local: &LocalResolution, output_path: impl AsRef<Path>)
     Ok(())
 }
 
-/// Recursive function that prints the top level dep given and then iterates over each of its dependencies
-async fn print_wit_deps(
+async fn print_wit_from_resolve(
     resolve: &Resolve,
-    pkg_id: PackageId,
-    top_level_name: &PackageName,
-    root_deps_dir: &PathBuf,
+    top_level_id: PackageId,
+    root_deps_dir: &Path,
 ) -> Result<()> {
-    // Print the top level package first, then iterate over all dependencies and print them
-    let dep_path = root_deps_dir.join(top_level_name.to_string());
-    tokio::fs::create_dir_all(&dep_path).await?;
-    let mut printer = WitPrinter::default();
-    let wit = printer
-        .print(resolve, pkg_id, &[])
-        .context("Unable to print wit")?;
-    tokio::fs::write(dep_path.join("package.wit"), wit).await?;
-    for pkg in resolve.package_direct_deps(pkg_id) {
-        // Get the package name
-        let package_name = resolve
-            .package_names
-            .iter()
-            .find_map(|(name, id)| (*id == pkg).then_some(name))
-            .ok_or_else(|| anyhow::anyhow!("Got package ID from world that didn't exist"))?;
-        // Recurse into this package
-        Box::pin(print_wit_deps(resolve, pkg, package_name, root_deps_dir)).await?;
+    for (id, pkg) in resolve
+        .packages
+        .iter()
+        .filter(|(id, _)| *id != top_level_id)
+    {
+        let dep_path = root_deps_dir.join(name_from_package_name(&pkg.name));
+        tokio::fs::create_dir_all(&dep_path).await?;
+        let mut printer = WitPrinter::default();
+        let wit = printer
+            .print(resolve, id, &[])
+            .context("Unable to print wit")?;
+        tokio::fs::write(dep_path.join("package.wit"), wit).await?;
     }
     Ok(())
+}
+
+/// Given a package name, returns a valid directory/file name for it (thanks windows!)
+fn name_from_package_name(package_name: &PackageName) -> String {
+    let package_name_str = package_name.to_string();
+    package_name_str.replace([':', '@'], "-")
 }

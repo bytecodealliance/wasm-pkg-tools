@@ -18,6 +18,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: "wasm32-wasi"
       # We have to run these separately so we can deactivate a feature for one of the tests
       - name: Run client tests
         working-directory: ./crates/wasm-pkg-client
