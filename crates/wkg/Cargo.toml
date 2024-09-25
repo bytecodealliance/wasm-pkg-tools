@@ -11,6 +11,7 @@ readme = "../../README.md"
 [dependencies]
 anyhow = { workspace = true }
 clap = { version = "4.5", features = ["derive", "wrap_help", "env"] }
+dirs = { workspace = true }
 docker_credential = { workspace = true }
 futures-util = { workspace = true, features = ["io"] }
 oci-client = { workspace = true }
@@ -22,6 +23,7 @@ tracing-subscriber = { workspace = true }
 wasm-pkg-common = { workspace = true }
 wasm-pkg-client = { workspace = true }
 wit-component = { workspace = true }
+wkg-core = { workspace = true }
 
 [dev-dependencies]
 base64 = { workspace = true }

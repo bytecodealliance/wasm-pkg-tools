@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use semver::VersionReq;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
+use wasm_metadata::{Link, LinkType, RegistryMetadata};
 
 /// The default name of the configuration file.
 pub const CONFIG_FILE_NAME: &str = "wkg.toml";
@@ -73,11 +74,11 @@ pub struct Override {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct Metadata {
     /// The authors of the package.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub authors: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authors: Option<Vec<String>>,
     /// The categories of the package.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub categories: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub categories: Option<Vec<String>>,
     /// The package description.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -93,6 +94,37 @@ pub struct Metadata {
     /// The package repository URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repository: Option<String>,
+}
+
+impl From<Metadata> for wasm_metadata::RegistryMetadata {
+    fn from(value: Metadata) -> Self {
+        let mut meta = RegistryMetadata::default();
+        meta.set_authors(value.authors);
+        meta.set_categories(value.categories);
+        meta.set_description(value.description);
+        meta.set_license(value.license);
+        let mut links = Vec::new();
+        if let Some(documentation) = value.documentation {
+            links.push(Link {
+                ty: LinkType::Documentation,
+                value: documentation,
+            });
+        }
+        if let Some(homepage) = value.homepage {
+            links.push(Link {
+                ty: LinkType::Homepage,
+                value: homepage,
+            });
+        }
+        if let Some(repository) = value.repository {
+            links.push(Link {
+                ty: LinkType::Repository,
+                value: repository,
+            });
+        }
+        meta.set_links((!links.is_empty()).then_some(links));
+        meta
+    }
 }
 
 #[cfg(test)]
@@ -112,8 +144,8 @@ mod tests {
                 },
             )])),
             metadata: Some(Metadata {
-                authors: vec!["foo".to_string(), "bar".to_string()],
-                categories: vec!["foo".to_string(), "bar".to_string()],
+                authors: Some(vec!["foo".to_string(), "bar".to_string()]),
+                categories: Some(vec!["foo".to_string(), "bar".to_string()]),
                 description: Some("foo".to_string()),
                 license: Some("foo".to_string()),
                 documentation: Some("foo".to_string()),

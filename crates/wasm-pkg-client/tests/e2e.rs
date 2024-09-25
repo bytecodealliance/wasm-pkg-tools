@@ -8,6 +8,10 @@ use wasm_pkg_client::{Client, Config};
 
 const FIXTURE_WASM: &str = "./tests/testdata/binary_wit.wasm";
 
+#[cfg(any(target_os = "linux", feature = "_local"))]
+// NOTE: These are only run on linux for CI purposes, because they rely on the docker client being
+// available, and for various reasons this has proven to be problematic on both the Windows and
+// MacOS runners due to it not being installed (yay licensing).
 #[tokio::test]
 async fn publish_and_fetch_smoke_test() {
     let _container = GenericImage::new("registry", "2")

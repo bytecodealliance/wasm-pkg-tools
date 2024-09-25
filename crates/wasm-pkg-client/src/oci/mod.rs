@@ -128,6 +128,7 @@ impl OciBackend {
                     CredentialRetrievalError::ConfigNotFound
                         | CredentialRetrievalError::ConfigReadError
                         | CredentialRetrievalError::NoCredentialConfigured
+                        | CredentialRetrievalError::HelperFailure { .. }
                 ) {
                     tracing::debug!("Failed to look up OCI credentials: {err}");
                 } else {

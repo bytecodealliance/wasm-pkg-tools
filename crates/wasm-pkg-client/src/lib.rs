@@ -8,7 +8,7 @@
 //! ```no_run
 //! # async fn example() -> anyhow::Result<()> {
 //! // Initialize client from global configuration.
-//! let mut client = wasm_pkg_client::Client::with_global_defaults()?;
+//! let mut client = wasm_pkg_client::Client::with_global_defaults().await?;
 //!
 //! // Get a specific package release version.
 //! let pkg = "example:pkg".parse()?;
@@ -86,23 +86,29 @@ pub struct PublishOpts {
 }
 
 /// A read-only registry client.
+#[derive(Clone)]
 pub struct Client {
-    config: Config,
-    sources: RwLock<RegistrySources>,
+    config: Arc<Config>,
+    sources: Arc<RwLock<RegistrySources>>,
 }
 
 impl Client {
     /// Returns a new client with the given [`Config`].
     pub fn new(config: Config) -> Self {
         Self {
-            config,
+            config: Arc::new(config),
             sources: Default::default(),
         }
     }
 
+    /// Returns a reference to the configuration this client was initialized with.
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
     /// Returns a new client configured from default global config.
-    pub fn with_global_defaults() -> Result<Self, Error> {
-        let config = Config::global_defaults()?;
+    pub async fn with_global_defaults() -> Result<Self, Error> {
+        let config = Config::global_defaults().await?;
         Ok(Self::new(config))
     }
 

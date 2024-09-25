@@ -10,13 +10,18 @@ license.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 futures-util = { workspace = true }
+indexmap = "2.5"
 semver = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
+tokio-util = { workspace = true, features = ["io", "io-util", "codec"] }
 toml = { workspace = true }
 tracing = { workspace = true }
+wasm-metadata = { workspace = true }
 wasm-pkg-common = { workspace = true }
 wasm-pkg-client = { workspace = true }
+wit-component = { workspace = true }
+wit-parser = { workspace = true }
 
 [target.'cfg(unix)'.dependencies.libc]
 version = "0.2.153"

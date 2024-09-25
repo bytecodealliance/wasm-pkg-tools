@@ -4,3 +4,5 @@
 
 pub mod config;
 pub mod lock;
+pub mod resolver;
+pub mod wit;

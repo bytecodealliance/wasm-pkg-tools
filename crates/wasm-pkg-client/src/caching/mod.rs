@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::sync::Arc;
 
 use wasm_pkg_common::{
     digest::ContentDigest,
@@ -46,7 +47,16 @@ pub trait Cache {
 /// underlying client to be used as a read-only cache.
 pub struct CachingClient<T> {
     client: Option<Client>,
-    cache: T,
+    cache: Arc<T>,
+}
+
+impl<T: Cache> Clone for CachingClient<T> {
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            cache: self.cache.clone(),
+        }
+    }
 }
 
 impl<T: Cache> CachingClient<T> {
@@ -54,7 +64,10 @@ impl<T: Cache> CachingClient<T> {
     /// given, the client will be in offline or read-only mode, meaning it will only be able to return
     /// things that are already in the cache.
     pub fn new(client: Option<Client>, cache: T) -> Self {
-        Self { client, cache }
+        Self {
+            client,
+            cache: Arc::new(cache),
+        }
     }
 
     /// Returns whether or not the client is in read-only mode.
