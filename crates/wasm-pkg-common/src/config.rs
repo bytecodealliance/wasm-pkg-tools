@@ -10,11 +10,8 @@ use crate::{label::Label, package::PackageRef, registry::Registry, Error};
 
 mod toml;
 
-const DEFAULT_FALLBACK_NAMESPACE_REGISTRIES: &[(&str, &str)] = &[
-    // TODO: Switch to wasi.dev once that is ready
-    ("wasi", "bytecodealliance.org"),
-    ("ba", "bytecodealliance.org"),
-];
+const DEFAULT_FALLBACK_NAMESPACE_REGISTRIES: &[(&str, &str)] =
+    &[("wasi", "wasi.dev"), ("ba", "bytecodealliance.org")];
 
 /// Wasm Package registry configuration.
 ///
