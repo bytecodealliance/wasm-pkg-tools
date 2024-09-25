@@ -1178,7 +1178,7 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "http",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "slab",
  "tokio",
  "tokio-util",
@@ -1482,9 +1482,9 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.4.0"
+version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93ead53efc7ea8ed3cfb0c79fc8023fbb782a5432b52830b6518941cebe6505c"
+checksum = "68b900aa2f7301e21c36462b170ee99994de34dff39a4a6a528e80e7376d07e5"
 dependencies = [
  "equivalent",
  "hashbrown 0.14.5",
@@ -2158,7 +2158,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4c5cc86750666a3ed20bdaf5ca2a0344f9c67674cae0515bec2da16fbaa47db"
 dependencies = [
  "fixedbitset",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
 ]
 
 [[package]]
@@ -2946,7 +2946,7 @@ dependencies = [
  "chrono",
  "hex",
  "indexmap 1.9.3",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "serde 1.0.209",
  "serde_derive",
  "serde_json",
@@ -2972,7 +2972,7 @@ version = "0.9.34+deprecated"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
 dependencies = [
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "itoa",
  "ryu",
  "serde 1.0.209",
@@ -3465,7 +3465,7 @@ version = "0.19.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b5bb770da30e5cbfde35a2d7b9b8a2c4b8ef89548a7a6aeab5c9a576e3e7421"
 dependencies = [
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "toml_datetime",
  "winnow 0.5.40",
 ]
@@ -3476,7 +3476,7 @@ version = "0.22.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "583c44c02ad26b0c3f3066fe629275e50627026c51ac2e595cca4c230ce1ce1d"
 dependencies = [
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "serde 1.0.209",
  "serde_spanned",
  "toml_datetime",
@@ -3689,7 +3689,7 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a44b422328c3a86be288f569694aa97df958ade0cd9514ed00bc562952c6778e"
 dependencies = [
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "itertools 0.12.1",
  "serde 1.0.209",
  "serde_with",
@@ -3712,7 +3712,7 @@ dependencies = [
  "dialoguer",
  "dirs",
  "futures-util",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "itertools 0.12.1",
  "keyring",
  "libc",
@@ -3793,7 +3793,7 @@ dependencies = [
  "anyhow",
  "base64 0.21.7",
  "hex",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "pbjson-types",
  "prost",
  "prost-types",
@@ -3814,7 +3814,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b950a71a544b7ac8f5a5e95f43886ac97c3fe5c7080b955b1b534037596d7be"
 dependencies = [
  "anyhow",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "prost",
  "thiserror",
  "warg-crypto",
@@ -3903,7 +3903,7 @@ dependencies = [
  "anyhow",
  "heck 0.4.1",
  "im-rc",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "log",
  "petgraph",
  "serde 1.0.209",
@@ -3952,7 +3952,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c6bb07c5576b608f7a2a9baa2294c1a3584a249965d695a9814a496cb6d232f"
 dependencies = [
  "anyhow",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "serde 1.0.209",
  "serde_derive",
  "serde_json",
@@ -3968,7 +3968,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47c8154d703a6b0e45acf6bd172fa002fc3c7058a9f7615e517220aeca27c638"
 dependencies = [
  "anyhow",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "serde 1.0.209",
  "serde_derive",
  "serde_json",
@@ -4050,7 +4050,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9dbe55c8f9d0dbd25d9447a5a889ff90c0cc3feaa7395310d3d826b2c703eaab"
 dependencies = [
  "bitflags 2.6.0",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "semver",
 ]
 
@@ -4063,7 +4063,7 @@ dependencies = [
  "ahash",
  "bitflags 2.6.0",
  "hashbrown 0.14.5",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "semver",
 ]
 
@@ -4076,7 +4076,7 @@ dependencies = [
  "ahash",
  "bitflags 2.6.0",
  "hashbrown 0.14.5",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "semver",
 ]
 
@@ -4375,7 +4375,7 @@ checksum = "f725e3885fc5890648be5c5cbc1353b755dc932aa5f1aa7de968b912a3280743"
 dependencies = [
  "anyhow",
  "bitflags 2.6.0",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "log",
  "serde 1.0.209",
  "serde_derive",
@@ -4394,7 +4394,7 @@ checksum = "7e2ca3ece38ea2447a9069b43074ba73d96dde1944cba276c54e41371745f9dc"
 dependencies = [
  "anyhow",
  "bitflags 2.6.0",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "log",
  "serde 1.0.209",
  "serde_derive",
@@ -4413,7 +4413,7 @@ checksum = "935a97eaffd57c3b413aa510f8f0b550a4a9fe7d59e79cd8b89a83dcb860321f"
 dependencies = [
  "anyhow",
  "id-arena",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "log",
  "semver",
  "serde 1.0.209",
@@ -4431,7 +4431,7 @@ checksum = "a4d108165c1167a4ccc8a803dcf5c28e0a51d6739fd228cc7adce768632c764c"
 dependencies = [
  "anyhow",
  "id-arena",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "log",
  "semver",
  "serde 1.0.209",
@@ -4448,6 +4448,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "clap",
+ "dirs",
  "docker_credential",
  "futures-util",
  "oci-client",
@@ -4460,25 +4461,31 @@ dependencies = [
  "wasm-pkg-client",
  "wasm-pkg-common",
  "wit-component 0.216.0",
+ "wkg-core",
 ]
 
 [[package]]
 name = "wkg-core"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "futures-util",
+ "indexmap 2.5.0",
  "libc",
  "semver",
  "serde 1.0.209",
  "sha2",
  "tempfile",
  "tokio",
+ "tokio-util",
  "toml 0.8.19",
  "tracing",
+ "wasm-metadata 0.216.0",
  "wasm-pkg-client",
  "wasm-pkg-common",
  "windows-sys 0.52.0",
+ "wit-component 0.216.0",
+ "wit-parser 0.216.0",
 ]
 
 [[package]]

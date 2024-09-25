@@ -73,21 +73,21 @@ impl Config {
     ///
     /// Note: This list is expected to expand in the future to include
     /// "workspace" config files like `./.wasm-pkg/config.toml`.
-    pub fn global_defaults() -> Result<Self, Error> {
+    pub async fn global_defaults() -> Result<Self, Error> {
         let mut config = Self::default();
-        if let Some(global_config) = Self::read_global_config()? {
+        if let Some(global_config) = Self::read_global_config().await? {
             config.merge(global_config);
         }
         Ok(config)
     }
 
     /// Reads config from the default global config file location
-    pub fn read_global_config() -> Result<Option<Self>, Error> {
+    pub async fn read_global_config() -> Result<Option<Self>, Error> {
         let Some(config_dir) = dirs::config_dir() else {
             return Ok(None);
         };
         let path = config_dir.join("wasm-pkg").join("config.toml");
-        let contents = match std::fs::read_to_string(path) {
+        let contents = match tokio::fs::read_to_string(path).await {
             Ok(contents) => contents,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(Error::ConfigFileIoError(err)),
@@ -96,8 +96,10 @@ impl Config {
     }
 
     /// Reads config from a TOML file at the given path.
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
-        let contents = std::fs::read_to_string(path).map_err(Error::ConfigFileIoError)?;
+    pub async fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let contents = tokio::fs::read_to_string(path)
+            .await
+            .map_err(Error::ConfigFileIoError)?;
         Self::from_toml(&contents)
     }
 
@@ -109,9 +111,11 @@ impl Config {
     }
 
     /// Writes the config to a TOML file at the given path.
-    pub fn to_file(&self, path: impl AsRef<Path>) -> Result<(), Error> {
+    pub async fn to_file(&self, path: impl AsRef<Path>) -> Result<(), Error> {
         let toml_str = ::toml::to_string(&self).map_err(Error::invalid_config)?;
-        std::fs::write(path, toml_str).map_err(Error::ConfigFileIoError)
+        tokio::fs::write(path, toml_str)
+            .await
+            .map_err(Error::ConfigFileIoError)
     }
 
     /// Merges the given other config into this one.

@@ -8,11 +8,21 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            additional_test_flags: ""
+          - os: windows-latest
+            additional_test_flags: "--no-default-features"
+          - os: macos-latest
+            additional_test_flags: "--no-default-features"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Run cargo test
-        run: cargo test --all --workspace
+      # We have to run these separately so we can deactivate a feature for one of the tests
+      - name: Run client tests
+        working-directory: ./crates/wasm-pkg-client
+        run: cargo test ${{ matrix.additional_test_flags }}
+      - name: Run other tests
+        run: cargo test --workspace --exclude wasm-pkg-client
       - name: Run cargo clippy
         run: cargo clippy --all --workspace 

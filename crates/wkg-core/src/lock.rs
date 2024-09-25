@@ -1,18 +1,22 @@
 //! Type definitions and functions for working with `wkg.lock` files.
 
 use std::{
+    cmp::Ordering,
+    collections::{BTreeSet, HashMap},
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result};
 use semver::{Version, VersionReq};
-use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use tokio::{
     fs::{File, OpenOptions},
     io::AsyncWriteExt,
 };
 use wasm_pkg_client::{ContentDigest, PackageRef};
+
+use crate::resolver::{DependencyResolution, DependencyResolutionMap};
 
 /// The default name of the lock file.
 pub const LOCK_FILE_NAME: &str = "wkg.lock";
@@ -23,7 +27,7 @@ pub const LOCK_FILE_V1: u64 = 1;
 ///
 /// This is a TOML file that contains the resolved dependency information from
 /// a previous build.
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct LockFile {
     /// The version of the lock file.
     ///
@@ -33,8 +37,9 @@ pub struct LockFile {
     /// The locked dependencies in the lock file.
     ///
     /// This list is sorted by the name of the locked package.
-    pub packages: Vec<LockedPackage>,
+    pub packages: BTreeSet<LockedPackage>,
 
+    #[serde(skip)]
     locker: Locker,
 }
 
@@ -46,31 +51,18 @@ impl PartialEq for LockFile {
 
 impl Eq for LockFile {}
 
-impl Serialize for LockFile {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut state = serializer.serialize_struct("LockFile", 2)?;
-        state.serialize_field("version", &self.version)?;
-        state.serialize_field("packages", &self.packages)?;
-        state.end()
-    }
-}
-
 impl LockFile {
     /// Creates a new lock file from the given packages at the given path. This will create an empty
     /// file and get an exclusive lock on the file, but will not write the data to the file unless
     /// [`write`](Self::write) is called.
     pub async fn new_with_path(
-        mut packages: Vec<LockedPackage>,
+        packages: impl IntoIterator<Item = LockedPackage>,
         path: impl AsRef<Path>,
     ) -> Result<Self> {
-        sort_packages(&mut packages);
         let locker = Locker::open_rw(path.as_ref()).await?;
         Ok(Self {
             version: LOCK_FILE_V1,
-            packages,
+            packages: packages.into_iter().collect(),
             locker,
         })
     }
@@ -86,7 +78,7 @@ impl LockFile {
         let contents = tokio::fs::read_to_string(path)
             .await
             .context("unable to load lock file from path")?;
-        let mut lock_file: LockFileIntermediate =
+        let lock_file: LockFileIntermediate =
             toml::from_str(&contents).context("unable to parse lock file from path")?;
         // Ensure version is correct and error if it isn't
         if lock_file.version != LOCK_FILE_V1 {
@@ -95,9 +87,29 @@ impl LockFile {
                 lock_file.version
             ));
         }
-        // Ensure packages are sorted by name
-        sort_packages(&mut lock_file.packages);
         Ok(lock_file.into_lock_file(locker))
+    }
+
+    /// Creates a lock file from the dependency map. This will create an empty file (if it doesn't
+    /// exist) and get an exclusive lock on the file, but will not write the data to the file unless
+    /// [`write`](Self::write) is called.
+    pub async fn from_dependencies(
+        map: &DependencyResolutionMap,
+        path: impl AsRef<Path>,
+    ) -> Result<LockFile> {
+        let packages = generate_locked_packages(map);
+
+        LockFile::new_with_path(packages, path).await
+    }
+
+    /// A helper for updating the current lock file with the given dependency map. This will clear current
+    /// packages that are not in the dependency map and add new packages that are in the dependency
+    /// map.
+    ///
+    /// This function will not write the data to the file unless [`write`](Self::write) is called.
+    pub fn update_dependencies(&mut self, map: &DependencyResolutionMap) {
+        self.packages.clear();
+        self.packages.extend(generate_locked_packages(map));
     }
 
     /// Attempts to load the lock file from the current directory. Most of the time, users of this
@@ -109,18 +121,14 @@ impl LockFile {
         let lock_path = PathBuf::from(LOCK_FILE_NAME);
         if !tokio::fs::try_exists(&lock_path).await? {
             // Create a new lock file if it doesn't exist so we can then open it readonly if that is set
-            tokio::fs::write(&lock_path, "")
-                .await
-                .context("Unable to create lock file")?;
+            let mut temp_lock = Self::new_with_path([], &lock_path).await?;
+            temp_lock.write().await?;
         }
         Self::load_from_path(lock_path, readonly).await
     }
 
     /// Serializes and writes the lock file
-    ///
-    /// This function requires mutability because it needs to sort the packages before serializing.
     pub async fn write(&mut self) -> Result<()> {
-        sort_packages(&mut self.packages);
         let contents = toml::to_string_pretty(self)?;
         // Truncate the file before writing to it
         self.locker.file.set_len(0).await.with_context(|| {
@@ -152,6 +160,89 @@ impl LockFile {
             )
         })
     }
+
+    /// Resolves a package from the lock file.
+    ///
+    /// Returns `Ok(None)` if the package cannot be resolved.
+    ///
+    /// Fails if the package cannot be resolved and the lock file is not allowed to be updated.
+    pub fn resolve(
+        &self,
+        registry: Option<&str>,
+        package_ref: &PackageRef,
+        requirement: &VersionReq,
+    ) -> Result<Option<&LockedPackageVersion>> {
+        // NOTE(thomastaylor312): Using a btree map so we don't have to keep sorting the vec. The
+        // tradeoff is we have to clone two things here to do the fetch. That tradeoff seems fine to
+        // me, especially because this is used in CLI commands.
+        if let Some(pkg) = self.packages.get(&LockedPackage {
+            name: package_ref.clone(),
+            registry: registry.map(ToString::to_string),
+            versions: vec![],
+        }) {
+            if let Some(locked) = pkg
+                .versions
+                .iter()
+                .find(|locked| &locked.requirement == requirement)
+            {
+                tracing::info!(%package_ref, ?registry, %requirement, resolved_version = %locked.version, "dependency package was resolved by the lock file");
+                return Ok(Some(locked));
+            }
+        }
+
+        tracing::info!(%package_ref, ?registry, %requirement, "dependency package was not in the lock file");
+        Ok(None)
+    }
+}
+
+fn generate_locked_packages(map: &DependencyResolutionMap) -> impl Iterator<Item = LockedPackage> {
+    type PackageKey = (PackageRef, Option<String>);
+    type VersionsMap = HashMap<String, (Version, ContentDigest)>;
+    let mut packages: HashMap<PackageKey, VersionsMap> = HashMap::new();
+
+    for resolution in map.values() {
+        match resolution.key() {
+            Some((id, registry)) => {
+                let pkg = match resolution {
+                    DependencyResolution::Registry(pkg) => pkg,
+                    DependencyResolution::Local(_) => unreachable!(),
+                };
+
+                let prev = packages
+                    .entry((id.clone(), registry.map(str::to_string)))
+                    .or_default()
+                    .insert(
+                        pkg.requirement.to_string(),
+                        (pkg.version.clone(), pkg.digest.clone()),
+                    );
+
+                if let Some((prev, _)) = prev {
+                    // The same requirements should resolve to the same version
+                    assert!(prev == pkg.version)
+                }
+            }
+            None => continue,
+        }
+    }
+
+    packages.into_iter().map(|((name, registry), versions)| {
+        let versions: Vec<LockedPackageVersion> = versions
+            .into_iter()
+            .map(|(requirement, (version, digest))| LockedPackageVersion {
+                requirement: requirement
+                    .parse()
+                    .expect("Version requirement should have been valid. This is programmer error"),
+                version,
+                digest,
+            })
+            .collect();
+
+        LockedPackage {
+            name,
+            registry,
+            versions,
+        }
+    })
 }
 
 /// Represents a locked package in a lock file.
@@ -161,7 +252,8 @@ pub struct LockedPackage {
     pub name: PackageRef,
 
     /// The registry the package was resolved from.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    // NOTE(thomastaylor312): This is a string instead of using the `Registry` type because clippy
+    // is complaining about it being an interior mutable key type for the btreeset
     pub registry: Option<String>,
 
     /// The locked version of a package.
@@ -172,28 +264,39 @@ pub struct LockedPackage {
     pub versions: Vec<LockedPackageVersion>,
 }
 
+impl Ord for LockedPackage {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.name == other.name {
+            self.registry.cmp(&other.registry)
+        } else {
+            self.name.cmp(&other.name)
+        }
+    }
+}
+
+impl PartialOrd for LockedPackage {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 /// Represents version information for a locked package.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LockedPackageVersion {
-    /// The version requirement used to resolve this version (if used).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub requirement: Option<VersionReq>,
+    /// The version requirement used to resolve this version
+    pub requirement: VersionReq,
     /// The version the package is locked to.
     pub version: Version,
     /// The digest of the package contents.
     pub digest: ContentDigest,
 }
 
-fn sort_packages(packages: &mut [LockedPackage]) {
-    packages.sort_unstable_by(|a, b| a.name.cmp(&b.name));
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 struct LockFileIntermediate {
     version: u64,
 
     #[serde(alias = "package", default, skip_serializing_if = "Vec::is_empty")]
-    packages: Vec<LockedPackage>,
+    packages: BTreeSet<LockedPackage>,
 }
 
 impl LockFileIntermediate {
@@ -696,13 +799,13 @@ mod tests {
         let mut fakehasher = sha2::Sha256::new();
         fakehasher.update(b"fake");
 
-        let mut expected_deps = vec![
+        let mut expected_deps = BTreeSet::from([
             LockedPackage {
                 name: "enterprise:holodeck".parse().unwrap(),
                 versions: vec![LockedPackageVersion {
                     version: "0.1.0".parse().unwrap(),
                     digest: fakehasher.clone().into(),
-                    requirement: None,
+                    requirement: VersionReq::parse("=0.1.0").unwrap(),
                 }],
                 registry: None,
             },
@@ -711,22 +814,15 @@ mod tests {
                 versions: vec![LockedPackageVersion {
                     version: "0.1.0".parse().unwrap(),
                     digest: fakehasher.clone().into(),
-                    requirement: None,
+                    requirement: VersionReq::parse("=0.1.0").unwrap(),
                 }],
                 registry: None,
             },
-        ];
+        ]);
 
         let mut lock = LockFile::new_with_path(expected_deps.clone(), &path)
             .await
             .expect("Shouldn't fail when creating a new lock file");
-
-        // Now sort the expected deps and make sure the lock file deps also got sorted
-        sort_packages(&mut expected_deps);
-        assert_eq!(
-            lock.packages, expected_deps,
-            "Lock file deps should match expected deps"
-        );
 
         // Push one more package onto the lock file before writing it
         let new_package = LockedPackage {
@@ -734,14 +830,13 @@ mod tests {
             versions: vec![LockedPackageVersion {
                 version: "0.1.0".parse().unwrap(),
                 digest: fakehasher.into(),
-                requirement: None,
+                requirement: VersionReq::parse("=0.1.0").unwrap(),
             }],
             registry: None,
         };
 
-        lock.packages.push(new_package.clone());
-        expected_deps.push(new_package);
-        sort_packages(&mut expected_deps);
+        lock.packages.insert(new_package.clone());
+        expected_deps.insert(new_package);
 
         lock.write()
             .await
@@ -749,17 +844,6 @@ mod tests {
 
         // Drop the lock file
         drop(lock);
-
-        // Parse out the file into the intermediate format and make sure the vec is in the same
-        // order as the expected deps
-        let lock_file =
-            std::fs::read_to_string(&path).expect("Shouldn't fail when reading lock file");
-        let lock_file: LockFileIntermediate =
-            toml::from_str(&lock_file).expect("Shouldn't fail when parsing lock file");
-        assert_eq!(
-            lock_file.packages, expected_deps,
-            "Lock file deps should match expected deps"
-        );
 
         // Now read the lock file again and make sure everything is correct (and we can lock it
         // properly)
