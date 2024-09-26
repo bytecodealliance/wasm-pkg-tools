@@ -3,7 +3,7 @@ use std::{
     collections::{BTreeSet, HashMap},
 };
 
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::Error;
 
@@ -12,22 +12,25 @@ pub const REGISTRY_METADATA_PATH: &str = "/.well-known/wasm-pkg/registry.json";
 
 type JsonObject = serde_json::Map<String, serde_json::Value>;
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegistryMetadata {
     /// The registry's preferred protocol.
-    preferred_protocol: Option<String>,
+    pub preferred_protocol: Option<String>,
 
     /// Protocol-specific configuration.
     #[serde(flatten)]
-    protocol_configs: HashMap<String, JsonObject>,
+    pub protocol_configs: HashMap<String, JsonObject>,
 
     // Backward-compatibility aliases:
     /// OCI Registry
+    #[serde(skip_serializing)]
     oci_registry: Option<String>,
     /// OCI Namespace Prefix
+    #[serde(skip_serializing)]
     oci_namespace_prefix: Option<String>,
     /// Warg URL
+    #[serde(skip_serializing)]
     warg_url: Option<String>,
 }
 

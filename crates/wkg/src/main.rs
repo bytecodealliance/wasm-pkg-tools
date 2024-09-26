@@ -9,7 +9,11 @@ use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     Client, PublishOpts,
 };
-use wasm_pkg_common::{config::Config, package::PackageSpec, registry::Registry};
+use wasm_pkg_common::{
+    config::{Config, RegistryMapping},
+    package::PackageSpec,
+    registry::Registry,
+};
 use wit_component::DecodedWasm;
 
 mod oci;
@@ -178,7 +182,10 @@ impl GetArgs {
         let mut config = self.common.load_config().await?;
         if let Some(registry) = self.registry_args.registry.clone() {
             tracing::debug!(%package, %registry, "overriding package registry");
-            config.set_package_registry_override(package.clone(), registry);
+            config.set_package_registry_override(
+                package.clone(),
+                RegistryMapping::Registry(registry),
+            );
         }
         let client = Client::new(config);
         let cache = self.common.load_cache().await?;

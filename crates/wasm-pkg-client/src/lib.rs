@@ -46,7 +46,7 @@ use tokio::io::AsyncSeekExt;
 use tokio::sync::RwLock;
 use tokio_util::io::SyncIoBridge;
 pub use wasm_pkg_common::{
-    config::Config,
+    config::{Config, CustomConfig, RegistryMapping},
     digest::ContentDigest,
     metadata::RegistryMetadata,
     package::{PackageRef, Version},
@@ -191,6 +191,7 @@ impl Client {
         package: &PackageRef,
         registry_override: Option<Registry>,
     ) -> Result<Arc<InnerClient>, Error> {
+        let is_override = registry_override.is_some();
         let registry = if let Some(registry) = registry_override {
             registry
         } else {
@@ -212,7 +213,25 @@ impl Client {
 
             // Skip fetching metadata for "local" source
             let should_fetch_meta = registry_config.default_backend() != Some("local");
-            let registry_meta = if should_fetch_meta {
+            let maybe_metadata = self
+                .config
+                .namespace_registry(package.namespace())
+                .and_then(|meta| {
+                    // If the overriden registry matches the registry we are trying to resolve, we
+                    // should use the metadata, otherwise we'll need to fetch the metadata from the
+                    // registry
+                    match (meta, is_override) {
+                        (RegistryMapping::Custom(custom), true) if custom.registry == registry => {
+                            Some(custom.metadata.clone())
+                        }
+                        (RegistryMapping::Custom(custom), false) => Some(custom.metadata.clone()),
+                        _ => None,
+                    }
+                });
+
+            let registry_meta = if let Some(meta) = maybe_metadata {
+                meta
+            } else if should_fetch_meta {
                 RegistryMetadata::fetch_or_default(&registry).await
             } else {
                 RegistryMetadata::default()

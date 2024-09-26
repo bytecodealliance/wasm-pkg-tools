@@ -159,6 +159,10 @@ fn serialize_secret<S: Serializer>(
 
 #[cfg(test)]
 mod tests {
+    use wasm_pkg_common::config::RegistryMapping;
+
+    use crate::oci::OciRegistryMetadata;
+
     use super::*;
 
     #[test]
@@ -240,5 +244,31 @@ mod tests {
             roundtripped_creds.password.expose_secret(),
             "Password should be set to the right value"
         );
+    }
+
+    #[test]
+    fn test_custom_namespace_config() {
+        let toml_config = toml::toml! {
+            [namespace_registries]
+            test = { registry = "localhost:1234", metadata = { preferredProtocol = "oci", "oci" = { registry = "ghcr.io", namespacePrefix = "webassembly/" } } }
+        };
+
+        let cfg = wasm_pkg_common::config::Config::from_toml(&toml_config.to_string())
+            .expect("Should be able to load config");
+
+        let ns_config = cfg
+            .namespace_registry(&"test".parse().unwrap())
+            .expect("Should have a namespace config");
+        let custom = match ns_config {
+            RegistryMapping::Custom(c) => c,
+            _ => panic!("Should have a custom namespace config"),
+        };
+        let map: OciRegistryMetadata = custom
+            .metadata
+            .protocol_config("oci")
+            .expect("Should be able to deserialize config")
+            .expect("protocol config should be present");
+        assert_eq!(map.namespace_prefix, Some("webassembly/".to_string()));
+        assert_eq!(map.registry, Some("ghcr.io".to_string()));
     }
 }

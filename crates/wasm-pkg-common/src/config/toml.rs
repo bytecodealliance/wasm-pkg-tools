@@ -7,14 +7,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::{label::Label, package::PackageRef, registry::Registry};
 
+use super::RegistryMapping;
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TomlConfig {
     default_registry: Option<Registry>,
     #[serde(default)]
-    namespace_registries: HashMap<Label, Registry>,
+    namespace_registries: HashMap<Label, RegistryMapping>,
     #[serde(default)]
-    package_registry_overrides: HashMap<PackageRef, Registry>,
+    package_registry_overrides: HashMap<PackageRef, RegistryMapping>,
     #[serde(default)]
     registry: HashMap<Registry, TomlRegistryConfig>,
 }
@@ -238,6 +240,109 @@ mod tests {
                 .default_backend()
                 .expect("Should have a default set"),
             "foobar"
+        );
+    }
+
+    #[test]
+    fn test_custom_namespace_config() {
+        let toml_config = toml::toml! {
+            [namespace_registries]
+            test = { registry = "localhost", metadata = { preferredProtocol = "oci", "oci" = {registry = "ghcr.io", namespacePrefix = "webassembly/" } } }
+            foo = "foo:1234"
+
+            [package_registry_overrides]
+            "foo:bar" = { registry = "localhost", metadata = { preferredProtocol = "oci", "oci" = {registry = "ghcr.io", namespacePrefix = "webassembly/" } } }
+
+            [registry."localhost".oci]
+            auth = { username = "open", password = "sesame" }
+        };
+
+        let toml_cfg: TomlConfig = toml_config.try_into().unwrap();
+        let cfg = crate::config::Config::from(toml_cfg);
+
+        // First check the the normal string case works
+        let ns_config = cfg
+            .namespace_registry(&"foo".parse().unwrap())
+            .expect("Should have a namespace config");
+        let reg = match ns_config {
+            RegistryMapping::Registry(r) => r,
+            _ => panic!("Should have a registry namespace config"),
+        };
+        assert_eq!(
+            reg,
+            &"foo:1234".parse::<Registry>().unwrap(),
+            "Should have a registry"
+        );
+
+        let ns_config = cfg
+            .namespace_registry(&"test".parse().unwrap())
+            .expect("Should have a namespace config");
+        let custom = match ns_config {
+            RegistryMapping::Custom(c) => c,
+            _ => panic!("Should have a custom namespace config"),
+        };
+        assert_eq!(
+            custom.registry,
+            "localhost".parse().unwrap(),
+            "Should have a registry"
+        );
+        assert_eq!(
+            custom.metadata.preferred_protocol(),
+            Some("oci"),
+            "Should have a preferred protocol"
+        );
+        // Specific deserializations are tested in the client model
+        let map = custom
+            .metadata
+            .protocol_configs
+            .get("oci")
+            .expect("Should have a protocol config");
+        assert_eq!(
+            map.get("registry").expect("registry should exist"),
+            "ghcr.io",
+            "Should have a registry"
+        );
+        assert_eq!(
+            map.get("namespacePrefix")
+                .expect("namespacePrefix should exist"),
+            "webassembly/",
+            "Should have a namespace prefix"
+        );
+
+        // Now test the same thing for a package override
+        let ns_config = cfg
+            .package_registry_override(&"foo:bar".parse().unwrap())
+            .expect("Should have a package override config");
+        let custom = match ns_config {
+            RegistryMapping::Custom(c) => c,
+            _ => panic!("Should have a custom namespace config"),
+        };
+        assert_eq!(
+            custom.registry,
+            "localhost".parse().unwrap(),
+            "Should have a registry"
+        );
+        assert_eq!(
+            custom.metadata.preferred_protocol(),
+            Some("oci"),
+            "Should have a preferred protocol"
+        );
+        // Specific deserializations are tested in the client model
+        let map = custom
+            .metadata
+            .protocol_configs
+            .get("oci")
+            .expect("Should have a protocol config");
+        assert_eq!(
+            map.get("registry").expect("registry should exist"),
+            "ghcr.io",
+            "Should have a registry"
+        );
+        assert_eq!(
+            map.get("namespacePrefix")
+                .expect("namespacePrefix should exist"),
+            "webassembly/",
+            "Should have a namespace prefix"
         );
     }
 }

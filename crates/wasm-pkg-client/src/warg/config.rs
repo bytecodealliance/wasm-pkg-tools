@@ -116,6 +116,10 @@ fn serialize_secret<S: Serializer>(
 
 #[cfg(test)]
 mod tests {
+    use wasm_pkg_common::config::RegistryMapping;
+
+    use crate::warg::WargRegistryMetadata;
+
     use super::*;
 
     #[tokio::test]
@@ -176,6 +180,35 @@ mod tests {
                 .encode(),
             config.signing_key.unwrap().encode(),
             "Signing key should be set to the right value"
+        );
+    }
+
+    #[test]
+    fn test_custom_namespace_config() {
+        let toml_config = toml::toml! {
+            [namespace_registries]
+            test = { registry = "localhost:1234", metadata = { preferredProtocol = "warg", "warg" = { url = "http://localhost:1234" } } }
+        };
+
+        let cfg = wasm_pkg_common::config::Config::from_toml(&toml_config.to_string())
+            .expect("Should be able to load config");
+
+        let ns_config = cfg
+            .namespace_registry(&"test".parse().unwrap())
+            .expect("Should have a namespace config");
+        let custom = match ns_config {
+            RegistryMapping::Custom(c) => c,
+            _ => panic!("Should have a custom namespace config"),
+        };
+        let map: WargRegistryMetadata = custom
+            .metadata
+            .protocol_config("warg")
+            .expect("Should be able to deserialize config")
+            .expect("protocol config should be present");
+        assert_eq!(
+            map.url,
+            Some("http://localhost:1234".into()),
+            "URL should be set to the right value"
         );
     }
 }

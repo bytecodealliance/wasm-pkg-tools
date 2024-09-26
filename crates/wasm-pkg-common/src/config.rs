@@ -6,7 +6,9 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{label::Label, package::PackageRef, registry::Registry, Error};
+use crate::{
+    label::Label, metadata::RegistryMetadata, package::PackageRef, registry::Registry, Error,
+};
 
 mod toml;
 
@@ -23,11 +25,33 @@ const DEFAULT_FALLBACK_NAMESPACE_REGISTRIES: &[(&str, &str)] =
 #[serde(into = "toml::TomlConfig")]
 pub struct Config {
     default_registry: Option<Registry>,
-    namespace_registries: HashMap<Label, Registry>,
-    package_registry_overrides: HashMap<PackageRef, Registry>,
+    namespace_registries: HashMap<Label, RegistryMapping>,
+    package_registry_overrides: HashMap<PackageRef, RegistryMapping>,
     // Note: these are only used for hard-coded defaults currently
     fallback_namespace_registries: HashMap<Label, Registry>,
     registry_configs: HashMap<Registry, RegistryConfig>,
+}
+
+/// Possible options for namespace configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RegistryMapping {
+    /// Use the given registry address (this will fetch the well-known registry metadata from the given hostname).
+    Registry(Registry),
+    /// Use custom configuration for reaching a registry
+    Custom(CustomConfig),
+}
+
+/// Custom registry configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomConfig {
+    /// A valid name for the registry. This still must be a valid [`Registry`] in that it should
+    /// look like a valid hostname. When doing custom configuration however, this is just used as a
+    /// key to identify the configuration for this namespace
+    pub registry: Registry,
+    /// The metadata for the registry. This is used to determine the protocol to use for the
+    /// registry as well as mapping information for the registry.
+    pub metadata: RegistryMetadata,
 }
 
 impl Default for Config {
@@ -150,10 +174,20 @@ impl Config {
     /// - The default registry
     /// - Hard-coded fallbacks for certain well-known namespaces
     pub fn resolve_registry(&self, package: &PackageRef) -> Option<&Registry> {
-        if let Some(reg) = self.package_registry_overrides.get(package) {
+        if let Some(RegistryMapping::Registry(reg)) = self.package_registry_overrides.get(package) {
             Some(reg)
-        } else if let Some(reg) = self.namespace_registries.get(package.namespace()) {
+        } else if let Some(RegistryMapping::Custom(custom)) =
+            self.package_registry_overrides.get(package)
+        {
+            Some(&custom.registry)
+        } else if let Some(RegistryMapping::Registry(reg)) =
+            self.namespace_registries.get(package.namespace())
+        {
             Some(reg)
+        } else if let Some(RegistryMapping::Custom(custom)) =
+            self.namespace_registries.get(package.namespace())
+        {
+            Some(&custom.registry)
         } else if let Some(reg) = self.default_registry.as_ref() {
             Some(reg)
         } else if let Some(reg) = self.fallback_namespace_registries.get(package.namespace()) {
@@ -179,12 +213,12 @@ impl Config {
     ///
     /// Does not fall back to the default registry; see
     /// [`Self::resolve_registry`].
-    pub fn namespace_registry(&self, namespace: &Label) -> Option<&Registry> {
+    pub fn namespace_registry(&self, namespace: &Label) -> Option<&RegistryMapping> {
         self.namespace_registries.get(namespace)
     }
 
     /// Sets a registry for the given namespace.
-    pub fn set_namespace_registry(&mut self, namespace: Label, registry: Registry) {
+    pub fn set_namespace_registry(&mut self, namespace: Label, registry: RegistryMapping) {
         self.namespace_registries.insert(namespace, registry);
     }
 
@@ -192,12 +226,16 @@ impl Config {
     ///
     /// Does not fall back to namespace or default registries; see
     /// [`Self::resolve_registry`].
-    pub fn package_registry_override(&self, package: &PackageRef) -> Option<&Registry> {
+    pub fn package_registry_override(&self, package: &PackageRef) -> Option<&RegistryMapping> {
         self.package_registry_overrides.get(package)
     }
 
     /// Sets a registry override for the given package.
-    pub fn set_package_registry_override(&mut self, package: PackageRef, registry: Registry) {
+    pub fn set_package_registry_override(
+        &mut self,
+        package: PackageRef,
+        registry: RegistryMapping,
+    ) {
         self.package_registry_overrides.insert(package, registry);
     }
 
