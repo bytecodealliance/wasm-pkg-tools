@@ -69,11 +69,20 @@ default_registry = "acme.registry.com"
 [namespace_registries]
 wasi = "wasi.dev"
 example = "example.com"
+# An example of providing your own registry mapping. For large and/or public registries, we
+# recommend creating a well-known metadata file that can be used to determine the registry to use
+# (see the section on "metadata" below). But many times you might want to override mappings or
+# provide something that is used by a single team. The registry name does not matter, but must be
+# parsable to URL authority. This name is purely used for mapping to registry config and isn't
+# actually used as a URL when metadata is provided 
+another = { registry = "another", metadata = { preferredProtocol = "oci", "oci" = {registry = "ghcr.io", namespacePrefix = "webassembly/" } } }
 
 # This overrides the default registry for a specific package. This is useful for cases where a 
 # package is published to multiple registries. 
 [package_registry_overrides]
 "example:foo" = "example.com"
+# Same as namespace_registries above, but for a specific package.
+"example:bar" = { registry = "another", metadata = { preferredProtocol = "oci", "oci" = {registry = "ghcr.io", namespacePrefix = "webassembly/" } } }
 
 # This section contains a mapping of registries to their configuration. There are currently 3
 # supported types of registries: "oci", "warg", and "local". The "oci" type is the default. The
@@ -117,14 +126,20 @@ root = "/a/path"
 # config_file = "/a/path"
 [registry."example.com".warg]
 config_file = "/a/path"
+
+# Configuration for the "another" registry defined above.
+[registry."another".oci]
+auth = { username = "open", password = "sesame" }
 ```
 
 ### Well-known metadata
 
-The `wkg` tool and libraries expect a `registry.json` file to be present at a specific location to
-indicate to the tooling where the components are stored. If a registry was `example.com`, then the
-tooling will attempt to find a `registry.json` file at
-`https://example.com/.well-known/wasm-pkg/registry.json`. 
+For well-used or public registries, we recommend creating a well-known metadata file that is used by
+the tool chain to simplify configuration and indicate to a client which protocols and mappings to
+use (although this can be set directly in config as well). The `wkg` tool and libraries expect a
+`registry.json` file to be present at a specific location to indicate to the tooling where the
+components are stored. For example, if a registry was `example.com`, then the tooling will attempt
+to find a `registry.json` file at `https://example.com/.well-known/wasm-pkg/registry.json`. 
 
 A full example of what this `registry.json` file should look like is below:
 
