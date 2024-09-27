@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use clap::{Args, Subcommand};
-use wkg_core::{
+use wasm_pkg_core::{
     lock::LockFile,
     wit::{self, OutputType},
 };
@@ -88,7 +88,7 @@ impl BuildArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         check_dir(&self.dir).await?;
         let client = self.common.get_client().await?;
-        let wkg_config = wkg_core::config::Config::load().await?;
+        let wkg_config = wasm_pkg_core::config::Config::load().await?;
         let mut lock_file = LockFile::load(false).await?;
         let (pkg_ref, version, bytes) =
             wit::build_package(&wkg_config, self.dir, &mut lock_file, client).await?;
@@ -115,7 +115,7 @@ impl FetchArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         check_dir(&self.dir).await?;
         let client = self.common.get_client().await?;
-        let wkg_config = wkg_core::config::Config::load().await?;
+        let wkg_config = wasm_pkg_core::config::Config::load().await?;
         let mut lock_file = LockFile::load(false).await?;
         wit::fetch_dependencies(
             &wkg_config,
@@ -135,7 +135,7 @@ impl UpdateArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         check_dir(&self.dir).await?;
         let client = self.common.get_client().await?;
-        let wkg_config = wkg_core::config::Config::load().await?;
+        let wkg_config = wasm_pkg_core::config::Config::load().await?;
         let mut lock_file = LockFile::load(false).await?;
         // Clear the lock file since we're updating it
         lock_file.packages.clear();

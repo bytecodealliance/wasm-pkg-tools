@@ -128,12 +128,16 @@ jobs:
         run: rustup update stable --no-self-update && rustup default stable
       - name: Publish wasm-pkg-common
         working-directory: ./crates/wasm-pkg-common
+        # TODO: temporary hack because we can't noop publish. Will remove after release
+        continue-on-error: true
         run: cargo publish
       - name: Publish wasm-pkg-client
         working-directory: ./crates/wasm-pkg-client
+        # TODO: temporary hack because we can't noop publish. Will remove after release
+        continue-on-error: true
         run: cargo publish
-      - name: Publish wkg-core
-        working-directory: ./crates/wkg-core
+      - name: Publish wasm-pkg-core
+        working-directory: ./crates/wasm-pkg-core
         run: cargo publish
       - name: Publish wkg
         working-directory: ./crates/wkg
