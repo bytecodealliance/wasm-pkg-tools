@@ -118,6 +118,9 @@ jobs:
       - name: Publish wasm-pkg-client
         working-directory: ./crates/wasm-pkg-client
         run: cargo publish
+      - name: Publish wkg-core
+        working-directory: ./crates/wkg-core
+        run: cargo publish
       - name: Publish wkg
         working-directory: ./crates/wkg
         run: cargo publish
