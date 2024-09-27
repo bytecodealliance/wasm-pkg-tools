@@ -10,7 +10,7 @@ readme = "../../README.md"
 
 [features]
 metadata-client = ["dep:reqwest"]
-tokio = ["dep:tokio"]
+tokio = ["tokio/io-util"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -29,7 +29,7 @@ semver = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
-tokio = { workspace = true, features = ["io-util", "fs"], optional = true }
+tokio = { workspace = true, features = ["fs"] }
 toml = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
