@@ -23,7 +23,7 @@ tracing-subscriber = { workspace = true }
 wasm-pkg-common = { workspace = true }
 wasm-pkg-client = { workspace = true }
 wit-component = { workspace = true }
-wkg-core = { workspace = true }
+wasm-pkg-core = { workspace = true }
 
 [dev-dependencies]
 base64 = { workspace = true }

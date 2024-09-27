@@ -1,7 +1,7 @@
 [package]
-name = "wkg-core"
+name = "wasm-pkg-core"
 description = "Wasm Package Tools core libraries for wkg"
-repository = "https://github.com/bytecodealliance/wasm-pkg-tools/tree/main/crates/wkg-core"
+repository = "https://github.com/bytecodealliance/wasm-pkg-tools/tree/main/crates/wasm-pkg-core"
 edition.workspace = true
 version.workspace = true
 authors.workspace = true

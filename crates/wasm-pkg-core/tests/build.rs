@@ -1,5 +1,5 @@
+use wasm_pkg_core::{config::Config as WkgConfig, lock::LockFile};
 use wit_component::DecodedWasm;
-use wkg_core::{config::Config as WkgConfig, lock::LockFile};
 
 mod common;
 
@@ -12,7 +12,7 @@ async fn test_build_wit() {
         .await
         .expect("Should be able to create a new lock file");
     let (_temp_cache, client) = common::get_client().await.unwrap();
-    let (pkg, version, bytes) = wkg_core::wit::build_package(
+    let (pkg, version, bytes) = wasm_pkg_core::wit::build_package(
         &WkgConfig::default(),
         fixture_path.join("wit"),
         &mut lock,
@@ -92,7 +92,7 @@ async fn test_bad_dep_failure() {
         .await
         .expect("Should be able to write the world file");
 
-    wkg_core::wit::build_package(
+    wasm_pkg_core::wit::build_package(
         &WkgConfig::default(),
         fixture_path.join("wit"),
         &mut lock,

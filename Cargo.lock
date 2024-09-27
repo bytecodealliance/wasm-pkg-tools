@@ -4104,6 +4104,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasm-pkg-core"
+version = "0.6.0"
+dependencies = [
+ "anyhow",
+ "futures-util",
+ "indexmap 2.5.0",
+ "libc",
+ "rstest",
+ "semver",
+ "serde 1.0.210",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "toml 0.8.19",
+ "tracing",
+ "wasm-metadata 0.217.0",
+ "wasm-pkg-client",
+ "wasm-pkg-common",
+ "windows-sys 0.52.0",
+ "wit-component 0.217.0",
+ "wit-parser 0.217.0",
+]
+
+[[package]]
 name = "wasm-streams"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4533,33 +4558,8 @@ dependencies = [
  "tracing-subscriber",
  "wasm-pkg-client",
  "wasm-pkg-common",
+ "wasm-pkg-core",
  "wit-component 0.217.0",
- "wkg-core",
-]
-
-[[package]]
-name = "wkg-core"
-version = "0.6.0"
-dependencies = [
- "anyhow",
- "futures-util",
- "indexmap 2.5.0",
- "libc",
- "rstest",
- "semver",
- "serde 1.0.210",
- "sha2",
- "tempfile",
- "tokio",
- "tokio-util",
- "toml 0.8.19",
- "tracing",
- "wasm-metadata 0.217.0",
- "wasm-pkg-client",
- "wasm-pkg-common",
- "windows-sys 0.52.0",
- "wit-component 0.217.0",
- "wit-parser 0.217.0",
 ]
 
 [[package]]

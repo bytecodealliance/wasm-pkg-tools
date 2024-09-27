@@ -2,7 +2,7 @@ use std::path::Path;
 
 use rstest::rstest;
 use tokio::process::Command;
-use wkg_core::{
+use wasm_pkg_core::{
     config::Config,
     lock::LockFile,
     wit::{self, OutputType},
