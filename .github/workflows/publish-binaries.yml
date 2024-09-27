@@ -62,11 +62,25 @@ jobs:
         shell: bash
         run: gh auth login --with-token < <(echo ${{ secrets.GITHUB_TOKEN }})
       - run: gh release upload -R bytecodealliance/wasm-pkg-tools --clobber dev target/${{ matrix.rust-target }}/release/wkg-${{ matrix.rust-target }}
-
+  
+  create_tagged_release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'bytecodealliance/wasm-pkg-tools'
+    name: Create tagged release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Login GH CLI
+        shell: bash
+        run: gh auth login --with-token < <(echo ${{ secrets.GITHUB_TOKEN }})
+      - run: gh release create -R bytecodealliance/wasm-pkg-tools ${{ github.ref_name }}
+  
   publish_tagged_release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'bytecodealliance/wasm-pkg-tools'
     name: Publish to tagged release
     runs-on: ${{ matrix.os }}
+    needs:
+      - create_tagged_release
     strategy:
       matrix:
         include:
