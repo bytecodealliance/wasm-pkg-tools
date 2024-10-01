@@ -47,11 +47,13 @@ async fn copy_dir(source: impl AsRef<Path>, destination: impl AsRef<Path>) -> an
             ))
             .await?;
         } else {
-            // Skip any .lock files in the fixture
-            if entry.path().file_name().unwrap_or_default() == ".lock" {
+            let path = entry.path();
+            let extension = path.extension().unwrap_or_default();
+            // Skip any .lock or .wasm files that might be there from debugging
+            if extension == "lock" || extension == "wasm" {
                 continue;
             }
-            tokio::fs::copy(entry.path(), destination.as_ref().join(entry.file_name())).await?;
+            tokio::fs::copy(path, destination.as_ref().join(entry.file_name())).await?;
         }
     }
     Ok(())
