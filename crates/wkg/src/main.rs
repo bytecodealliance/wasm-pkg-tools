@@ -104,7 +104,7 @@ struct ConfigArgs {
     #[arg(long = "default-registry", value_name = "DEFAULT_REGISTRY")]
     default_registry: Option<Registry>,
 
-    /// Opens editor defined in the `$EDITOR` environment variable.
+    /// Opens the global configuration file in an editor defined in the `$EDITOR` environment variable.
     #[arg(long, short, action)]
     edit: bool,
 
