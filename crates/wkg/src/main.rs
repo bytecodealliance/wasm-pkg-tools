@@ -133,10 +133,13 @@ impl ConfigArgs {
             }
 
             // launch editor
-            std::process::Command::new(editor)
+            tokio::process::Command::new(editor)
                 .arg(&path)
                 .status()
+                .await
                 .context("failed to launch editor")?;
+
+            return Ok(());
         }
 
         // read file or use default config (not empty config)
@@ -146,15 +149,13 @@ impl ConfigArgs {
             Err(err) => return Err(anyhow::anyhow!("error reading config file: {0}", err)),
         };
 
-        if !self.edit {
-            if let Some(default) = self.default_registry {
-                // set default registry
-                config.set_default_registry(Some(default));
+        if let Some(default) = self.default_registry {
+            // set default registry
+            config.set_default_registry(Some(default));
 
-                // write config file
-                config.to_file(&path).await?;
-                println!("Updated config file: {path}", path = path.display());
-            }
+            // write config file
+            config.to_file(&path).await?;
+            println!("Updated config file: {path}", path = path.display());
         }
 
         // print config
