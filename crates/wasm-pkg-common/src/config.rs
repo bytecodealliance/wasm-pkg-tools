@@ -1,7 +1,7 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
     io::ErrorKind,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use serde::{Deserialize, Serialize};
@@ -102,13 +102,18 @@ impl Config {
         Ok(config)
     }
 
+    /// Returns the default global config file location
+    pub fn global_config_path() -> Option<PathBuf> {
+        dirs::config_dir().map(|path| path.join("wasm-pkg").join("config.toml"))
+    }
+
     /// Reads config from the default global config file location
     pub async fn read_global_config() -> Result<Option<Self>, Error> {
-        let Some(config_dir) = dirs::config_dir() else {
-            return Ok(None);
+        let path = match Config::global_config_path() {
+            Some(path) => path,
+            None => return Ok(None),
         };
-        let path = config_dir.join("wasm-pkg").join("config.toml");
-        let contents = match tokio::fs::read_to_string(path).await {
+        let contents = match tokio::fs::read_to_string(&path).await {
             Ok(contents) => contents,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(Error::ConfigFileIoError(err)),
