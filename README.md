@@ -36,9 +36,20 @@ cargo binstall wkg
 
 ## Configuration
 
+To quickly set the default registry:
+```
+wkg config --default-registry {REGISTRY_DOMAIN}
+```
+
+For the complete configuration options, you can edit the config file with your default
+editor (set with env var `$EDITOR`):
+```
+wkg config --edit
+```
+
 The `wkg` tool and libraries use a configuration file to store settings. This config file is still
 subject to change but we will try to keep it backwards compatible as we continue to develop the
-tool. This config file is meant to be used by both `wkg` and also any other language specific
+tool. This config file is meant to be used by both `wkg` and also any other language-specific
 component tooling that wants to fetch from registries. This should allow for a single configuration
 file that can be used by all tooling, whether that be `wkg` or some other tool that isn't written in
 Rust.
@@ -53,8 +64,7 @@ The default location is `$XDG_CONFIG_HOME/wasm-pkg/config.toml` on unix-like sys
 | macOS    | `/Users/<username>/Library/Application Support` |
 | Windows  | `C:\Users\<username>\AppData\Roaming`           |
 
-The configuration file is TOML and currently must be edited manually. A future release will include
-an interactive CLI for editing the configuration.
+The configuration file is TOML and can be edited manually.
 
 Below is an annotated example of a configuration file that shows all the available options.
 
