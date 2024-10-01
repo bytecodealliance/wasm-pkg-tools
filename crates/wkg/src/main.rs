@@ -10,6 +10,7 @@ use wasm_pkg_client::{
     Client, PublishOpts,
 };
 use wasm_pkg_common::{
+    self,
     config::{Config, RegistryMapping},
     package::PackageSpec,
     registry::Registry,
@@ -83,6 +84,8 @@ impl Common {
 #[derive(Subcommand, Debug)]
 #[allow(clippy::large_enum_variant)]
 enum Commands {
+    /// Set registry configuration
+    Config(ConfigArgs),
     /// Download a package from a registry
     Get(GetArgs),
     /// Publish a package to a registry
@@ -93,6 +96,77 @@ enum Commands {
     /// Commands for interacting with WIT files and dependencies
     #[clap(subcommand)]
     Wit(WitCommands),
+}
+
+#[derive(Args, Debug)]
+struct ConfigArgs {
+    /// The default registry domain to use. Overrides configuration file(s).
+    #[arg(long = "default-registry", value_name = "DEFAULT_REGISTRY")]
+    default_registry: Option<Registry>,
+
+    /// Opens the global configuration file in an editor defined in the `$EDITOR` environment variable.
+    #[arg(long, short, action)]
+    edit: bool,
+
+    #[command(flatten)]
+    common: Common,
+}
+
+impl ConfigArgs {
+    pub async fn run(self) -> anyhow::Result<()> {
+        // use config path provided, otherwise global config path
+        let path = if let Some(path) = self.common.config {
+            path
+        } else {
+            Config::global_config_path()
+                .ok_or(anyhow::anyhow!("global config path not available"))?
+        };
+
+        if self.edit {
+            let editor = std::env::var("EDITOR").or(Err(anyhow::anyhow!(
+                "failed to read `$EDITOR` environment variable"
+            )))?;
+
+            // create file if it doesn't exist
+            if !path.is_file() {
+                Config::default().to_file(&path).await?;
+            }
+
+            // launch editor
+            tokio::process::Command::new(editor)
+                .arg(&path)
+                .status()
+                .await
+                .context("failed to launch editor")?;
+
+            return Ok(());
+        }
+
+        // read file or use default config (not empty config)
+        let mut config = match tokio::fs::read_to_string(&path).await {
+            Ok(contents) => Config::from_toml(&contents)?,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Config::default(),
+            Err(err) => return Err(anyhow::anyhow!("error reading config file: {0}", err)),
+        };
+
+        if let Some(default) = self.default_registry {
+            // set default registry
+            config.set_default_registry(Some(default));
+
+            // write config file
+            config.to_file(&path).await?;
+            println!("Updated config file: {path}", path = path.display());
+        }
+
+        // print config
+        if let Some(registry) = config.default_registry() {
+            println!("Default registry: {}", registry);
+        } else {
+            println!("Default registry is not set");
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Args, Debug)]
@@ -312,6 +386,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Config(args) => args.run().await,
         Commands::Get(args) => args.run().await,
         Commands::Publish(args) => args.run().await,
         Commands::Oci(args) => args.run().await,
