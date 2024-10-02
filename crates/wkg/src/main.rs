@@ -122,6 +122,24 @@ impl ConfigArgs {
                 .ok_or(anyhow::anyhow!("global config path not available"))?
         };
 
+        // Check if the parent directory exists, if not create it
+        if let Some(parent) = path.parent() {
+            match tokio::fs::metadata(parent).await {
+                Ok(metadata) => {
+                    if !metadata.is_dir() {
+                        anyhow::bail!("parent directory is not a directory");
+                    }
+                }
+                Err(e) => {
+                    if e.kind() == std::io::ErrorKind::NotFound {
+                        tokio::fs::create_dir_all(parent).await?;
+                    } else {
+                        anyhow::bail!("failed to check for config file directory: {}", e);
+                    }
+                }
+            }
+        }
+
         if self.edit {
             let editor = std::env::var("EDITOR").or(Err(anyhow::anyhow!(
                 "failed to read `$EDITOR` environment variable"
