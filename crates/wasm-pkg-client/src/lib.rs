@@ -215,18 +215,30 @@ impl Client {
             let should_fetch_meta = registry_config.default_backend() != Some("local");
             let maybe_metadata = self
                 .config
-                .namespace_registry(package.namespace())
-                .and_then(|meta| {
-                    // If the overriden registry matches the registry we are trying to resolve, we
-                    // should use the metadata, otherwise we'll need to fetch the metadata from the
-                    // registry
-                    match (meta, is_override) {
-                        (RegistryMapping::Custom(custom), true) if custom.registry == registry => {
-                            Some(custom.metadata.clone())
-                        }
-                        (RegistryMapping::Custom(custom), false) => Some(custom.metadata.clone()),
-                        _ => None,
-                    }
+                .package_registry_override(package)
+                .and_then(|mapping| match mapping {
+                    RegistryMapping::Custom(custom) => Some(custom.metadata.clone()),
+                    _ => None,
+                })
+                .or_else(|| {
+                    self.config
+                        .namespace_registry(package.namespace())
+                        .and_then(|meta| {
+                            // If the overriden registry matches the registry we are trying to resolve, we
+                            // should use the metadata, otherwise we'll need to fetch the metadata from the
+                            // registry
+                            match (meta, is_override) {
+                                (RegistryMapping::Custom(custom), true)
+                                    if custom.registry == registry =>
+                                {
+                                    Some(custom.metadata.clone())
+                                }
+                                (RegistryMapping::Custom(custom), false) => {
+                                    Some(custom.metadata.clone())
+                                }
+                                _ => None,
+                            }
+                        })
                 });
 
             let registry_meta = if let Some(meta) = maybe_metadata {
