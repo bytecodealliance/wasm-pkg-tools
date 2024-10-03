@@ -407,7 +407,9 @@ impl<'a> DependencyResolver<'a> {
                     _ => None,
                 };
 
-                if !force_override && self.resolutions.contains_key(name) {
+                if !force_override
+                    && (self.resolutions.contains_key(name) || self.dependencies.contains_key(name))
+                {
                     tracing::debug!(%name, "dependency already exists and override is not set, ignoring");
                     return Ok(());
                 }
@@ -545,6 +547,7 @@ async fn load_package<'b>(
     }
 }
 
+#[derive(Debug)]
 struct RegistryDependency {
     /// The canonical package name of the registry package. In most cases, this is the same as the
     /// name but could be different if the given package name has been remapped
