@@ -71,7 +71,7 @@ pub async fn build_package(
             .context("Invalid name found for package")?,
     );
 
-    let bytes = wit_component::encode(Some(true), &resolve, pkg_id)?;
+    let bytes = wit_component::encode(&resolve, pkg_id)?;
 
     let mut producers = wasm_metadata::Producers::empty();
     producers.add(
@@ -118,7 +118,8 @@ pub async fn fetch_dependencies(
 pub fn get_packages(
     path: impl AsRef<Path>,
 ) -> Result<(PackageRef, HashSet<(PackageRef, VersionReq)>)> {
-    let group = wit_parser::UnresolvedPackageGroup::parse_path(path)?;
+    let group =
+        wit_parser::UnresolvedPackageGroup::parse_path(path).context("Couldn't parse package")?;
 
     let name = PackageRef::new(
         group
@@ -191,7 +192,7 @@ pub async fn resolve_dependencies(
         }
     }
     let (_name, packages) = get_packages(path)?;
-    add_packages_to_resolver(&mut resolver, packages).await?;
+    resolver.add_packages(packages).await?;
     resolver.resolve().await
 }
 
@@ -302,25 +303,6 @@ fn packages_from_foreign_deps(
                 .expect("Unable to parse into version request, this is programmer error"),
         ))
     })
-}
-
-async fn add_packages_to_resolver(
-    resolver: &mut DependencyResolver<'_>,
-    packages: impl IntoIterator<Item = (PackageRef, VersionReq)>,
-) -> Result<()> {
-    for (package, req) in packages {
-        resolver
-            .add_dependency(
-                &package,
-                &Dependency::Package(RegistryPackage {
-                    name: Some(package.clone()),
-                    version: req,
-                    registry: None,
-                }),
-            )
-            .await?;
-    }
-    Ok(())
 }
 
 async fn write_local_dep(local: &LocalResolution, output_path: impl AsRef<Path>) -> Result<()> {
