@@ -1,0 +1,5 @@
+package my:component;
+
+world component {
+    export my:local/foo@0.1.0;
+}

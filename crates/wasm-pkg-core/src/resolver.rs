@@ -21,7 +21,7 @@ use wasm_pkg_client::{
 use wit_component::DecodedWasm;
 use wit_parser::{PackageId, PackageName, Resolve, UnresolvedPackageGroup, WorldId};
 
-use crate::lock::LockFile;
+use crate::{lock::LockFile, wit::get_packages};
 
 /// The name of the default registry.
 pub const DEFAULT_REGISTRY_NAME: &str = "default";
@@ -434,11 +434,39 @@ impl<'a> DependencyResolver<'a> {
                     return Ok(());
                 }
 
+                // Now that we check we haven't already inserted this dep, get the packages from the
+                // local dependency and add those to the resolver before adding the dependency
+                let (_, packages) = get_packages(p)
+                    .context("Error getting dependent packages from local dependency")?;
+                Box::pin(self.add_packages(packages))
+                    .await
+                    .context("Error adding packages to resolver for local dependency")?;
+
                 let prev = self.resolutions.insert(name.clone(), res);
                 assert!(prev.is_none());
             }
         }
 
+        Ok(())
+    }
+
+    /// A helper function for adding an iterator of package refs and their associated version
+    /// requirements to the resolver
+    pub async fn add_packages(
+        &mut self,
+        packages: impl IntoIterator<Item = (PackageRef, VersionReq)>,
+    ) -> Result<()> {
+        for (package, req) in packages {
+            self.add_dependency(
+                &package,
+                &Dependency::Package(RegistryPackage {
+                    name: Some(package.clone()),
+                    version: req,
+                    registry: None,
+                }),
+            )
+            .await?;
+        }
         Ok(())
     }
 
