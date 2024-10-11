@@ -64,9 +64,8 @@ impl Common {
         let dir = if let Some(dir) = self.cache.as_ref() {
             dir.clone()
         } else {
-            dirs::cache_dir().context("unable to find cache directory")?
+            FileCache::global_cache_path().context("unable to find cache directory")?
         };
-        let dir = dir.join("wkg");
         FileCache::new(dir).await
     }
 

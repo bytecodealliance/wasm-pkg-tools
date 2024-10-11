@@ -12,8 +12,8 @@ license = "Apache-2.0 WITH LLVM-exception"
 anyhow = "1"
 base64 = "0.22.0"
 bytes = "1.7"
-dirs = "5.0.1"
 docker_credential = "1.2.1"
+etcetera = "0.8"
 futures-util = "0.3.30"
 oci-client = { version = "0.12", default-features = false, features = [
     "rustls-tls",
