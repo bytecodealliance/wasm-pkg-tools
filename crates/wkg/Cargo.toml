@@ -8,6 +8,11 @@ authors.workspace = true
 license.workspace = true
 readme = "../../README.md"
 
+[features]
+default = ["_local"]
+# An internal feature for making sure e2e tests can run locally but not in CI for Mac or Windows
+_local = []
+
 [dependencies]
 anyhow = { workspace = true }
 clap = { version = "4.5", features = ["derive", "wrap_help", "env"] }
@@ -29,3 +34,5 @@ wasm-pkg-core = { workspace = true }
 [dev-dependencies]
 base64 = { workspace = true }
 serde_json = { workspace = true }
+tempfile = { workspace = true }
+testcontainers = { workspace = true }

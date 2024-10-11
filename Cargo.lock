@@ -4430,6 +4430,7 @@ dependencies = [
  "warg-client",
  "warg-crypto",
  "warg-protocol",
+ "wasm-metadata 0.219.1",
  "wasm-pkg-common",
  "wit-component 0.219.1",
 ]
@@ -4916,6 +4917,7 @@ dependencies = [
  "oci-wasm",
  "serde_json",
  "tempfile",
+ "testcontainers",
  "tokio",
  "tokio-process",
  "tracing",

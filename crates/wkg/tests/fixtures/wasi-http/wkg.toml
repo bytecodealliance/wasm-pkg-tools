@@ -1,0 +1,8 @@
+[metadata]
+authors = ["WasmPkg <wasm-pkg@bytecodealliance.org>"]
+categories = ["wasm-pkg"]
+description = "WASI HTTP interface"
+license = "Apache-2.0"
+documentation = "https://docs.foobar.baz"
+homepage = "https://foobar.baz"
+repository = "https://github.com/bytecodealliance/wasm-pkg-tools"
