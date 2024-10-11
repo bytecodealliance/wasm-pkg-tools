@@ -24,7 +24,10 @@ jobs:
       - name: Run client tests
         working-directory: ./crates/wasm-pkg-client
         run: cargo test ${{ matrix.additional_test_flags }}
+      - name: Run wkg tests
+        working-directory: ./crates/wkg
+        run: cargo test ${{ matrix.additional_test_flags }}
       - name: Run other tests
-        run: cargo test --workspace --exclude wasm-pkg-client
+        run: cargo test --workspace --exclude wasm-pkg-client --exclude wkg
       - name: Run cargo clippy
         run: cargo clippy --all --workspace 
