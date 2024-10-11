@@ -208,6 +208,93 @@ file from the example above, then the component will be stored at
 `ghcr.io/webassembly/acme/foo:0.1.0`. Please note that the tag _MUST_ be a valid semantic version or
 the tooling will ignore it when pulling.
 
+## `wkg.toml` and `wkg.lock`
+
+Whenever `wkg` is used to fetch dependencies or build a wit package, it will automatically create a
+`wkg.lock` file. This lock file is the other standardized file that can be used by any other tooling
+integrating in with package tooling. Because components are cross language, this file will be the
+same for all languages. An example of this file is below:
+
+```toml
+version = 1
+
+[[packages]]
+name = "wasi:cli"
+registry = "wasi.dev"
+
+[[packages.versions]]
+requirement = "=0.2.0"
+version = "0.2.0"
+digest = "sha256:e7e85458e11caf76554b724ebf4f113259decf0f3b1ee2e2930de096f72114a7"
+
+[[packages]]
+name = "wasi:clocks"
+registry = "wasi.dev"
+
+[[packages.versions]]
+requirement = "=0.2.0"
+version = "0.2.0"
+digest = "sha256:51911098e929732f65d1d84f8dc393299f18a9e8de632d854714f37142efe97b"
+
+[[packages]]
+name = "wasi:io"
+registry = "wasi.dev"
+
+[[packages.versions]]
+requirement = "=0.2.0"
+version = "0.2.0"
+digest = "sha256:c33b1dbf050f64229ff4decbf9a3d3420e0643a86f5f0cea29f81054820020a6"
+
+[[packages]]
+name = "wasi:random"
+registry = "wasi.dev"
+
+[[packages.versions]]
+requirement = "=0.2.0"
+version = "0.2.0"
+digest = "sha256:5d535edc544d06719cf337861b7917c3d565360295e5dc424046dceddb0a0e42"
+```
+
+On the other hand, the `wkg.toml` file is used to configure various parts of the tooling and _is
+entirely optional_. Projects are not required to use this file. Currently, it serves two purposes:
+adding additional metadata and overriding versions/dependencies. The most common usage will be to
+point to a local dependency:
+
+```toml
+[overrides]
+"my:local-dep" = { path = "../local-dep/wit" }
+```
+
+There is also a `[metadata]` section that can be used to add additional metadata when building a WIT
+package (or can be used by other language tooling). For OCI, this metadata is also used to populate
+common OCI annotations when publishing a package. A full example of all fields are below:
+
+```toml
+[metadata]
+authors = ["WasmPkg <wasm-pkg@bytecodealliance.org>"]
+categories = ["wasm-pkg"]
+description = "WASI HTTP interface"
+license = "Apache-2.0"
+documentation = "https://docs.foobar.baz"
+homepage = "https://foobar.baz"
+repository = "https://github.com/bytecodealliance/wasm-pkg-tools"
+```
+
+### OCI Annotation Mapping
+
+When publish to OCI via `wkg publish`, it will load the metadata from the wasm binary (which is
+automatically added to the WIT package with `wkg wit build` if the metadata is present in the
+`wkg.toml` file). The metadata is mapped to the following OCI annotations:
+
+| `wkg.toml` Metadata Field | OCI Annotation                         |
+| ------------------------- | -------------------------------------- |
+| `description`             | `org.opencontainers.image.description` |
+| `license`                 | `org.opencontainers.image.licenses`    |
+| `homepage`                | `org.opencontainers.image.url`         |
+| `repository`              | `org.opencontainers.image.source`      |
+
+Additionally, the `org.opencontainers.image.version` annotation is set to the version of the package being published.
+
 ## Contributing
 Want to join us? Check out our ["Contributing" guide][contributing] and take a look at some of these
 issues:
