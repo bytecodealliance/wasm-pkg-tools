@@ -18,8 +18,8 @@ anyhow = { workspace = true }
 async-trait = "0.1.77"
 base64 = { workspace = true }
 bytes = { workspace = true }
-dirs = { workspace = true }
 docker_credential = { workspace = true }
+etcetera = { workspace = true }
 futures-util = { workspace = true, features = ["io"] }
 oci-client = { workspace = true }
 oci-wasm = { workspace = true }

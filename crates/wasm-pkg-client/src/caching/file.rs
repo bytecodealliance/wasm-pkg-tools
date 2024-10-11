@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
+use etcetera::BaseStrategy;
 use futures_util::{StreamExt, TryStreamExt};
 use tokio_util::io::{ReaderStream, StreamReader};
 use wasm_pkg_common::{
@@ -20,6 +21,7 @@ pub struct FileCache {
 }
 
 impl FileCache {
+    /// Creates a new file cache that stores data in the given directory.
     pub async fn new(root: impl AsRef<Path>) -> anyhow::Result<Self> {
         tokio::fs::create_dir_all(&root)
             .await
@@ -27,6 +29,19 @@ impl FileCache {
         Ok(Self {
             root: root.as_ref().to_path_buf(),
         })
+    }
+
+    /// Returns a cache setup to use the global default cache path if it can be determined,
+    /// otherwise this will error
+    pub async fn global_cache() -> anyhow::Result<Self> {
+        Self::new(Self::global_cache_path().context("couldn't find global cache path")?).await
+    }
+
+    /// Returns the global default cache path if it can be determined, otherwise returns None
+    pub fn global_cache_path() -> Option<PathBuf> {
+        etcetera::choose_base_strategy()
+            .ok()
+            .map(|strat| strat.cache_dir().join("wasm-pkg"))
     }
 }
 

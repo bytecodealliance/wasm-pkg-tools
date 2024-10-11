@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use etcetera::BaseStrategy;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -104,7 +105,9 @@ impl Config {
 
     /// Returns the default global config file location
     pub fn global_config_path() -> Option<PathBuf> {
-        dirs::config_dir().map(|path| path.join("wasm-pkg").join("config.toml"))
+        etcetera::choose_base_strategy()
+            .ok()
+            .map(|strat| strat.config_dir().join("wasm-pkg").join("config.toml"))
     }
 
     /// Reads config from the default global config file location

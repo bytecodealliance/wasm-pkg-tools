@@ -58,11 +58,11 @@ The default location is `$XDG_CONFIG_HOME/wasm-pkg/config.toml` on unix-like sys
 `{FOLDERID_RoamingAppData}\wasm-pkg\config.toml` on Windows but this can be overridden with the
 `--config` flag. Examples of this are found below:
 
-| Platform | Path                                            |
-| -------- | ----------------------------------------------- |
-| Linux    | `/home/<username>/.config`                      |
-| macOS    | `/Users/<username>/Library/Application Support` |
-| Windows  | `C:\Users\<username>\AppData\Roaming`           |
+| Platform | Path                                  |
+| -------- | ------------------------------------- |
+| Linux    | `/home/<username>/.config`            |
+| macOS    | `/home/<username>/.config`            |
+| Windows  | `C:\Users\<username>\AppData\Roaming` |
 
 The configuration file is TOML and can be edited manually.
 
