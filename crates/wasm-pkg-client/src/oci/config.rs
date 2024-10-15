@@ -24,6 +24,8 @@ impl Clone for OciRegistryConfig {
             protocol: self.client_config.protocol.clone(),
             extra_root_certificates: self.client_config.extra_root_certificates.clone(),
             platform_resolver: None,
+            https_proxy: self.client_config.https_proxy.clone(),
+            no_proxy: self.client_config.no_proxy.clone(),
             ..self.client_config
         };
         Self {
