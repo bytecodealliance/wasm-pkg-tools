@@ -199,11 +199,11 @@ struct GetArgs {
     #[arg(long, value_enum, default_value = "auto")]
     format: Format,
 
-    /// Check that the got package matches the existing file at the output
-    /// path. Output path will not be modified. Program exits with codes
-    /// simmilar to diff(1): exits with 1 if there were differences, and 0
-    /// means no differences.
-    #[arg(long)]
+    /// Check that the retrieved package matches the existing file at the
+    /// output path. Output path will not be modified. Program exits with
+    /// codes similar to diff(1): exits with 1 if there were differences, and
+    /// 0 means no differences.
+    #[arg(long, conflicts_with = "overwrite")]
     check: bool,
 
     /// Overwrite any existing output file.
@@ -276,11 +276,6 @@ enum Format {
 
 impl GetArgs {
     pub async fn run(self) -> anyhow::Result<()> {
-        ensure!(
-            !(self.overwrite && self.check),
-            "Not allowed to specify both --check and --overwrite"
-        );
-
         let PackageSpec { package, version } = self.package_spec;
         let mut config = self.common.load_config().await?;
         if let Some(registry) = self.registry_args.registry.clone() {
@@ -385,12 +380,15 @@ impl GetArgs {
         };
 
         if self.check {
-            let existing = std::fs::read(&output_path)
+            let existing = tokio::fs::read(&output_path)
+                .await
                 .with_context(|| format!("Failed to read {output_path:?}"))?;
             let latest = if let Some(wit) = wit {
                 wit.into_bytes()
             } else {
-                std::fs::read(&tmp_path).with_context(|| format!("Failed to read {tmp_path:?}"))?
+                tokio::fs::read(&tmp_path)
+                    .await
+                    .with_context(|| format!("Failed to read {tmp_path:?}"))?
             };
             if existing != latest {
                 anyhow::bail!("Differences between retrieved and {output_path:?}");
@@ -402,7 +400,8 @@ impl GetArgs {
             );
 
             if let Some(wit) = wit {
-                std::fs::write(&output_path, wit)
+                tokio::fs::write(&output_path, wit)
+                    .await
                     .with_context(|| format!("Failed to write WIT to {output_path:?}"))?
             } else {
                 tmp_path
