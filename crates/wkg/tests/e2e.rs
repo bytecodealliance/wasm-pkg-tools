@@ -87,3 +87,46 @@ async fn build_and_publish_with_metadata() {
         "Name should match"
     );
 }
+
+#[tokio::test]
+pub async fn check() {
+    let fixture = common::load_fixture("wasi-http").await;
+    let output = fixture.temp_dir.path().join("out");
+
+    let get = fixture
+        .command()
+        .arg("get")
+        .arg("wasi:http")
+        .arg("--output")
+        .arg(&output)
+        .status()
+        .await
+        .unwrap();
+    assert!(get.success());
+
+    let check_same = fixture
+        .command()
+        .arg("get")
+        .arg("--check")
+        .arg("wasi:http")
+        .arg("--output")
+        .arg(&output)
+        .status()
+        .await
+        .unwrap();
+    assert!(check_same.success());
+
+    std::fs::write(&output, vec![1, 2, 3, 4]).expect("overwrite output with bogus contents");
+
+    let check_diff = fixture
+        .command()
+        .arg("get")
+        .arg("--check")
+        .arg("wasi:http")
+        .arg("--output")
+        .arg(output)
+        .status()
+        .await
+        .unwrap();
+    assert!(!check_diff.success());
+}

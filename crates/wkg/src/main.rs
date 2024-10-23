@@ -199,6 +199,13 @@ struct GetArgs {
     #[arg(long, value_enum, default_value = "auto")]
     format: Format,
 
+    /// Check that the retrieved package matches the existing file at the
+    /// output path. Output path will not be modified. Program exits with
+    /// codes similar to diff(1): exits with 1 if there were differences, and
+    /// 0 means no differences.
+    #[arg(long, conflicts_with = "overwrite")]
+    check: bool,
+
     /// Overwrite any existing output file.
     #[arg(long)]
     overwrite: bool,
@@ -371,21 +378,38 @@ impl GetArgs {
         } else {
             self.output
         };
-        ensure!(
-            self.overwrite || !output_path.exists(),
-            "{output_path:?} already exists; you can use '--overwrite' to overwrite it"
-        );
 
-        if let Some(wit) = wit {
-            std::fs::write(&output_path, wit)
-                .with_context(|| format!("Failed to write WIT to {output_path:?}"))?
+        if self.check {
+            let existing = tokio::fs::read(&output_path)
+                .await
+                .with_context(|| format!("Failed to read {output_path:?}"))?;
+            let latest = if let Some(wit) = wit {
+                wit.into_bytes()
+            } else {
+                tokio::fs::read(&tmp_path)
+                    .await
+                    .with_context(|| format!("Failed to read {tmp_path:?}"))?
+            };
+            if existing != latest {
+                anyhow::bail!("Differences between retrieved and {output_path:?}");
+            }
         } else {
-            tmp_path
-                .persist(&output_path)
-                .with_context(|| format!("Failed to persist WASM to {output_path:?}"))?
-        }
-        println!("Wrote '{}'", output_path.display());
+            ensure!(
+                self.overwrite || !output_path.exists(),
+                "{output_path:?} already exists; you can use '--overwrite' to overwrite it"
+            );
 
+            if let Some(wit) = wit {
+                tokio::fs::write(&output_path, wit)
+                    .await
+                    .with_context(|| format!("Failed to write WIT to {output_path:?}"))?
+            } else {
+                tmp_path
+                    .persist(&output_path)
+                    .with_context(|| format!("Failed to persist WASM to {output_path:?}"))?
+            }
+            println!("Wrote '{}'", output_path.display());
+        }
         Ok(())
     }
 }
