@@ -2218,9 +2218,9 @@ dependencies = [
 
 [[package]]
 name = "oci-client"
-version = "0.13.0"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53e050f8bab3f561aa5ab537e1a6ed24006d58b4ee93cd6bb2c0cb822726f306"
+checksum = "474675fdc023fbcc9dcf4782e938a3a1ae5fd469c728d8db40599bd25c77e1ba"
 dependencies = [
  "bytes 1.7.2",
  "chrono",
@@ -2260,9 +2260,9 @@ dependencies = [
 
 [[package]]
 name = "oci-wasm"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8403a1f0598a12452babb25a7bdf815269c4d83b064862a560879e66e3e85ee"
+checksum = "f147e207436277483c23cb8e55ccd039ee1657c6a8d19471a6de187da6973ef8"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4484,7 +4484,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-pkg-client"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4518,7 +4518,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-pkg-common"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "bytes 1.7.2",
@@ -4538,7 +4538,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-pkg-core"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "futures-util",
@@ -4936,7 +4936,7 @@ dependencies = [
 
 [[package]]
 name = "wkg"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
