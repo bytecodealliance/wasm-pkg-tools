@@ -24,10 +24,10 @@ wit-component = { workspace = true }
 wit-parser = { workspace = true }
 
 [target.'cfg(unix)'.dependencies.libc]
-version = "0.2.153"
+version = "0.2"
 
 [target.'cfg(windows)'.dependencies.windows-sys]
-version = "0.52"
+version = "0.59"
 features = [
     "Win32_Foundation",
     "Win32_Storage",
@@ -41,4 +41,4 @@ features = [
 [dev-dependencies]
 tempfile = { workspace = true }
 sha2 = { workspace = true }
-rstest = "0.22"
+rstest = "0.23"
