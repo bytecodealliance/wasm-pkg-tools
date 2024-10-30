@@ -4,14 +4,14 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-version = "0.8.1"
+version = "0.8.2"
 authors = ["The Wasmtime Project Developers"]
 license = "Apache-2.0 WITH LLVM-exception"
 
 [workspace.dependencies]
 anyhow = "1"
-base64 = "0.22.0"
-bytes = "1.7"
+base64 = "0.22"
+bytes = "1.8"
 docker_credential = "1.2.1"
 etcetera = "0.8"
 futures-util = "0.3.30"
@@ -29,7 +29,6 @@ tempfile = "3.10.1"
 testcontainers = { version = "0.23" }
 thiserror = "1.0"
 tokio = "1.35.1"
-tokio-process = "0.2.5"
 tokio-util = "0.7.10"
 toml = "0.8"
 tracing = "0.1.40"
@@ -37,9 +36,9 @@ tracing-subscriber = { version = "0.3.18", default-features = false, features = 
     "fmt",
     "env-filter",
 ] }
-wasm-pkg-common = { version = "0.8.1", path = "crates/wasm-pkg-common" }
-wasm-pkg-client = { version = "0.8.1", path = "crates/wasm-pkg-client" }
+wasm-pkg-common = { version = "0.8.2", path = "crates/wasm-pkg-common" }
+wasm-pkg-client = { version = "0.8.2", path = "crates/wasm-pkg-client" }
 wasm-metadata = "0.219"
 wit-component = "0.219"
 wit-parser = "0.219"
-wasm-pkg-core = { version = "0.8.1", path = "crates/wasm-pkg-core" }
+wasm-pkg-core = { version = "0.8.2", path = "crates/wasm-pkg-core" }
