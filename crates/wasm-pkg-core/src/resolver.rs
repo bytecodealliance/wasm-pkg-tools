@@ -13,6 +13,10 @@ use anyhow::{bail, Context, Result};
 use futures_util::TryStreamExt;
 use indexmap::{IndexMap, IndexSet};
 use semver::{Comparator, Op, Version, VersionReq};
+use serde::{
+    de::{self, value::MapAccessDeserializer},
+    Deserialize, Serialize,
+};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
@@ -36,6 +40,108 @@ pub enum Dependency {
 
     /// The dependency is a path to a local directory or file.
     Local(PathBuf),
+}
+
+impl Serialize for Dependency {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Package(package) => {
+                if package.name.is_none() && package.registry.is_none() {
+                    let version = package.version.to_string();
+                    version.trim_start_matches('^').serialize(serializer)
+                } else {
+                    #[derive(Serialize)]
+                    struct Entry<'a> {
+                        package: Option<&'a PackageRef>,
+                        version: &'a str,
+                        registry: Option<&'a str>,
+                    }
+
+                    Entry {
+                        package: package.name.as_ref(),
+                        version: package.version.to_string().trim_start_matches('^'),
+                        registry: package.registry.as_deref(),
+                    }
+                    .serialize(serializer)
+                }
+            }
+            Self::Local(path) => {
+                #[derive(Serialize)]
+                struct Entry<'a> {
+                    path: &'a PathBuf,
+                }
+
+                Entry { path }.serialize(serializer)
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Dependency {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct Visitor;
+
+        impl<'de> de::Visitor<'de> for Visitor {
+            type Value = Dependency;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(formatter, "a string or a table")
+            }
+
+            fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Self::Value::Package(s.parse().map_err(de::Error::custom)?))
+            }
+
+            fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::MapAccess<'de>,
+            {
+                #[derive(Default, Deserialize)]
+                #[serde(default, deny_unknown_fields)]
+                struct Entry {
+                    path: Option<PathBuf>,
+                    package: Option<PackageRef>,
+                    version: Option<VersionReq>,
+                    registry: Option<String>,
+                }
+
+                let entry = Entry::deserialize(MapAccessDeserializer::new(map))?;
+
+                match (entry.path, entry.package, entry.version, entry.registry) {
+                    (Some(path), None, None, None) => Ok(Self::Value::Local(path)),
+                    (None, name, Some(version), registry) => {
+                        Ok(Self::Value::Package(RegistryPackage {
+                            name,
+                            version,
+                            registry,
+                        }))
+                    }
+                    (Some(_), None, Some(_), _) => Err(de::Error::custom(
+                        "cannot specify both `path` and `version` fields in a dependency entry",
+                    )),
+                    (Some(_), None, None, Some(_)) => Err(de::Error::custom(
+                        "cannot specify both `path` and `registry` fields in a dependency entry",
+                    )),
+                    (Some(_), Some(_), _, _) => Err(de::Error::custom(
+                        "cannot specify both `path` and `package` fields in a dependency entry",
+                    )),
+                    (None, None, _, _) => Err(de::Error::missing_field("package")),
+                    (None, Some(_), None, _) => Err(de::Error::missing_field("version")),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(Visitor)
+    }
 }
 
 impl FromStr for Dependency {
@@ -330,7 +436,7 @@ impl<'a> DependencyResolver<'a> {
         }
         let client = CachingClient::new(config.map(Client::new), cache);
         Ok(DependencyResolver {
-            client,
+            client: client,
             lock_file,
             resolutions: Default::default(),
             packages: Default::default(),

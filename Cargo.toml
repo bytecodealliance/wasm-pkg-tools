@@ -37,7 +37,7 @@ tracing-subscriber = { version = "0.3.18", default-features = false, features = 
 ] }
 wasm-pkg-common = { version = "0.6.0", path = "crates/wasm-pkg-common" }
 wasm-pkg-client = { version = "0.6.0", path = "crates/wasm-pkg-client" }
-wasm-metadata = "0.217"
-wit-component = "0.217"
-wit-parser = "0.217"
+wasm-metadata = "0.219"
+wit-component = "0.219"
+wit-parser = "0.219"
 wasm-pkg-core = { version = "0.6.0", path = "crates/wasm-pkg-core" }

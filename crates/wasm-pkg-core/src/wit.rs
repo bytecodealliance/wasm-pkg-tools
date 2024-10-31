@@ -71,7 +71,7 @@ pub async fn build_package(
             .context("Invalid name found for package")?,
     );
 
-    let bytes = wit_component::encode(Some(true), &resolve, pkg_id)?;
+    let bytes = wit_component::encode(&resolve, pkg_id)?;
 
     let mut producers = wasm_metadata::Producers::empty();
     producers.add(
@@ -304,7 +304,7 @@ fn packages_from_foreign_deps(
     })
 }
 
-async fn add_packages_to_resolver(
+pub async fn add_packages_to_resolver(
     resolver: &mut DependencyResolver<'_>,
     packages: impl IntoIterator<Item = (PackageRef, VersionReq)>,
 ) -> Result<()> {
