@@ -15,8 +15,8 @@ use crate::{
     config::Config,
     lock::LockFile,
     resolver::{
-        DecodedDependency, Dependency, DependencyResolution, DependencyResolutionMap,
-        DependencyResolver, LocalResolution, RegistryPackage,
+        DecodedDependency, Dependency, DependencyKind, DependencyResolution,
+        DependencyResolutionMap, DependencyResolver, LocalResolution, RegistryPackage,
     },
 };
 
@@ -117,7 +117,7 @@ pub async fn fetch_dependencies(
 /// for resolving dependencies.
 pub fn get_packages(
     path: impl AsRef<Path>,
-) -> Result<(PackageRef, HashSet<(PackageRef, VersionReq, bool)>)> {
+) -> Result<(PackageRef, HashSet<(PackageRef, VersionReq)>)> {
     let group =
         wit_parser::UnresolvedPackageGroup::parse_path(path).context("Couldn't parse package")?;
 
@@ -137,7 +137,7 @@ pub fn get_packages(
     );
 
     // Get all package refs from the main package and then from any nested packages
-    let packages: HashSet<(PackageRef, VersionReq, bool)> =
+    let packages: HashSet<(PackageRef, VersionReq)> =
         packages_from_foreign_deps(group.main.foreign_deps.into_keys())
             .chain(
                 group
@@ -168,12 +168,12 @@ pub async fn resolve_dependencies(
             let dep = match (ovride.path.as_ref(), ovride.version.as_ref()) {
                 (Some(path), None) => {
                     let path = tokio::fs::canonicalize(path).await?;
-                    Dependency::Local(path)
+                    Dependency::Local(path, DependencyKind::Wit)
                 }
                 (Some(path), Some(_)) => {
                     tracing::warn!("Ignoring version override for local package");
                     let path = tokio::fs::canonicalize(path).await?;
-                    Dependency::Local(path)
+                    Dependency::Local(path, DependencyKind::Wit)
                 }
                 (None, Some(version)) => Dependency::Package(RegistryPackage {
                     name: Some(pkg.clone()),
@@ -186,7 +186,7 @@ pub async fn resolve_dependencies(
                 }
             };
             resolver
-                .add_dependency(&pkg, &dep, true)
+                .add_dependency(&pkg, &dep)
                 .await
                 .context("Unable to add dependency")?;
         }
@@ -289,7 +289,7 @@ pub async fn populate_dependencies(
 
 fn packages_from_foreign_deps(
     deps: impl IntoIterator<Item = PackageName>,
-) -> impl Iterator<Item = (PackageRef, VersionReq, bool)> {
+) -> impl Iterator<Item = (PackageRef, VersionReq)> {
     deps.into_iter().filter_map(|dep| {
         let name = PackageRef::new(dep.namespace.parse().ok()?, dep.name.parse().ok()?);
         let version = match dep.version {
@@ -301,7 +301,6 @@ fn packages_from_foreign_deps(
             version
                 .parse()
                 .expect("Unable to parse into version request, this is programmer error"),
-            true,
         ))
     })
 }

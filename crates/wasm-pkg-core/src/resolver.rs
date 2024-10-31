@@ -30,6 +30,17 @@ use crate::{lock::LockFile, wit::get_packages};
 /// The name of the default registry.
 pub const DEFAULT_REGISTRY_NAME: &str = "default";
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum DependencyKind {
+    Component,
+    Wit,
+}
+
+impl Default for DependencyKind {
+    fn default() -> Self {
+        Self::Wit
+    }
+}
 // TODO: functions for resolving dependencies from a lock file
 
 /// Represents a WIT package dependency.
@@ -39,7 +50,7 @@ pub enum Dependency {
     Package(RegistryPackage),
 
     /// The dependency is a path to a local directory or file.
-    Local(PathBuf),
+    Local(PathBuf, DependencyKind),
 }
 
 impl Serialize for Dependency {
@@ -68,13 +79,14 @@ impl Serialize for Dependency {
                     .serialize(serializer)
                 }
             }
-            Self::Local(path) => {
+            Self::Local(path, kind) => {
                 #[derive(Serialize)]
                 struct Entry<'a> {
                     path: &'a PathBuf,
+                    kind: &'a DependencyKind,
                 }
 
-                Entry { path }.serialize(serializer)
+                Entry { path, kind }.serialize(serializer)
             }
         }
     }
@@ -112,30 +124,37 @@ impl<'de> Deserialize<'de> for Dependency {
                     package: Option<PackageRef>,
                     version: Option<VersionReq>,
                     registry: Option<String>,
+                    kind: DependencyKind,
                 }
 
                 let entry = Entry::deserialize(MapAccessDeserializer::new(map))?;
 
-                match (entry.path, entry.package, entry.version, entry.registry) {
-                    (Some(path), None, None, None) => Ok(Self::Value::Local(path)),
-                    (None, name, Some(version), registry) => {
+                match (
+                    entry.path,
+                    entry.package,
+                    entry.version,
+                    entry.registry,
+                    entry.kind,
+                ) {
+                    (Some(path), None, None, None, kind) => Ok(Self::Value::Local(path, kind)),
+                    (None, name, Some(version), registry, _) => {
                         Ok(Self::Value::Package(RegistryPackage {
                             name,
                             version,
                             registry,
                         }))
                     }
-                    (Some(_), None, Some(_), _) => Err(de::Error::custom(
+                    (Some(_), None, Some(_), _, _) => Err(de::Error::custom(
                         "cannot specify both `path` and `version` fields in a dependency entry",
                     )),
-                    (Some(_), None, None, Some(_)) => Err(de::Error::custom(
+                    (Some(_), None, None, Some(_), _) => Err(de::Error::custom(
                         "cannot specify both `path` and `registry` fields in a dependency entry",
                     )),
-                    (Some(_), Some(_), _, _) => Err(de::Error::custom(
+                    (Some(_), Some(_), _, _, _) => Err(de::Error::custom(
                         "cannot specify both `path` and `package` fields in a dependency entry",
                     )),
-                    (None, None, _, _) => Err(de::Error::missing_field("package")),
-                    (None, Some(_), None, _) => Err(de::Error::missing_field("version")),
+                    (None, None, _, _, _) => Err(de::Error::missing_field("package")),
+                    (None, Some(_), None, _, _) => Err(de::Error::missing_field("version")),
                 }
             }
         }
@@ -469,10 +488,8 @@ impl<'a> DependencyResolver<'a> {
         &mut self,
         name: &PackageRef,
         dependency: &Dependency,
-        is_wit: bool,
     ) -> Result<()> {
-        self.add_dependency_internal(name, dependency, false, is_wit)
-            .await
+        self.add_dependency_internal(name, dependency, false).await
     }
 
     /// Add a dependency to the resolver. If the dependency already exists, then it will be
@@ -481,10 +498,8 @@ impl<'a> DependencyResolver<'a> {
         &mut self,
         name: &PackageRef,
         dependency: &Dependency,
-        is_wit: bool,
     ) -> Result<()> {
-        self.add_dependency_internal(name, dependency, true, is_wit)
-            .await
+        self.add_dependency_internal(name, dependency, true).await
     }
 
     async fn add_dependency_internal(
@@ -492,7 +507,6 @@ impl<'a> DependencyResolver<'a> {
         name: &PackageRef,
         dependency: &Dependency,
         force_override: bool,
-        is_wit: bool,
     ) -> Result<()> {
         match dependency {
             Dependency::Package(package) => {
@@ -533,7 +547,7 @@ impl<'a> DependencyResolver<'a> {
                     },
                 );
             }
-            Dependency::Local(p) => {
+            Dependency::Local(p, kind) => {
                 // A local path dependency, insert a resolution immediately
                 let res = DependencyResolution::Local(LocalResolution {
                     name: name.clone(),
@@ -547,13 +561,15 @@ impl<'a> DependencyResolver<'a> {
 
                 // // Now that we check we haven't already inserted this dep, get the packages from the
                 // // local dependency and add those to the resolver before adding the dependency
-                if is_wit {
+                // if is_wit {
+                if kind == &DependencyKind::Wit {
                     let (_, packages) = get_packages(p)
                         .context("Error getting dependent packages from local dependency")?;
                     Box::pin(self.add_packages(packages))
                         .await
                         .context("Error adding packages to resolver for local dependency")?;
                 }
+                // }
 
                 let prev = self.resolutions.insert(name.clone(), res);
                 assert!(prev.is_none());
@@ -567,9 +583,9 @@ impl<'a> DependencyResolver<'a> {
     /// requirements to the resolver
     pub async fn add_packages(
         &mut self,
-        packages: impl IntoIterator<Item = (PackageRef, VersionReq, bool)>,
+        packages: impl IntoIterator<Item = (PackageRef, VersionReq)>,
     ) -> Result<()> {
-        for (package, req, is_wit) in packages {
+        for (package, req) in packages {
             self.add_dependency(
                 &package,
                 &Dependency::Package(RegistryPackage {
@@ -577,7 +593,6 @@ impl<'a> DependencyResolver<'a> {
                     version: req,
                     registry: None,
                 }),
-                is_wit,
             )
             .await?;
         }
