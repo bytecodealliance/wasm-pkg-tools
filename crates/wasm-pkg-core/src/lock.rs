@@ -16,7 +16,7 @@ use tokio::{
 };
 use wasm_pkg_client::{ContentDigest, PackageRef};
 
-use crate::resolver::{DependencyResolution, DependencyResolutionMap};
+use crate::resolver::{DependencyResolution, DependencyResolutionMap, DEFAULT_REGISTRY_NAME};
 
 /// The default name of the lock file.
 pub const LOCK_FILE_NAME: &str = "wkg.lock";
@@ -271,6 +271,17 @@ pub struct LockedPackage {
     pub versions: Vec<LockedPackageVersion>,
 }
 
+impl LockedPackage {
+    /// Gets the key used in sorting and searching the package list.
+    pub fn key(&self) -> (&str, &str, &str) {
+        (
+            self.name.namespace().as_ref(),
+            self.name.name().as_ref(),
+            self.registry.as_deref().unwrap_or(DEFAULT_REGISTRY_NAME),
+        )
+    }
+}
+
 impl Ord for LockedPackage {
     fn cmp(&self, other: &Self) -> Ordering {
         if self.name == other.name {
@@ -296,6 +307,13 @@ pub struct LockedPackageVersion {
     pub version: Version,
     /// The digest of the package contents.
     pub digest: ContentDigest,
+}
+
+impl LockedPackageVersion {
+    /// Gets the sort key for the locked package version.
+    pub fn key(&self) -> String {
+        self.requirement.to_string()
+    }
 }
 
 #[derive(Debug, Deserialize)]

@@ -13,6 +13,10 @@ use anyhow::{bail, Context, Result};
 use futures_util::TryStreamExt;
 use indexmap::{IndexMap, IndexSet};
 use semver::{Comparator, Op, Version, VersionReq};
+use serde::{
+    de::{self, value::MapAccessDeserializer},
+    Deserialize, Serialize,
+};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
@@ -36,6 +40,108 @@ pub enum Dependency {
 
     /// The dependency is a path to a local directory or file.
     Local(PathBuf),
+}
+
+impl Serialize for Dependency {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Package(package) => {
+                if package.name.is_none() && package.registry.is_none() {
+                    let version = package.version.to_string();
+                    version.trim_start_matches('^').serialize(serializer)
+                } else {
+                    #[derive(Serialize)]
+                    struct Entry<'a> {
+                        package: Option<&'a PackageRef>,
+                        version: &'a str,
+                        registry: Option<&'a str>,
+                    }
+
+                    Entry {
+                        package: package.name.as_ref(),
+                        version: package.version.to_string().trim_start_matches('^'),
+                        registry: package.registry.as_deref(),
+                    }
+                    .serialize(serializer)
+                }
+            }
+            Self::Local(path) => {
+                #[derive(Serialize)]
+                struct Entry<'a> {
+                    path: &'a PathBuf,
+                }
+
+                Entry { path }.serialize(serializer)
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Dependency {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct Visitor;
+
+        impl<'de> de::Visitor<'de> for Visitor {
+            type Value = Dependency;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(formatter, "a string or a table")
+            }
+
+            fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Self::Value::Package(s.parse().map_err(de::Error::custom)?))
+            }
+
+            fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::MapAccess<'de>,
+            {
+                #[derive(Default, Deserialize)]
+                #[serde(default, deny_unknown_fields)]
+                struct Entry {
+                    path: Option<PathBuf>,
+                    package: Option<PackageRef>,
+                    version: Option<VersionReq>,
+                    registry: Option<String>,
+                }
+
+                let entry = Entry::deserialize(MapAccessDeserializer::new(map))?;
+
+                match (entry.path, entry.package, entry.version, entry.registry) {
+                    (Some(path), None, None, None) => Ok(Self::Value::Local(path)),
+                    (None, name, Some(version), registry) => {
+                        Ok(Self::Value::Package(RegistryPackage {
+                            name,
+                            version,
+                            registry,
+                        }))
+                    }
+                    (Some(_), None, Some(_), _) => Err(de::Error::custom(
+                        "cannot specify both `path` and `version` fields in a dependency entry",
+                    )),
+                    (Some(_), None, None, Some(_)) => Err(de::Error::custom(
+                        "cannot specify both `path` and `registry` fields in a dependency entry",
+                    )),
+                    (Some(_), Some(_), _, _) => Err(de::Error::custom(
+                        "cannot specify both `path` and `package` fields in a dependency entry",
+                    )),
+                    (None, None, _, _) => Err(de::Error::missing_field("package")),
+                    (None, Some(_), None, _) => Err(de::Error::missing_field("version")),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(Visitor)
+    }
 }
 
 impl FromStr for Dependency {
@@ -363,8 +469,10 @@ impl<'a> DependencyResolver<'a> {
         &mut self,
         name: &PackageRef,
         dependency: &Dependency,
+        is_wit: bool,
     ) -> Result<()> {
-        self.add_dependency_internal(name, dependency, false).await
+        self.add_dependency_internal(name, dependency, false, is_wit)
+            .await
     }
 
     /// Add a dependency to the resolver. If the dependency already exists, then it will be
@@ -373,8 +481,10 @@ impl<'a> DependencyResolver<'a> {
         &mut self,
         name: &PackageRef,
         dependency: &Dependency,
+        is_wit: bool,
     ) -> Result<()> {
-        self.add_dependency_internal(name, dependency, true).await
+        self.add_dependency_internal(name, dependency, true, is_wit)
+            .await
     }
 
     async fn add_dependency_internal(
@@ -382,6 +492,7 @@ impl<'a> DependencyResolver<'a> {
         name: &PackageRef,
         dependency: &Dependency,
         force_override: bool,
+        is_wit: bool,
     ) -> Result<()> {
         match dependency {
             Dependency::Package(package) => {
@@ -434,13 +545,15 @@ impl<'a> DependencyResolver<'a> {
                     return Ok(());
                 }
 
-                // Now that we check we haven't already inserted this dep, get the packages from the
-                // local dependency and add those to the resolver before adding the dependency
-                let (_, packages) = get_packages(p)
-                    .context("Error getting dependent packages from local dependency")?;
-                Box::pin(self.add_packages(packages))
-                    .await
-                    .context("Error adding packages to resolver for local dependency")?;
+                // // Now that we check we haven't already inserted this dep, get the packages from the
+                // // local dependency and add those to the resolver before adding the dependency
+                if is_wit {
+                    let (_, packages) = get_packages(p)
+                        .context("Error getting dependent packages from local dependency")?;
+                    Box::pin(self.add_packages(packages))
+                        .await
+                        .context("Error adding packages to resolver for local dependency")?;
+                }
 
                 let prev = self.resolutions.insert(name.clone(), res);
                 assert!(prev.is_none());
@@ -454,9 +567,9 @@ impl<'a> DependencyResolver<'a> {
     /// requirements to the resolver
     pub async fn add_packages(
         &mut self,
-        packages: impl IntoIterator<Item = (PackageRef, VersionReq)>,
+        packages: impl IntoIterator<Item = (PackageRef, VersionReq, bool)>,
     ) -> Result<()> {
-        for (package, req) in packages {
+        for (package, req, is_wit) in packages {
             self.add_dependency(
                 &package,
                 &Dependency::Package(RegistryPackage {
@@ -464,6 +577,7 @@ impl<'a> DependencyResolver<'a> {
                     version: req,
                     registry: None,
                 }),
+                is_wit,
             )
             .await?;
         }

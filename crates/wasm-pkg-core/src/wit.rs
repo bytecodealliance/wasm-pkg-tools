@@ -117,7 +117,7 @@ pub async fn fetch_dependencies(
 /// for resolving dependencies.
 pub fn get_packages(
     path: impl AsRef<Path>,
-) -> Result<(PackageRef, HashSet<(PackageRef, VersionReq)>)> {
+) -> Result<(PackageRef, HashSet<(PackageRef, VersionReq, bool)>)> {
     let group =
         wit_parser::UnresolvedPackageGroup::parse_path(path).context("Couldn't parse package")?;
 
@@ -137,7 +137,7 @@ pub fn get_packages(
     );
 
     // Get all package refs from the main package and then from any nested packages
-    let packages: HashSet<(PackageRef, VersionReq)> =
+    let packages: HashSet<(PackageRef, VersionReq, bool)> =
         packages_from_foreign_deps(group.main.foreign_deps.into_keys())
             .chain(
                 group
@@ -186,7 +186,7 @@ pub async fn resolve_dependencies(
                 }
             };
             resolver
-                .add_dependency(&pkg, &dep)
+                .add_dependency(&pkg, &dep, true)
                 .await
                 .context("Unable to add dependency")?;
         }
@@ -289,7 +289,7 @@ pub async fn populate_dependencies(
 
 fn packages_from_foreign_deps(
     deps: impl IntoIterator<Item = PackageName>,
-) -> impl Iterator<Item = (PackageRef, VersionReq)> {
+) -> impl Iterator<Item = (PackageRef, VersionReq, bool)> {
     deps.into_iter().filter_map(|dep| {
         let name = PackageRef::new(dep.namespace.parse().ok()?, dep.name.parse().ok()?);
         let version = match dep.version {
@@ -301,6 +301,7 @@ fn packages_from_foreign_deps(
             version
                 .parse()
                 .expect("Unable to parse into version request, this is programmer error"),
+            true,
         ))
     })
 }
