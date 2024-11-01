@@ -15,8 +15,8 @@ use crate::{
     config::Config,
     lock::LockFile,
     resolver::{
-        DecodedDependency, Dependency, DependencyKind, DependencyResolution,
-        DependencyResolutionMap, DependencyResolver, LocalResolution, RegistryPackage,
+        DecodedDependency, Dependency, DependencyResolution, DependencyResolutionMap,
+        DependencyResolver, LocalResolution, RegistryPackage,
     },
 };
 
@@ -168,12 +168,12 @@ pub async fn resolve_dependencies(
             let dep = match (ovride.path.as_ref(), ovride.version.as_ref()) {
                 (Some(path), None) => {
                     let path = tokio::fs::canonicalize(path).await?;
-                    Dependency::Local(path, DependencyKind::Wit)
+                    Dependency::Local(path)
                 }
                 (Some(path), Some(_)) => {
                     tracing::warn!("Ignoring version override for local package");
                     let path = tokio::fs::canonicalize(path).await?;
-                    Dependency::Local(path, DependencyKind::Wit)
+                    Dependency::Local(path)
                 }
                 (None, Some(version)) => Dependency::Package(RegistryPackage {
                     name: Some(pkg.clone()),
@@ -186,7 +186,7 @@ pub async fn resolve_dependencies(
                 }
             };
             resolver
-                .add_dependency(&pkg, &dep)
+                .add_wit_dependency(&pkg, &dep)
                 .await
                 .context("Unable to add dependency")?;
         }

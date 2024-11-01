@@ -13,10 +13,6 @@ use anyhow::{bail, Context, Result};
 use futures_util::TryStreamExt;
 use indexmap::{IndexMap, IndexSet};
 use semver::{Comparator, Op, Version, VersionReq};
-use serde::{
-    de::{self, value::MapAccessDeserializer},
-    Deserialize, Serialize,
-};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
@@ -30,17 +26,6 @@ use crate::{lock::LockFile, wit::get_packages};
 /// The name of the default registry.
 pub const DEFAULT_REGISTRY_NAME: &str = "default";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum DependencyKind {
-    Component,
-    Wit,
-}
-
-impl Default for DependencyKind {
-    fn default() -> Self {
-        Self::Wit
-    }
-}
 // TODO: functions for resolving dependencies from a lock file
 
 /// Represents a WIT package dependency.
@@ -50,117 +35,7 @@ pub enum Dependency {
     Package(RegistryPackage),
 
     /// The dependency is a path to a local directory or file.
-    Local(PathBuf, DependencyKind),
-}
-
-impl Serialize for Dependency {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            Self::Package(package) => {
-                if package.name.is_none() && package.registry.is_none() {
-                    let version = package.version.to_string();
-                    version.trim_start_matches('^').serialize(serializer)
-                } else {
-                    #[derive(Serialize)]
-                    struct Entry<'a> {
-                        package: Option<&'a PackageRef>,
-                        version: &'a str,
-                        registry: Option<&'a str>,
-                    }
-
-                    Entry {
-                        package: package.name.as_ref(),
-                        version: package.version.to_string().trim_start_matches('^'),
-                        registry: package.registry.as_deref(),
-                    }
-                    .serialize(serializer)
-                }
-            }
-            Self::Local(path, kind) => {
-                #[derive(Serialize)]
-                struct Entry<'a> {
-                    path: &'a PathBuf,
-                    kind: &'a DependencyKind,
-                }
-
-                Entry { path, kind }.serialize(serializer)
-            }
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Dependency {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct Visitor;
-
-        impl<'de> de::Visitor<'de> for Visitor {
-            type Value = Dependency;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                write!(formatter, "a string or a table")
-            }
-
-            fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Self::Value::Package(s.parse().map_err(de::Error::custom)?))
-            }
-
-            fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
-            where
-                A: de::MapAccess<'de>,
-            {
-                #[derive(Default, Deserialize)]
-                #[serde(default, deny_unknown_fields)]
-                struct Entry {
-                    path: Option<PathBuf>,
-                    package: Option<PackageRef>,
-                    version: Option<VersionReq>,
-                    registry: Option<String>,
-                    kind: DependencyKind,
-                }
-
-                let entry = Entry::deserialize(MapAccessDeserializer::new(map))?;
-
-                match (
-                    entry.path,
-                    entry.package,
-                    entry.version,
-                    entry.registry,
-                    entry.kind,
-                ) {
-                    (Some(path), None, None, None, kind) => Ok(Self::Value::Local(path, kind)),
-                    (None, name, Some(version), registry, _) => {
-                        Ok(Self::Value::Package(RegistryPackage {
-                            name,
-                            version,
-                            registry,
-                        }))
-                    }
-                    (Some(_), None, Some(_), _, _) => Err(de::Error::custom(
-                        "cannot specify both `path` and `version` fields in a dependency entry",
-                    )),
-                    (Some(_), None, None, Some(_), _) => Err(de::Error::custom(
-                        "cannot specify both `path` and `registry` fields in a dependency entry",
-                    )),
-                    (Some(_), Some(_), _, _, _) => Err(de::Error::custom(
-                        "cannot specify both `path` and `package` fields in a dependency entry",
-                    )),
-                    (None, None, _, _, _) => Err(de::Error::missing_field("package")),
-                    (None, Some(_), None, _, _) => Err(de::Error::missing_field("version")),
-                }
-            }
-        }
-
-        deserializer.deserialize_any(Visitor)
-    }
+    Local(PathBuf),
 }
 
 impl FromStr for Dependency {
@@ -484,12 +359,67 @@ impl<'a> DependencyResolver<'a> {
 
     /// Add a dependency to the resolver. If the dependency already exists, then it will be ignored.
     /// To override an existing dependency, use [`override_dependency`](Self::override_dependency).
+
+    #[deprecated(since = "0.9.0", note = "please use `new_method` instead")]
     pub async fn add_dependency(
         &mut self,
         name: &PackageRef,
         dependency: &Dependency,
     ) -> Result<()> {
-        self.add_dependency_internal(name, dependency, false).await
+        self.add_wit_dependency_internal(name, dependency, false)
+            .await
+    }
+
+    /// Add a wit dependency to the resolver. If the dependency already exists, then it will be ignored.
+    /// To override an existing dependency, use [`override_dependency`](Self::override_dependency).
+    pub async fn add_wit_dependency(
+        &mut self,
+        name: &PackageRef,
+        dependency: &Dependency,
+    ) -> Result<()> {
+        self.add_wit_dependency_internal(name, dependency, false)
+            .await
+    }
+
+    /// Add a concrete component dependency to the resolver. If the dependency already exists, then it will be ignored.
+    /// To override an existing dependency, use [`override_dependency`](Self::override_dependency).
+    pub async fn add_component_dependency(
+        &mut self,
+        name: &PackageRef,
+        dependency: &Dependency,
+    ) -> Result<()> {
+        self.add_component_dependency_internal(name, dependency, false)
+            .await
+    }
+
+    async fn add_component_dependency_internal(
+        &mut self,
+        name: &PackageRef,
+        dependency: &Dependency,
+        force_override: bool,
+    ) -> Result<()> {
+        match dependency {
+            Dependency::Package(package) => {
+                self.add_registry_package(name, force_override, package)?
+            }
+            Dependency::Local(p) => {
+                // A local path dependency, insert a resolution immediately
+                let res = DependencyResolution::Local(LocalResolution {
+                    name: name.clone(),
+                    path: p.clone(),
+                });
+
+                if !force_override && self.resolutions.contains_key(name) {
+                    tracing::debug!(%name, "dependency already exists and override is not set, ignoring");
+                    return Ok(());
+                }
+
+                let prev = self.resolutions.insert(name.clone(), res);
+                assert!(prev.is_none());
+            }
+        }
+
+        Ok(())
     }
 
     /// Add a dependency to the resolver. If the dependency already exists, then it will be
@@ -499,10 +429,56 @@ impl<'a> DependencyResolver<'a> {
         name: &PackageRef,
         dependency: &Dependency,
     ) -> Result<()> {
-        self.add_dependency_internal(name, dependency, true).await
+        self.add_wit_dependency_internal(name, dependency, true)
+            .await
     }
 
-    async fn add_dependency_internal(
+    fn add_registry_package(
+        &mut self,
+        name: &PackageRef,
+        force_override: bool,
+        package: &RegistryPackage,
+    ) -> Result<()> {
+        // Dependency comes from a registry, add a dependency to the resolver
+        let registry_name = package.registry.as_deref().or_else(|| {
+            self.client.client().ok().and_then(|client| {
+                client
+                    .config()
+                    .resolve_registry(name)
+                    .map(|reg| reg.as_ref())
+            })
+        });
+        let package_name = package.name.clone().unwrap_or_else(|| name.clone());
+
+        // Resolve the version from the lock file if there is one
+        let locked = match self.lock_file.as_ref().and_then(|resolver| {
+            resolver
+                .resolve(registry_name, &package_name, &package.version)
+                .transpose()
+        }) {
+            Some(Ok(locked)) => Some(locked),
+            Some(Err(e)) => return Err(e),
+            _ => None,
+        };
+
+        if !force_override
+            && (self.resolutions.contains_key(name) || self.dependencies.contains_key(name))
+        {
+            tracing::debug!(%name, "dependency already exists and override is not set, ignoring");
+            return Ok(());
+        }
+        self.dependencies.insert(
+            name.to_owned(),
+            RegistryDependency {
+                package: package_name,
+                version: package.version.clone(),
+                locked: locked.map(|l| (l.version.clone(), l.digest.clone())),
+            },
+        );
+        Ok(())
+    }
+
+    async fn add_wit_dependency_internal(
         &mut self,
         name: &PackageRef,
         dependency: &Dependency,
@@ -510,44 +486,9 @@ impl<'a> DependencyResolver<'a> {
     ) -> Result<()> {
         match dependency {
             Dependency::Package(package) => {
-                // Dependency comes from a registry, add a dependency to the resolver
-                let registry_name = package.registry.as_deref().or_else(|| {
-                    self.client.client().ok().and_then(|client| {
-                        client
-                            .config()
-                            .resolve_registry(name)
-                            .map(|reg| reg.as_ref())
-                    })
-                });
-                let package_name = package.name.clone().unwrap_or_else(|| name.clone());
-
-                // Resolve the version from the lock file if there is one
-                let locked = match self.lock_file.as_ref().and_then(|resolver| {
-                    resolver
-                        .resolve(registry_name, &package_name, &package.version)
-                        .transpose()
-                }) {
-                    Some(Ok(locked)) => Some(locked),
-                    Some(Err(e)) => return Err(e),
-                    _ => None,
-                };
-
-                if !force_override
-                    && (self.resolutions.contains_key(name) || self.dependencies.contains_key(name))
-                {
-                    tracing::debug!(%name, "dependency already exists and override is not set, ignoring");
-                    return Ok(());
-                }
-                self.dependencies.insert(
-                    name.to_owned(),
-                    RegistryDependency {
-                        package: package_name,
-                        version: package.version.clone(),
-                        locked: locked.map(|l| (l.version.clone(), l.digest.clone())),
-                    },
-                );
+                self.add_registry_package(name, force_override, package)?
             }
-            Dependency::Local(p, kind) => {
+            Dependency::Local(p) => {
                 // A local path dependency, insert a resolution immediately
                 let res = DependencyResolution::Local(LocalResolution {
                     name: name.clone(),
@@ -562,13 +503,11 @@ impl<'a> DependencyResolver<'a> {
                 // // Now that we check we haven't already inserted this dep, get the packages from the
                 // // local dependency and add those to the resolver before adding the dependency
                 // if is_wit {
-                if kind == &DependencyKind::Wit {
-                    let (_, packages) = get_packages(p)
-                        .context("Error getting dependent packages from local dependency")?;
-                    Box::pin(self.add_packages(packages))
-                        .await
-                        .context("Error adding packages to resolver for local dependency")?;
-                }
+                let (_, packages) = get_packages(p)
+                    .context("Error getting dependent packages from local dependency")?;
+                Box::pin(self.add_packages(packages))
+                    .await
+                    .context("Error adding packages to resolver for local dependency")?;
                 // }
 
                 let prev = self.resolutions.insert(name.clone(), res);
@@ -586,7 +525,7 @@ impl<'a> DependencyResolver<'a> {
         packages: impl IntoIterator<Item = (PackageRef, VersionReq)>,
     ) -> Result<()> {
         for (package, req) in packages {
-            self.add_dependency(
+            self.add_wit_dependency(
                 &package,
                 &Dependency::Package(RegistryPackage {
                     name: Some(package.clone()),
@@ -717,10 +656,11 @@ fn find_latest_release<'a>(
     versions: &'a [VersionInfo],
     req: &VersionReq,
 ) -> Option<&'a VersionInfo> {
-    versions
+    let versions = versions
         .iter()
         .filter(|info| !info.yanked && req.matches(&info.version))
-        .max_by(|a, b| a.version.cmp(&b.version))
+        .max_by(|a, b| a.version.cmp(&b.version));
+    versions
 }
 
 // NOTE(thomastaylor312): This is copied from the old wit package in the cargo-component and broken
