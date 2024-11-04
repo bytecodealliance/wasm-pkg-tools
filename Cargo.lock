@@ -130,9 +130,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.91"
+version = "1.0.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c042108f3ed77fd83760a5fd79b53be043192bb3b9dba91d8c574c0ada7850c8"
+checksum = "74f37166d7d48a0284b99dd824694c26119c700b53bf0d1540cdb147dbdaaf13"
 
 [[package]]
 name = "arraydeque"
@@ -4250,7 +4250,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-pkg-client"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4284,7 +4284,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-pkg-common"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "bytes",
@@ -4304,7 +4304,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-pkg-core"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "futures-util",
@@ -4690,7 +4690,7 @@ dependencies = [
 
 [[package]]
 name = "wkg"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
