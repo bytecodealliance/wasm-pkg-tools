@@ -360,39 +360,29 @@ impl<'a> DependencyResolver<'a> {
     /// Add a dependency to the resolver. If the dependency already exists, then it will be ignored.
     /// To override an existing dependency, use [`override_dependency`](Self::override_dependency).
 
-    #[deprecated(since = "0.9.0", note = "please use `new_method` instead")]
+    /// Add a wit dependency to the resolver. If the dependency already exists, then it will be ignored.
+    /// To override an existing dependency, use [`override_dependency`](Self::override_dependency).
     pub async fn add_dependency(
         &mut self,
         name: &PackageRef,
         dependency: &Dependency,
     ) -> Result<()> {
-        self.add_wit_dependency_internal(name, dependency, false)
-            .await
-    }
-
-    /// Add a wit dependency to the resolver. If the dependency already exists, then it will be ignored.
-    /// To override an existing dependency, use [`override_dependency`](Self::override_dependency).
-    pub async fn add_wit_dependency(
-        &mut self,
-        name: &PackageRef,
-        dependency: &Dependency,
-    ) -> Result<()> {
-        self.add_wit_dependency_internal(name, dependency, false)
+        self.add_dependency_internal(name, dependency, false)
             .await
     }
 
     /// Add a concrete component dependency to the resolver. If the dependency already exists, then it will be ignored.
     /// To override an existing dependency, use [`override_dependency`](Self::override_dependency).
-    pub async fn add_component_dependency(
+    pub async fn add_shallow_dependency(
         &mut self,
         name: &PackageRef,
         dependency: &Dependency,
     ) -> Result<()> {
-        self.add_component_dependency_internal(name, dependency, false)
+        self.add_shallow_dependency_internal(name, dependency, false)
             .await
     }
 
-    async fn add_component_dependency_internal(
+    async fn add_shallow_dependency_internal(
         &mut self,
         name: &PackageRef,
         dependency: &Dependency,
@@ -429,7 +419,7 @@ impl<'a> DependencyResolver<'a> {
         name: &PackageRef,
         dependency: &Dependency,
     ) -> Result<()> {
-        self.add_wit_dependency_internal(name, dependency, true)
+        self.add_dependency_internal(name, dependency, true)
             .await
     }
 
@@ -478,7 +468,7 @@ impl<'a> DependencyResolver<'a> {
         Ok(())
     }
 
-    async fn add_wit_dependency_internal(
+    async fn add_dependency_internal(
         &mut self,
         name: &PackageRef,
         dependency: &Dependency,
@@ -502,13 +492,11 @@ impl<'a> DependencyResolver<'a> {
 
                 // // Now that we check we haven't already inserted this dep, get the packages from the
                 // // local dependency and add those to the resolver before adding the dependency
-                // if is_wit {
                 let (_, packages) = get_packages(p)
                     .context("Error getting dependent packages from local dependency")?;
                 Box::pin(self.add_packages(packages))
                     .await
                     .context("Error adding packages to resolver for local dependency")?;
-                // }
 
                 let prev = self.resolutions.insert(name.clone(), res);
                 assert!(prev.is_none());
@@ -525,7 +513,7 @@ impl<'a> DependencyResolver<'a> {
         packages: impl IntoIterator<Item = (PackageRef, VersionReq)>,
     ) -> Result<()> {
         for (package, req) in packages {
-            self.add_wit_dependency(
+            self.add_dependency(
                 &package,
                 &Dependency::Package(RegistryPackage {
                     name: Some(package.clone()),

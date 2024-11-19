@@ -186,7 +186,7 @@ pub async fn resolve_dependencies(
                 }
             };
             resolver
-                .add_wit_dependency(&pkg, &dep)
+                .add_dependency(&pkg, &dep)
                 .await
                 .context("Unable to add dependency")?;
         }
