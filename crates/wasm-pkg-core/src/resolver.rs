@@ -359,9 +359,6 @@ impl<'a> DependencyResolver<'a> {
 
     /// Add a dependency to the resolver. If the dependency already exists, then it will be ignored.
     /// To override an existing dependency, use [`override_dependency`](Self::override_dependency).
-
-    /// Add a wit dependency to the resolver. If the dependency already exists, then it will be ignored.
-    /// To override an existing dependency, use [`override_dependency`](Self::override_dependency).
     pub async fn add_dependency(
         &mut self,
         name: &PackageRef,
@@ -490,8 +487,8 @@ impl<'a> DependencyResolver<'a> {
                     return Ok(());
                 }
 
-                // // Now that we check we haven't already inserted this dep, get the packages from the
-                // // local dependency and add those to the resolver before adding the dependency
+                // Now that we check we haven't already inserted this dep, get the packages from the
+                // local dependency and add those to the resolver before adding the dependency
                 let (_, packages) = get_packages(p)
                     .context("Error getting dependent packages from local dependency")?;
                 Box::pin(self.add_packages(packages))
