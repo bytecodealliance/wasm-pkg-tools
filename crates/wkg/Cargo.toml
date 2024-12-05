@@ -23,7 +23,7 @@ oci-wasm = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["ansi"] }
 wasm-pkg-common = { workspace = true }
 wasm-pkg-client = { workspace = true }
 wit-component = { workspace = true }
