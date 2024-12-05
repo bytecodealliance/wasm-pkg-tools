@@ -1,0 +1,12 @@
+package example-c:baz@0.1.0;
+
+interface baz {
+  record requestresponse {
+    baz: list<u8>,
+  }
+}
+
+world handler {
+  // No dependencies to import
+  export baz;
+}
