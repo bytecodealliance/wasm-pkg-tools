@@ -407,6 +407,8 @@ impl<'a> DependencyResolver<'a> {
                     _ => None,
                 };
 
+                // So if it wasn't already fetched first? then we'll try and resolve it later, and the override
+                // is not present there for some reason
                 if !force_override
                     && (self.resolutions.contains_key(name) || self.dependencies.contains_key(name))
                 {
@@ -423,16 +425,28 @@ impl<'a> DependencyResolver<'a> {
                 );
             }
             Dependency::Local(p) => {
-                // A local path dependency, insert a resolution immediately
                 let res = DependencyResolution::Local(LocalResolution {
                     name: name.clone(),
                     path: p.clone(),
                 });
 
-                if !force_override && self.resolutions.contains_key(name) {
-                    tracing::debug!(%name, "dependency already exists and override is not set, ignoring");
+                // This is a bit of a hack, but if there are multiple local dependencies that are
+                // nested and overriden, getting the packages from the local package treats _all_
+                // deps as registry deps. So if we're handling a local path and the dependencies
+                // have a registry package already, override it. Otherwise follow normal overrides.
+                // We should definitely fix this and change where we resolve these things
+                let should_insert = force_override
+                    || self.dependencies.contains_key(name)
+                    || !self.resolutions.contains_key(name);
+                if !should_insert {
+                    tracing::debug!(%name, "dependency already exists and registry override is not set, ignoring");
                     return Ok(());
                 }
+
+                // Because we got here, we should remove anything from dependencies that is the same
+                // package because we're overriding with the local package. Technically we could be
+                // clever and just do this in the boolean above, but I'm paranoid
+                self.dependencies.remove(name);
 
                 // Now that we check we haven't already inserted this dep, get the packages from the
                 // local dependency and add those to the resolver before adding the dependency
