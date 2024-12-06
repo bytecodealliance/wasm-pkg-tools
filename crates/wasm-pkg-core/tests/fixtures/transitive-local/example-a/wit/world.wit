@@ -1,0 +1,12 @@
+package example-a:foo@0.1.0;
+
+interface foo {
+  record request {
+    foo: list<u8>,
+  }
+}
+
+world handler {
+  import example-b:bar/bar@0.1.0;
+  export foo;
+}

@@ -33,6 +33,7 @@ tokio-util = "0.7.10"
 toml = "0.8"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", default-features = false, features = [
+    "ansi",
     "fmt",
     "env-filter",
 ] }

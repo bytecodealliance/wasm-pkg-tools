@@ -77,6 +77,69 @@ async fn test_nested_local(#[values(OutputType::Wasm, OutputType::Wit)] output: 
     );
 }
 
+#[rstest]
+#[tokio::test]
+async fn test_transitive_local(#[values(OutputType::Wasm, OutputType::Wit)] output: OutputType) {
+    let (_temp, fixture_path) = common::load_fixture("transitive-local").await.unwrap();
+    let project_path = fixture_path.join("example-a");
+    let lock_file = project_path.join("wkg.lock");
+    let mut lock = LockFile::new_with_path([], &lock_file)
+        .await
+        .expect("Should be able to create a new lock file");
+    // ```toml
+    // [overrides]
+    // "example-b:bar" = { "path" = "../example-b/wit" }
+    // "example-c:baz" = { "path" = "../example-c/wit" }
+    // ```
+    let config = Config {
+        overrides: Some(HashMap::from([
+            (
+                "example-b:bar".to_string(),
+                Override {
+                    path: Some(fixture_path.join("example-b").join("wit")),
+                    version: None,
+                },
+            ),
+            (
+                "example-c:baz".to_string(),
+                Override {
+                    path: Some(fixture_path.join("example-c").join("wit")),
+                    version: None,
+                },
+            ),
+        ])),
+        ..Default::default()
+    };
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+
+    assert!(
+        // If overrides didn't properly resolve, this will fail
+        wit::fetch_dependencies(&config, project_path.join("wit"), &mut lock, client, output)
+            .await
+            .is_ok(),
+        "Should be able to fetch the dependencies"
+    );
+
+    // Ensure that the deps directory contains the correct dependencies
+    let mut deps_dir = tokio::fs::read_dir(project_path.join("wit").join("deps"))
+        .await
+        .expect("Should be able to read the deps directory");
+    let mut deps = Vec::new();
+    while let Ok(Some(entry)) = deps_dir.next_entry().await {
+        deps.push(entry.file_name().to_string_lossy().to_string());
+    }
+    assert_eq!(deps.len(), 2);
+    assert!(deps.contains(&"example-b-bar-0.1.0".to_string()));
+    assert!(deps.contains(&"example-c-baz-0.1.0".to_string()));
+
+    // All dependencies are local, so the lock file should be empty
+    assert_eq!(
+        lock.packages.len(),
+        0,
+        "Should have the correct number of packages in the lock file"
+    );
+}
+
 async fn build_component(fixture_path: &Path) {
     let output = Command::new(env!("CARGO"))
         .current_dir(fixture_path)

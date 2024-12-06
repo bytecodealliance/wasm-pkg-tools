@@ -1,0 +1,12 @@
+package example-b:bar@0.1.0;
+
+interface bar {
+  record response {
+    bar: list<u8>,
+  }
+}
+
+world handler {
+  import example-c:baz/baz@0.1.0;
+  export bar;
+}
