@@ -364,7 +364,49 @@ impl<'a> DependencyResolver<'a> {
         name: &PackageRef,
         dependency: &Dependency,
     ) -> Result<()> {
-        self.add_dependency_internal(name, dependency, false).await
+        self.add_dependency_internal(name, dependency, false)
+            .await
+    }
+
+    /// Add a concrete component dependency to the resolver. If the dependency already exists, then it will be ignored.
+    /// To override an existing dependency, use [`override_dependency`](Self::override_dependency).
+    pub async fn add_shallow_dependency(
+        &mut self,
+        name: &PackageRef,
+        dependency: &Dependency,
+    ) -> Result<()> {
+        self.add_shallow_dependency_internal(name, dependency, false)
+            .await
+    }
+
+    async fn add_shallow_dependency_internal(
+        &mut self,
+        name: &PackageRef,
+        dependency: &Dependency,
+        force_override: bool,
+    ) -> Result<()> {
+        match dependency {
+            Dependency::Package(package) => {
+                self.add_registry_package(name, force_override, package)?
+            }
+            Dependency::Local(p) => {
+                // A local path dependency, insert a resolution immediately
+                let res = DependencyResolution::Local(LocalResolution {
+                    name: name.clone(),
+                    path: p.clone(),
+                });
+
+                if !force_override && self.resolutions.contains_key(name) {
+                    tracing::debug!(%name, "dependency already exists and override is not set, ignoring");
+                    return Ok(());
+                }
+
+                let prev = self.resolutions.insert(name.clone(), res);
+                assert!(prev.is_none());
+            }
+        }
+
+        Ok(())
     }
 
     /// Add a dependency to the resolver. If the dependency already exists, then it will be
@@ -374,7 +416,53 @@ impl<'a> DependencyResolver<'a> {
         name: &PackageRef,
         dependency: &Dependency,
     ) -> Result<()> {
-        self.add_dependency_internal(name, dependency, true).await
+        self.add_dependency_internal(name, dependency, true)
+            .await
+    }
+
+    fn add_registry_package(
+        &mut self,
+        name: &PackageRef,
+        force_override: bool,
+        package: &RegistryPackage,
+    ) -> Result<()> {
+        // Dependency comes from a registry, add a dependency to the resolver
+        let registry_name = package.registry.as_deref().or_else(|| {
+            self.client.client().ok().and_then(|client| {
+                client
+                    .config()
+                    .resolve_registry(name)
+                    .map(|reg| reg.as_ref())
+            })
+        });
+        let package_name = package.name.clone().unwrap_or_else(|| name.clone());
+
+        // Resolve the version from the lock file if there is one
+        let locked = match self.lock_file.as_ref().and_then(|resolver| {
+            resolver
+                .resolve(registry_name, &package_name, &package.version)
+                .transpose()
+        }) {
+            Some(Ok(locked)) => Some(locked),
+            Some(Err(e)) => return Err(e),
+            _ => None,
+        };
+
+        if !force_override
+            && (self.resolutions.contains_key(name) || self.dependencies.contains_key(name))
+        {
+            tracing::debug!(%name, "dependency already exists and override is not set, ignoring");
+            return Ok(());
+        }
+        self.dependencies.insert(
+            name.to_owned(),
+            RegistryDependency {
+                package: package_name,
+                version: package.version.clone(),
+                locked: locked.map(|l| (l.version.clone(), l.digest.clone())),
+            },
+        );
+        Ok(())
     }
 
     async fn add_dependency_internal(
@@ -385,42 +473,7 @@ impl<'a> DependencyResolver<'a> {
     ) -> Result<()> {
         match dependency {
             Dependency::Package(package) => {
-                // Dependency comes from a registry, add a dependency to the resolver
-                let registry_name = package.registry.as_deref().or_else(|| {
-                    self.client.client().ok().and_then(|client| {
-                        client
-                            .config()
-                            .resolve_registry(name)
-                            .map(|reg| reg.as_ref())
-                    })
-                });
-                let package_name = package.name.clone().unwrap_or_else(|| name.clone());
-
-                // Resolve the version from the lock file if there is one
-                let locked = match self.lock_file.as_ref().and_then(|resolver| {
-                    resolver
-                        .resolve(registry_name, &package_name, &package.version)
-                        .transpose()
-                }) {
-                    Some(Ok(locked)) => Some(locked),
-                    Some(Err(e)) => return Err(e),
-                    _ => None,
-                };
-
-                if !force_override
-                    && (self.resolutions.contains_key(name) || self.dependencies.contains_key(name))
-                {
-                    tracing::debug!(%name, "dependency already exists and override is not set, ignoring");
-                    return Ok(());
-                }
-                self.dependencies.insert(
-                    name.to_owned(),
-                    RegistryDependency {
-                        package: package_name,
-                        version: package.version.clone(),
-                        locked: locked.map(|l| (l.version.clone(), l.digest.clone())),
-                    },
-                );
+                self.add_registry_package(name, force_override, package)?
             }
             Dependency::Local(p) => {
                 // A local path dependency, insert a resolution immediately
@@ -588,10 +641,11 @@ fn find_latest_release<'a>(
     versions: &'a [VersionInfo],
     req: &VersionReq,
 ) -> Option<&'a VersionInfo> {
-    versions
+    let versions = versions
         .iter()
         .filter(|info| !info.yanked && req.matches(&info.version))
-        .max_by(|a, b| a.version.cmp(&b.version))
+        .max_by(|a, b| a.version.cmp(&b.version));
+    versions
 }
 
 // NOTE(thomastaylor312): This is copied from the old wit package in the cargo-component and broken
