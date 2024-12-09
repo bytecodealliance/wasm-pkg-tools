@@ -4,7 +4,7 @@ use anyhow::Context;
 use clap::{Args, Subcommand};
 use docker_credential::DockerCredential;
 use oci_client::{
-    client::{ClientConfig, ClientProtocol},
+    client::{ClientConfig, ClientProtocol, PushResponse},
     secrets::RegistryAuth,
     Reference,
 };
@@ -156,13 +156,23 @@ impl PushArgs {
         };
 
         let auth = self.auth.into_auth(&self.reference)?;
-        client
+        let res = client
             .push(&self.reference, &auth, layer, conf, annotations)
             .await
             .context("Unable to push image")?;
-        println!("Pushed {}", self.reference);
+        println!("pushed: {}", self.reference);
+
+        let PushResponse { manifest_url, .. } = res;
+        println!("digest: {}", digest_from_manifest_url(&manifest_url));
+
         Ok(())
     }
+}
+
+fn digest_from_manifest_url(url: &str) -> &str {
+    url.split('/')
+        .last()
+        .expect("url did not contain manifest sha256")
 }
 
 impl PullArgs {
