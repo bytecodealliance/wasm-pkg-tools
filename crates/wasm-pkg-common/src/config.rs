@@ -361,7 +361,7 @@ impl std::fmt::Debug for RegistryConfig {
 // Redact backend configs, which may contain sensitive values.
 struct DebugBackendConfigs<'a>(&'a HashMap<String, ::toml::Table>);
 
-impl<'a> std::fmt::Debug for DebugBackendConfigs<'a> {
+impl std::fmt::Debug for DebugBackendConfigs<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_map()
             .entries(self.0.keys().map(|ty| (ty, &"<HIDDEN>")))
