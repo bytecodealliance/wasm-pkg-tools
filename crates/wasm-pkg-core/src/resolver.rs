@@ -258,7 +258,7 @@ pub enum DecodedDependency<'a> {
     },
 }
 
-impl<'a> DecodedDependency<'a> {
+impl DecodedDependency<'_> {
     /// Fully resolves the dependency.
     ///
     /// If the dependency is an unresolved WIT package, it will assume that the
