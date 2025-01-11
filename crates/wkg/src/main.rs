@@ -1,4 +1,4 @@
-use std::{fs, io::Seek, path::PathBuf};
+use std::{io::Seek, path::PathBuf};
 
 use anyhow::{ensure, Context};
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -313,8 +313,8 @@ impl GetArgs {
         let output_trailing_slash = self.output.as_os_str().to_string_lossy().ends_with('/');
         let parent_dir = if output_trailing_slash {
             let parent_dir = self.output.as_path();
-            if !fs::exists(parent_dir)? {
-                fs::create_dir_all(parent_dir)
+            if !tokio::fs::try_exists(parent_dir).await? {
+                tokio::fs::create_dir_all(parent_dir).await
                     .context("Failed to create output dir")?
             }
             parent_dir
