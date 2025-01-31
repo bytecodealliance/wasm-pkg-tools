@@ -16,6 +16,7 @@ pub const CONFIG_FILE_NAME: &str = "wkg.toml";
 /// The structure for a wkg.toml configuration file. This file is entirely optional and is used for
 /// overriding and annotating wasm packages.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     /// Overrides for various packages
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -59,6 +60,7 @@ impl Config {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct Override {
     /// A path to the package on disk. If this is set, the package will be loaded from the given
     /// path. If this is not set, the package will be loaded from the registry.
@@ -71,18 +73,19 @@ pub struct Override {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct Metadata {
-    /// The authors of the package.
+    /// The author(s) of the package.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
     /// The package description.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// The package license.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "license")]
     pub licenses: Option<String>,
     /// The package source code URL.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "repository")]
     pub source: Option<String>,
     /// The package homepage URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
