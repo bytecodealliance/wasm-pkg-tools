@@ -354,7 +354,9 @@ impl GetArgs {
             match wit_component::decode_reader(&mut file) {
                 Ok(DecodedWasm::WitPackage(resolve, pkg)) => {
                     tracing::debug!(?pkg, "decoded WIT package");
-                    Some(wit_component::WitPrinter::default().print(&resolve, pkg, &[])?)
+                    let mut printer = wit_component::WitPrinter::default();
+                    printer.print(&resolve, pkg, &[])?;
+                    Some(printer.output.to_string())
                 }
                 Ok(_) => None,
                 Err(err) => {

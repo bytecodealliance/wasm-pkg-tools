@@ -73,12 +73,12 @@ async fn build_and_publish_with_metadata() {
     );
     assert_eq!(
         annotations.get("org.opencontainers.image.licenses"),
-        meta.license.as_ref(),
+        meta.licenses.as_ref(),
         "License should match"
     );
     assert_eq!(
         annotations.get("org.opencontainers.image.source"),
-        meta.repository.as_ref(),
+        meta.source.as_ref(),
         "Source should match"
     );
     assert_eq!(

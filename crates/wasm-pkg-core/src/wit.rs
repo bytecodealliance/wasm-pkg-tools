@@ -4,6 +4,7 @@ use std::{collections::HashSet, path::Path, str::FromStr};
 
 use anyhow::{Context, Result};
 use semver::{Version, VersionReq};
+use wasm_metadata::AddMetadata;
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     PackageRef,
@@ -58,6 +59,7 @@ pub async fn build_package(
     lock_file.update_dependencies(&dependencies);
 
     let (resolve, pkg_id) = dependencies.generate_resolve(wit_dir).await?;
+    let bytes = wit_component::encode(&resolve, pkg_id)?;
 
     let pkg = &resolve.packages[pkg_id];
     let name = PackageRef::new(
@@ -68,26 +70,35 @@ pub async fn build_package(
         pkg.name
             .name
             .parse()
-            .context("Invalid name found for package")?,
+            .context("Invalid name found in package")?,
     );
+    let version = pkg
+        .name
+        .version
+        .as_ref()
+        .map(|v| v.to_string().parse())
+        .transpose()
+        .context("Invalid version found in package")?;
 
-    let bytes = wit_component::encode(&resolve, pkg_id)?;
+    let processed_by_version = option_env!("WIT_VERSION_INFO").unwrap_or(env!("CARGO_PKG_VERSION"));
 
-    let mut producers = wasm_metadata::Producers::empty();
-    producers.add(
-        "processed-by",
-        env!("CARGO_PKG_NAME"),
-        option_env!("WIT_VERSION_INFO").unwrap_or(env!("CARGO_PKG_VERSION")),
-    );
-
-    let mut bytes = producers
-        .add_to_wasm(&bytes)
-        .context("failed to add producers metadata to output WIT package")?;
-
-    if let Some(meta) = config.metadata.clone() {
-        let meta = wasm_metadata::RegistryMetadata::from(meta);
-        bytes = meta.add_to_wasm(&bytes)?;
-    }
+    let metadata = config.metadata.clone().unwrap_or_default();
+    let add_metadata = AddMetadata {
+        name: Some(format!("{}:{}", pkg.name.namespace, pkg.name.name)),
+        processed_by: vec![(
+            env!("CARGO_PKG_NAME").to_string(),
+            processed_by_version.to_string(),
+        )],
+        author: metadata.author.map(|v| v.parse()).transpose()?,
+        description: metadata.description.map(|v| v.parse()).transpose()?,
+        licenses: metadata.licenses.map(|v| v.parse()).transpose()?,
+        source: metadata.source.map(|v| v.parse()).transpose()?,
+        homepage: metadata.homepage.map(|v| v.parse()).transpose()?,
+        revision: metadata.revision.map(|v| v.parse()).transpose()?,
+        version,
+        ..Default::default()
+    };
+    let bytes = add_metadata.to_wasm(&bytes)?;
 
     Ok((name, pkg.name.version.clone(), bytes))
 }
@@ -345,10 +356,10 @@ async fn print_wit_from_resolve(
         let dep_path = root_deps_dir.join(name_from_package_name(&pkg.name));
         tokio::fs::create_dir_all(&dep_path).await?;
         let mut printer = WitPrinter::default();
-        let wit = printer
+        printer
             .print(resolve, id, &[])
             .context("Unable to print wit")?;
-        tokio::fs::write(dep_path.join("package.wit"), wit).await?;
+        tokio::fs::write(dep_path.join("package.wit"), &printer.output.to_string()).await?;
     }
     Ok(())
 }
