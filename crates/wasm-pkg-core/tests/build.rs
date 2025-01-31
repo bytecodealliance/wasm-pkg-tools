@@ -1,5 +1,6 @@
 use wasm_pkg_core::{config::Config as WkgConfig, lock::LockFile};
 use wit_component::DecodedWasm;
+use wit_parser::Stability;
 
 mod common;
 
@@ -28,7 +29,7 @@ async fn test_build_wit() {
     );
     assert_eq!(
         version.unwrap().to_string(),
-        "0.2.0",
+        "0.2.3",
         "Should have the correct version"
     );
 
@@ -53,16 +54,29 @@ async fn test_build_wit() {
         _ => panic!("Should be a package"),
     };
 
-    let name = resolve
-        .package_names
-        .iter()
-        .find_map(|(name, id)| (pkg_id == *id).then_some(name))
-        .expect("Should be able to find the package name");
+    let package = resolve
+        .packages
+        .get(pkg_id)
+        .expect("Should contain decoded package");
 
     assert_eq!(
-        name.to_string(),
-        "wasi:http@0.2.0",
+        package.name.to_string(),
+        "wasi:http@0.2.3",
         "Should have the correct package name"
+    );
+
+    // @unstable items are retained
+    let types_id = package
+        .interfaces
+        .get("types")
+        .expect("wasi:http should have a types interface");
+    let send_informational = resolve.interfaces[*types_id]
+        .functions
+        .get("[method]response-outparam.send-informational")
+        .expect("Should have send-informational method");
+    assert!(
+        matches!(send_informational.stability, Stability::Unstable { .. }),
+        "response-outparam.send-informational should be unstable"
     );
 
     assert!(
@@ -85,8 +99,8 @@ async fn test_bad_dep_failure() {
         .await
         .expect("Should be able to read the world file");
     let str_world = str_world.replace(
-        "import wasi:cli/stdin@0.2.0;",
-        "import totally:not/real@0.2.0;",
+        "import wasi:cli/stdin@0.2.3;",
+        "import totally:not/real@0.2.3;",
     );
     tokio::fs::write(world_file, str_world)
         .await
