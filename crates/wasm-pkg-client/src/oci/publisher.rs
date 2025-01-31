@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use oci_client::{Reference, RegistryOperation};
 use tokio::io::AsyncReadExt;
-use wasm_metadata::LinkType;
 
 use crate::publisher::PackagePublisher;
 use crate::{PackageRef, PublishingSource, Version};
@@ -22,44 +21,39 @@ impl PackagePublisher for OciBackend {
         // to remove this and use the stream directly.
         let mut buf = Vec::new();
         data.read_to_end(&mut buf).await?;
-        let meta = wasm_metadata::RegistryMetadata::from_wasm(&buf).map_err(|e| {
-            crate::Error::InvalidComponent(anyhow::anyhow!("Unable to parse component: {e}"))
+        let payload = wasm_metadata::Payload::from_binary(&buf).map_err(|e| {
+            crate::Error::InvalidComponent(anyhow::anyhow!("Unable to parse WASM: {e}"))
         })?;
+        let meta = payload.metadata();
         let (config, layer) = oci_wasm::WasmConfig::from_raw_component(buf, None)
             .map_err(crate::Error::InvalidComponent)?;
         let mut annotations = BTreeMap::from_iter([(
             "org.opencontainers.image.version".to_string(),
             version.to_string(),
         )]);
-        if let Some(meta) = meta {
-            if let Some(desc) = meta.get_description() {
-                annotations.insert(
-                    "org.opencontainers.image.description".to_string(),
-                    desc.to_owned(),
-                );
-            }
-            if let Some(licenses) = meta.get_license() {
-                annotations.insert(
-                    "org.opencontainers.image.licenses".to_string(),
-                    licenses.to_owned(),
-                );
-            }
-            if let Some(sources) = meta.get_links() {
-                for link in sources {
-                    if link.ty == LinkType::Repository {
-                        annotations.insert(
-                            "org.opencontainers.image.source".to_string(),
-                            link.value.to_owned(),
-                        );
-                    }
-                    if link.ty == LinkType::Homepage {
-                        annotations.insert(
-                            "org.opencontainers.image.url".to_string(),
-                            link.value.to_owned(),
-                        );
-                    }
-                }
-            }
+        if let Some(desc) = &meta.description {
+            annotations.insert(
+                "org.opencontainers.image.description".to_string(),
+                desc.to_string(),
+            );
+        }
+        if let Some(licenses) = &meta.licenses {
+            annotations.insert(
+                "org.opencontainers.image.licenses".to_string(),
+                licenses.to_string(),
+            );
+        }
+        if let Some(source) = &meta.source {
+            annotations.insert(
+                "org.opencontainers.image.source".to_string(),
+                source.to_string(),
+            );
+        }
+        if let Some(homepage) = &meta.homepage {
+            annotations.insert(
+                "org.opencontainers.image.url".to_string(),
+                homepage.to_string(),
+            );
         }
 
         let reference: Reference = self.make_reference(package, Some(version));

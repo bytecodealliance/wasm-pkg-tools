@@ -9,7 +9,6 @@ use anyhow::{Context, Result};
 use semver::VersionReq;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
-use wasm_metadata::{Link, LinkType, RegistryMetadata};
 
 /// The default name of the configuration file.
 pub const CONFIG_FILE_NAME: &str = "wkg.toml";
@@ -17,6 +16,7 @@ pub const CONFIG_FILE_NAME: &str = "wkg.toml";
 /// The structure for a wkg.toml configuration file. This file is entirely optional and is used for
 /// overriding and annotating wasm packages.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     /// Overrides for various packages
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -60,6 +60,7 @@ impl Config {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct Override {
     /// A path to the package on disk. If this is set, the package will be loaded from the given
     /// path. If this is not set, the package will be loaded from the registry.
@@ -72,59 +73,26 @@ pub struct Override {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct Metadata {
-    /// The authors of the package.
+    /// The author(s) of the package.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub authors: Option<Vec<String>>,
-    /// The categories of the package.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub categories: Option<Vec<String>>,
+    pub author: Option<String>,
     /// The package description.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// The package license.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub license: Option<String>,
-    /// The package documentation URL.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub documentation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "license")]
+    pub licenses: Option<String>,
+    /// The package source code URL.
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "repository")]
+    pub source: Option<String>,
     /// The package homepage URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub homepage: Option<String>,
-    /// The package repository URL.
+    /// The package source control revision.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub repository: Option<String>,
-}
-
-impl From<Metadata> for wasm_metadata::RegistryMetadata {
-    fn from(value: Metadata) -> Self {
-        let mut meta = RegistryMetadata::default();
-        meta.set_authors(value.authors);
-        meta.set_categories(value.categories);
-        meta.set_description(value.description);
-        meta.set_license(value.license);
-        let mut links = Vec::new();
-        if let Some(documentation) = value.documentation {
-            links.push(Link {
-                ty: LinkType::Documentation,
-                value: documentation,
-            });
-        }
-        if let Some(homepage) = value.homepage {
-            links.push(Link {
-                ty: LinkType::Homepage,
-                value: homepage,
-            });
-        }
-        if let Some(repository) = value.repository {
-            links.push(Link {
-                ty: LinkType::Repository,
-                value: repository,
-            });
-        }
-        meta.set_links((!links.is_empty()).then_some(links));
-        meta
-    }
+    pub revision: Option<String>,
 }
 
 #[cfg(test)]
@@ -144,13 +112,12 @@ mod tests {
                 },
             )])),
             metadata: Some(Metadata {
-                authors: Some(vec!["foo".to_string(), "bar".to_string()]),
-                categories: Some(vec!["foo".to_string(), "bar".to_string()]),
-                description: Some("foo".to_string()),
-                license: Some("foo".to_string()),
-                documentation: Some("foo".to_string()),
-                homepage: Some("foo".to_string()),
-                repository: Some("foo".to_string()),
+                author: Some("Foo Bar".to_string()),
+                description: Some("Foobar baz".to_string()),
+                licenses: Some("FBB".to_string()),
+                source: Some("https://gitfoo/bar".to_string()),
+                homepage: Some("https://foo.bar".to_string()),
+                revision: Some("f00ba4".to_string()),
             }),
         };
 
