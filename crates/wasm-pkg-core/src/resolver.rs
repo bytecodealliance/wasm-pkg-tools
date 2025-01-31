@@ -267,6 +267,7 @@ impl DecodedDependency<'_> {
         match self {
             Self::Wit { package, .. } => {
                 let mut resolve = Resolve::new();
+                resolve.all_features = true;
                 let source_files = package
                     .source_map
                     .source_files()
@@ -677,7 +678,11 @@ impl DependencyResolutionMap {
     /// Given a path to a component or a directory containing wit, use the given dependencies to
     /// generate a [`Resolve`] for the root package.
     pub async fn generate_resolve(&self, dir: impl AsRef<Path>) -> Result<(Resolve, PackageId)> {
-        let mut merged = Resolve::default();
+        let mut merged = Resolve {
+            // Retain @unstable features; downstream tooling will process them further
+            all_features: true,
+            ..Resolve::default()
+        };
 
         let deps = self.decode_dependencies().await?;
 

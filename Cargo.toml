@@ -18,7 +18,7 @@ futures-util = "0.3.30"
 oci-client = { version = "0.14", default-features = false, features = [
     "rustls-tls",
 ] }
-oci-wasm = { version = "0.2", default-features = false, features = [
+oci-wasm = { version = "0.2.1", default-features = false, features = [
     "rustls-tls",
 ] }
 semver = "1.0.23"
