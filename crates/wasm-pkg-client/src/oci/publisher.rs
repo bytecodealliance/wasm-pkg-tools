@@ -55,6 +55,12 @@ impl PackagePublisher for OciBackend {
                 homepage.to_string(),
             );
         }
+        if let Some(authors) = &meta.author {
+            annotations.insert(
+                "org.opencontainers.image.authors".to_string(),
+                authors.to_string(),
+            );
+        }
 
         let reference: Reference = self.make_reference(package, Some(version));
         let auth = self.auth(&reference, RegistryOperation::Push).await?;
