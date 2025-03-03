@@ -21,7 +21,12 @@ futures-util = { workspace = true, features = ["io"] }
 oci-client = { workspace = true }
 oci-wasm = { workspace = true }
 tempfile = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = [
+    "macros",
+    "rt",
+    "rt-multi-thread",
+    "process",
+] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["ansi"] }
 wasm-pkg-common = { workspace = true }

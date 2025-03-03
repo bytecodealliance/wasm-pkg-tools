@@ -32,7 +32,6 @@ pub mod local;
 pub mod oci;
 mod publisher;
 mod release;
-pub mod warg;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -55,7 +54,7 @@ pub use wasm_pkg_common::{
 };
 use wit_component::DecodedWasm;
 
-use crate::{loader::PackageLoader, local::LocalBackend, oci::OciBackend, warg::WargBackend};
+use crate::{loader::PackageLoader, local::LocalBackend, oci::OciBackend};
 
 pub use release::{Release, VersionInfo};
 
@@ -276,9 +275,6 @@ impl Client {
                     &registry_config,
                     &registry_meta,
                 )?),
-                "warg" => {
-                    Box::new(WargBackend::new(&registry, &registry_config, &registry_meta).await?)
-                }
                 other => {
                     return Err(Error::InvalidConfig(anyhow!(
                         "unknown backend type {other:?}"
