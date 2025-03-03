@@ -89,7 +89,7 @@ pub async fn build_package(
             env!("CARGO_PKG_NAME").to_string(),
             processed_by_version.to_string(),
         )],
-        author: metadata.author.map(|v| v.parse()).transpose()?,
+        authors: metadata.author.map(|v| v.parse()).transpose()?,
         description: metadata.description.map(|v| v.parse()).transpose()?,
         licenses: metadata.licenses.map(|v| v.parse()).transpose()?,
         source: metadata.source.map(|v| v.parse()).transpose()?,

@@ -29,13 +29,9 @@ pub struct RegistryMetadata {
     /// OCI Namespace Prefix
     #[serde(skip_serializing)]
     oci_namespace_prefix: Option<String>,
-    /// Warg URL
-    #[serde(skip_serializing)]
-    warg_url: Option<String>,
 }
 
 const OCI_PROTOCOL: &str = "oci";
-const WARG_PROTOCOL: &str = "warg";
 
 impl RegistryMetadata {
     /// Returns the registry's preferred protocol.
@@ -50,12 +46,8 @@ impl RegistryMetadata {
         }
         if self.protocol_configs.len() == 1 {
             return self.protocol_configs.keys().next().map(|x| x.as_str());
-        } else if self.protocol_configs.is_empty() {
-            match (self.oci_registry.is_some(), self.warg_url.is_some()) {
-                (true, false) => return Some(OCI_PROTOCOL),
-                (false, true) => return Some(WARG_PROTOCOL),
-                _ => {}
-            }
+        } else if self.protocol_configs.is_empty() && self.oci_registry.is_some() {
+            return Some(OCI_PROTOCOL);
         }
         None
     }
@@ -66,9 +58,6 @@ impl RegistryMetadata {
         // Backward-compatibility aliases
         if self.oci_registry.is_some() || self.oci_namespace_prefix.is_some() {
             protos.insert(OCI_PROTOCOL.into());
-        }
-        if self.warg_url.is_some() {
-            protos.insert(WARG_PROTOCOL.into());
         }
         protos.into_iter().map(Into::into)
     }
@@ -90,15 +79,9 @@ impl RegistryMetadata {
                     .insert(key.into(), value.clone().into());
             }
         };
-        match protocol {
-            OCI_PROTOCOL => {
-                maybe_set("registry", &self.oci_registry);
-                maybe_set("namespacePrefix", &self.oci_namespace_prefix);
-            }
-            WARG_PROTOCOL => {
-                maybe_set("url", &self.warg_url);
-            }
-            _ => {}
+        if protocol == OCI_PROTOCOL {
+            maybe_set("registry", &self.oci_registry);
+            maybe_set("namespacePrefix", &self.oci_namespace_prefix);
         }
 
         if config.is_none() {
@@ -179,31 +162,29 @@ mod tests {
     fn smoke_test() {
         let meta: RegistryMetadata = serde_json::from_value(json!({
             "oci": {"registry": "oci.example.com"},
-            "warg": {"url": "https://warg.example.com"},
+            "other": {"key": "value"}
         }))
         .unwrap();
         assert_eq!(meta.preferred_protocol(), None);
         assert_eq!(
             meta.configured_protocols().collect::<Vec<_>>(),
-            ["oci", "warg"]
+            ["oci", "other"]
         );
         let oci_config: JsonObject = meta.protocol_config("oci").unwrap().unwrap();
         assert_eq!(oci_config["registry"], "oci.example.com");
-        let warg_config: JsonObject = meta.protocol_config("warg").unwrap().unwrap();
-        assert_eq!(warg_config["url"], "https://warg.example.com");
-        let other_config: Option<OtherProtocolConfig> = meta.protocol_config("other").unwrap();
-        assert_eq!(other_config, None);
+        let other_config: OtherProtocolConfig = meta.protocol_config("other").unwrap().unwrap();
+        assert_eq!(other_config.key, "value");
     }
 
     #[test]
     fn preferred_protocol_explicit() {
         let meta: RegistryMetadata = serde_json::from_value(json!({
-            "preferredProtocol": "warg",
+            "preferredProtocol": "oci",
             "oci": {"registry": "oci.example.com"},
-            "warg": {"url": "https://warg.example.com"},
+            "other": {"key": "value"},
         }))
         .unwrap();
-        assert_eq!(meta.preferred_protocol(), Some("warg"));
+        assert_eq!(meta.preferred_protocol(), Some("oci"));
     }
 
     #[test]
@@ -216,12 +197,12 @@ mod tests {
     }
 
     #[test]
-    fn preferred_protocol_implicit_warg() {
+    fn preferred_protocol_implicit_other() {
         let meta: RegistryMetadata = serde_json::from_value(json!({
-            "warg": {"url": "https://warg.example.com"},
+            "other": {"key": "value"},
         }))
         .unwrap();
-        assert_eq!(meta.preferred_protocol(), Some("warg"));
+        assert_eq!(meta.preferred_protocol(), Some("other"));
     }
 
     #[test]
@@ -235,46 +216,31 @@ mod tests {
     }
 
     #[test]
-    fn backward_compat_preferred_protocol_implicit_warg() {
-        let meta: RegistryMetadata = serde_json::from_value(json!({
-            "wargUrl": "https://warg.example.com",
-        }))
-        .unwrap();
-        assert_eq!(meta.preferred_protocol(), Some("warg"));
-    }
-
-    #[test]
     fn basic_backward_compat_test() {
         let meta: RegistryMetadata = serde_json::from_value(json!({
             "ociRegistry": "oci.example.com",
             "ociNamespacePrefix": "prefix/",
-            "wargUrl": "https://warg.example.com",
         }))
         .unwrap();
-        assert_eq!(
-            meta.configured_protocols().collect::<Vec<_>>(),
-            ["oci", "warg"]
-        );
+        assert_eq!(meta.configured_protocols().collect::<Vec<_>>(), ["oci"]);
         let oci_config: JsonObject = meta.protocol_config("oci").unwrap().unwrap();
         assert_eq!(oci_config["registry"], "oci.example.com");
         assert_eq!(oci_config["namespacePrefix"], "prefix/");
-        let warg_config: JsonObject = meta.protocol_config("warg").unwrap().unwrap();
-        assert_eq!(warg_config["url"], "https://warg.example.com");
     }
 
     #[test]
     fn merged_backward_compat_test() {
         let meta: RegistryMetadata = serde_json::from_value(json!({
-            "wargUrl": "https://warg.example.com",
+            "ociRegistry": "oci.example.com",
             "other": {"key": "value"}
         }))
         .unwrap();
         assert_eq!(
             meta.configured_protocols().collect::<Vec<_>>(),
-            ["other", "warg"]
+            ["oci", "other"]
         );
-        let warg_config: JsonObject = meta.protocol_config("warg").unwrap().unwrap();
-        assert_eq!(warg_config["url"], "https://warg.example.com");
+        let oci_config: JsonObject = meta.protocol_config("oci").unwrap().unwrap();
+        assert_eq!(oci_config["registry"], "oci.example.com");
         let other_config: OtherProtocolConfig = meta.protocol_config("other").unwrap().unwrap();
         assert_eq!(other_config.key, "value");
     }
