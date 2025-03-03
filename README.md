@@ -7,7 +7,7 @@
 Tools to package up [Wasm Components](https://github.com/webassembly/component-model)
 
 This repo contains several Rust crates that can be used for fetching and publishing Wasm Components
-to OCI or Warg registries. It is also the home of the `wkg` command line tool, which exposes all the
+to OCI registries. It is also the home of the `wkg` command line tool, which exposes all the
 functionality of the libraries. The first (but not only) focus of this project is allow for fetching
 of Wit Interfaces stored as components for use in creating components. It can also be used to fetch
 and publish component "libraries" to/from a registry.
@@ -94,24 +94,9 @@ another = { registry = "another", metadata = { preferredProtocol = "oci", "oci" 
 # Same as namespace_registries above, but for a specific package.
 "example:bar" = { registry = "another", metadata = { preferredProtocol = "oci", "oci" = {registry = "ghcr.io", namespacePrefix = "webassembly/" } } }
 
-# This section contains a mapping of registries to their configuration. There are currently 3
-# supported types of registries: "oci", "warg", and "local". The "oci" type is the default. The
-# example below shows a use case that isn't yet super common (registries that speak multiple protocols)
-# but is included for completeness.
+# This section contains a mapping of registries to their configuration. There are currently 2
+# supported types of registries: "oci" and "local". The "oci" type is the default.
 [registry."acme.registry.com"]
-# This field is only required if more that one protocol is supported. It indicates which protocol
-# to use by default. If this is not set, then the fallback (oci) will be used.
-default = "warg"
-[registry."acme.registry.com".warg]
-# A path to a valid warg config file. If this is not set, the `wkg` CLI (but not the libraries) 
-# will attempt to load the config from the default location(s).
-config_file = "/a/path"
-# An optional authentication token to use when authenticating with a registry.
-auth_token = "an-auth-token"
-# An optional key for signing the component. Ideally, you should just let warg use the keychain
-# or programmatically set this key in the config without writing to disk. This offers an escape
-# hatch for when you need to use a key that isn't in the keychain.
-signing_key = "ecdsa-p256:2CV1EpLaSYEn4In4OAEDAj5O4Hzu8AFAxgHXuG310Ew="
 [registry."acme.registry.com".oci]
 # The auth field can either be a username/password pair, or a base64 encoded `username:password` 
 # string. If no auth is set, the `wkg` CLI (but not the libraries) will also attempt to load the
@@ -131,11 +116,11 @@ root = "/a/path"
 # If a registry only has a config section for one protocol, then that protocol is automatically
 # the default. The following is equivalent to:
 # [registry."example.com"]
-# default = "warg"
-# [registry."example.com".warg]
-# config_file = "/a/path"
-[registry."example.com".warg]
-config_file = "/a/path"
+# default = "oci"
+# [registry."example.com".oci]
+# auth = { username = "open", password = "sesame" }
+[registry."example.com".oci]
+auth = { username = "open", password = "sesame" }
 
 # Configuration for the "another" registry defined above.
 [registry."another".oci]
@@ -155,23 +140,18 @@ A full example of what this `registry.json` file should look like is below:
 
 ```json
 {
-  "preferredProtocol":"warg",
-  "warg": {"url":"https://warg.example.com"},
+  "preferredProtocol":"oci",
   "oci": {"registry": "ghcr.io", "namespacePrefix": "webassembly/"}
 }
 ```
 
 The `preferredProtocol` field is optional and specifies which protocol the registry expects you to
-use in the case where it supports both OCI and Warg. If both `warg` and `oci` config is in the
-`registry.json` it is _highly recommended_ that this field be set. 
+use. While this field is present for future compatibility, it's generally fixed to "oci" in this implementation.
 
 For the `oci` config, the `registry` field is the base URL of the OCI registry, and the
 `namespacePrefix` field is the prefix that is used to store components in the registry. So in the
 example above (which is for wasi.dev), the components will be available at
 `ghcr.io/webassembly/$NAMESPACE/$PACKAGE:$VERSION` (e.g. `ghcr.io/webassembly/wasi/http:0.2.1`).
-
-For the `warg` config, the `url` field is the base URL of the Warg registry used when connecting the
-client. Namespacing for warg is built in to the protocol.
 
 Please note that for backwards compatibility, with previous tooling and versions of the `wkg` tool,
 you may also encounter a `registry.json` file that looks different. These files are still supported,
@@ -183,16 +163,6 @@ For OCI registries, the JSON looks like this:
 {
         "ociRegistry": "ghcr.io",
         "ociNamespacePrefix": "webassembly/"
-}
-```
-
-
-
-For Warg registries, the JSON looks like this:
-
-```json
-{
-  "wargUrl": "https://warg.wa.dev"
 }
 ```
 
