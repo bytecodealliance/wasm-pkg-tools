@@ -1,8 +1,10 @@
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use oci_client::{RegistryOperation, manifest::OciDescriptor};
-use warg_protocol::Version;
-use wasm_pkg_common::{Error, package::PackageRef};
+use wasm_pkg_common::{
+    Error,
+    package::{PackageRef, Version},
+};
 
 use crate::{
     ContentStream,
@@ -36,7 +38,12 @@ impl PackageLoader for OciBackend {
                     yanked: false,
                 }),
                 Err(err) => {
-                    tracing::debug!(?tag, error = ?err, "Ignoring invalid version tag");
+                    // Signature tags all start with a SHA and shouldn't generate a warning
+                    if tag.starts_with("sha256-") {
+                        tracing::debug!(?tag, "Ignoring signature tag");
+                    } else {
+                        tracing::warn!(?tag, error = ?err, "Ignoring invalid version tag");
+                    }
                     None
                 }
             })
