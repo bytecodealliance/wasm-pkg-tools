@@ -77,7 +77,7 @@ pub struct Override {
 pub struct Metadata {
     /// The author(s) of the package.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub author: Option<String>,
+    pub authors: Option<String>,
     /// The package description.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -112,7 +112,7 @@ mod tests {
                 },
             )])),
             metadata: Some(Metadata {
-                author: Some("Foo Bar".to_string()),
+                authors: Some("Foo Bar".to_string()),
                 description: Some("Foobar baz".to_string()),
                 licenses: Some("FBB".to_string()),
                 source: Some("https://gitfoo/bar".to_string()),
