@@ -55,7 +55,7 @@ impl PackagePublisher for OciBackend {
                 homepage.to_string(),
             );
         }
-        if let Some(authors) = &meta.author {
+        if let Some(authors) = &meta.authors {
             annotations.insert(
                 "org.opencontainers.image.authors".to_string(),
                 authors.to_string(),
