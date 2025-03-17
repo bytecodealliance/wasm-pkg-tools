@@ -1,5 +1,5 @@
 [metadata]
-author = "WasmPkg <wasm-pkg@bytecodealliance.org>"
+authors = "WasmPkg <wasm-pkg@bytecodealliance.org>"
 description = "WASI HTTP interface"
 license = "Apache-2.0"
 source = "https://github.com/bytecodealliance/wasm-pkg-tools"
