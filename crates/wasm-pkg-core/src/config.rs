@@ -75,8 +75,9 @@ pub struct Override {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Metadata {
-    /// The author(s) of the package.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// The author(s) of the package. Alias supports prior definition as `author`.
+    /// Note that unlike in a Cargo.toml, this authors is a string, not a list of string.
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "author")]
     pub authors: Option<String>,
     /// The package description.
     #[serde(default, skip_serializing_if = "Option::is_none")]
