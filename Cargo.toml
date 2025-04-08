@@ -28,7 +28,7 @@ sha2 = "0.10"
 tempfile = "3.10.1"
 testcontainers = { version = "0.23" }
 thiserror = "1.0"
-tokio = "1.35.1"
+tokio = "1.44.2"
 tokio-util = "0.7.10"
 toml = "0.8"
 tracing = "0.1.40"
