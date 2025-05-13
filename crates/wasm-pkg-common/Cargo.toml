@@ -11,6 +11,8 @@ readme = "../../README.md"
 [features]
 metadata-client = ["dep:reqwest"]
 tokio = ["tokio/io-util"]
+# Extra features to facilitate making working with OCI images easier
+oci_extras = []
 
 [dependencies]
 anyhow = { workspace = true }
