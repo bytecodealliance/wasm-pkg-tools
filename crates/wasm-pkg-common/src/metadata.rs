@@ -26,9 +26,11 @@ pub struct RegistryMetadata {
     /// OCI Registry
     #[serde(skip_serializing)]
     oci_registry: Option<String>,
+
     /// OCI Namespace Prefix
     #[serde(skip_serializing)]
     oci_namespace_prefix: Option<String>,
+
     /// Warg URL
     #[serde(skip_serializing)]
     warg_url: Option<String>,
@@ -108,6 +110,18 @@ impl RegistryMetadata {
             serde_json::from_value(config.unwrap().into())
                 .map_err(|err| Error::InvalidRegistryMetadata(err.into()))?,
         ))
+    }
+
+    /// Set the OCI registry
+    #[cfg(feature = "oci_extras")]
+    pub fn set_oci_registry(&mut self, registry: Option<String>) {
+        self.oci_registry = registry;
+    }
+
+    /// Set the OCI namespace prefix
+    #[cfg(feature = "oci_extras")]
+    pub fn set_oci_namespace_prefix(&mut self, ns_prefix: Option<String>) {
+        self.oci_namespace_prefix = ns_prefix;
     }
 }
 
