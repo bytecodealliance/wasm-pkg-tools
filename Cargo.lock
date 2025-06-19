@@ -4369,12 +4369,12 @@ dependencies = [
 
 [[package]]
 name = "wasm-encoder"
-version = "0.227.1"
+version = "0.235.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80bb72f02e7fbf07183443b27b0f3d4144abf8c114189f2e088ed95b696a7822"
+checksum = "b3bc393c395cb621367ff02d854179882b9a351b4e0c93d1397e6090b53a5c2a"
 dependencies = [
  "leb128fmt",
- "wasmparser 0.227.1",
+ "wasmparser 0.235.0",
 ]
 
 [[package]]
@@ -4396,9 +4396,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-metadata"
-version = "0.227.1"
+version = "0.235.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce1ef0faabbbba6674e97a56bee857ccddf942785a336c8b47b42373c922a91d"
+checksum = "b055604ba04189d54b8c0ab2c2fc98848f208e103882d5c0b984f045d5ea4d20"
 dependencies = [
  "anyhow",
  "auditable-serde",
@@ -4409,13 +4409,13 @@ dependencies = [
  "serde_json",
  "spdx",
  "url",
- "wasm-encoder 0.227.1",
- "wasmparser 0.227.1",
+ "wasm-encoder 0.235.0",
+ "wasmparser 0.235.0",
 ]
 
 [[package]]
 name = "wasm-pkg-client"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4443,14 +4443,14 @@ dependencies = [
  "warg-client",
  "warg-crypto",
  "warg-protocol",
- "wasm-metadata 0.227.1",
+ "wasm-metadata 0.235.0",
  "wasm-pkg-common",
- "wit-component 0.227.1",
+ "wit-component 0.235.0",
 ]
 
 [[package]]
 name = "wasm-pkg-common"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -4468,7 +4468,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-pkg-core"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "futures-util",
@@ -4483,12 +4483,12 @@ dependencies = [
  "tokio-util",
  "toml",
  "tracing",
- "wasm-metadata 0.227.1",
+ "wasm-metadata 0.235.0",
  "wasm-pkg-client",
  "wasm-pkg-common",
  "windows-sys 0.59.0",
- "wit-component 0.227.1",
- "wit-parser 0.227.1",
+ "wit-component 0.235.0",
+ "wit-parser 0.235.0",
 ]
 
 [[package]]
@@ -4540,9 +4540,9 @@ dependencies = [
 
 [[package]]
 name = "wasmparser"
-version = "0.227.1"
+version = "0.235.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f51cad774fb3c9461ab9bccc9c62dfb7388397b5deda31bf40e8108ccd678b2"
+checksum = "161296c618fa2d63f6ed5fffd1112937e803cb9ec71b32b01a76321555660917"
 dependencies = [
  "bitflags 2.6.0",
  "hashbrown 0.15.2",
@@ -4859,9 +4859,9 @@ dependencies = [
 
 [[package]]
 name = "wit-component"
-version = "0.227.1"
+version = "0.235.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "635c3adc595422cbf2341a17fb73a319669cc8d33deed3a48368a841df86b676"
+checksum = "64a57a11109cc553396f89f3a38a158a97d0b1adaec113bd73e0f64d30fb601f"
 dependencies = [
  "anyhow",
  "bitflags 2.6.0",
@@ -4870,10 +4870,10 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "wasm-encoder 0.227.1",
- "wasm-metadata 0.227.1",
- "wasmparser 0.227.1",
- "wit-parser 0.227.1",
+ "wasm-encoder 0.235.0",
+ "wasm-metadata 0.235.0",
+ "wasmparser 0.235.0",
+ "wit-parser 0.235.0",
 ]
 
 [[package]]
@@ -4896,9 +4896,9 @@ dependencies = [
 
 [[package]]
 name = "wit-parser"
-version = "0.227.1"
+version = "0.235.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddf445ed5157046e4baf56f9138c124a0824d4d1657e7204d71886ad8ce2fc11"
+checksum = "0a1f95a87d03a33e259af286b857a95911eb46236a0f726cbaec1227b3dfc67a"
 dependencies = [
  "anyhow",
  "id-arena",
@@ -4909,12 +4909,12 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "unicode-xid",
- "wasmparser 0.227.1",
+ "wasmparser 0.235.0",
 ]
 
 [[package]]
 name = "wkg"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4932,7 +4932,7 @@ dependencies = [
  "wasm-pkg-client",
  "wasm-pkg-common",
  "wasm-pkg-core",
- "wit-component 0.227.1",
+ "wit-component 0.235.0",
 ]
 
 [[package]]
