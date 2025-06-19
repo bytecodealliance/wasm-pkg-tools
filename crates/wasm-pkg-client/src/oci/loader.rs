@@ -36,7 +36,7 @@ impl PackageLoader for OciBackend {
                     yanked: false,
                 }),
                 Err(err) => {
-                    tracing::warn!(?tag, error = ?err, "Ignoring invalid version tag");
+                    tracing::debug!(?tag, error = ?err, "Ignoring invalid version tag");
                     None
                 }
             })
