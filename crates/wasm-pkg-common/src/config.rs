@@ -4,7 +4,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use etcetera::BaseStrategy;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -103,13 +102,6 @@ impl Config {
         Ok(config)
     }
 
-    /// Returns the default global config file location
-    pub fn global_config_path() -> Option<PathBuf> {
-        etcetera::choose_base_strategy()
-            .ok()
-            .map(|strat| strat.config_dir().join("wasm-pkg").join("config.toml"))
-    }
-
     /// Reads config from the default global config file location
     pub async fn read_global_config() -> Result<Option<Self>, Error> {
         let path = match Config::global_config_path() {
@@ -124,6 +116,14 @@ impl Config {
         Ok(Some(Self::from_toml(&contents)?))
     }
 
+    /// Returns the default global config file location
+    pub fn global_config_path() -> Option<PathBuf> {
+        use etcetera::BaseStrategy;
+        etcetera::choose_base_strategy()
+            .ok()
+            .map(|strat| strat.config_dir().join("wasm-pkg").join("config.toml"))
+    }
+
     /// Reads config from a TOML file at the given path.
     pub async fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
         let contents = tokio::fs::read_to_string(path)
@@ -134,14 +134,13 @@ impl Config {
 
     /// Parses config from the given TOML contents.
     pub fn from_toml(contents: &str) -> Result<Self, Error> {
-        let toml_cfg: toml::TomlConfig =
-            ::toml::from_str(contents).map_err(Error::invalid_config)?;
+        let toml_cfg: toml::TomlConfig = ::toml::from_str(contents).map_err(invalid_config)?;
         Ok(toml_cfg.into())
     }
 
     /// Writes the config to a TOML file at the given path.
     pub async fn to_file(&self, path: impl AsRef<Path>) -> Result<(), Error> {
-        let toml_str = ::toml::to_string(&self).map_err(Error::invalid_config)?;
+        let toml_str = ::toml::to_string(&self).map_err(invalid_config)?;
         tokio::fs::write(path, toml_str)
             .await
             .map_err(Error::ConfigFileIoError)
@@ -330,7 +329,7 @@ impl RegistryConfig {
         let Some(table) = self.backend_configs.get(backend_type) else {
             return Ok(None);
         };
-        let config = table.clone().try_into().map_err(Error::invalid_config)?;
+        let config = table.clone().try_into().map_err(invalid_config)?;
         Ok(Some(config))
     }
 
@@ -340,7 +339,7 @@ impl RegistryConfig {
         backend_type: impl Into<String>,
         backend_config: T,
     ) -> Result<(), Error> {
-        let table = ::toml::Table::try_from(backend_config).map_err(Error::invalid_config)?;
+        let table = ::toml::Table::try_from(backend_config).map_err(invalid_config)?;
         self.backend_configs.insert(backend_type.into(), table);
         Ok(())
     }
@@ -367,4 +366,8 @@ impl std::fmt::Debug for DebugBackendConfigs<'_> {
             .entries(self.0.keys().map(|ty| (ty, &"<HIDDEN>")))
             .finish()
     }
+}
+
+fn invalid_config(err: impl Into<anyhow::Error>) -> Error {
+    Error::InvalidConfig(err.into())
 }

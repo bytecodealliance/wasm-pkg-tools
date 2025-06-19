@@ -2,12 +2,13 @@
 //!
 //! Each package release is a file: `<root>/<namespace>/<name>/<version>.wasm`
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::anyhow;
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use tokio_util::io::ReaderStream;
 use wasm_pkg_common::{
     config::RegistryConfig,
@@ -85,7 +86,7 @@ impl PackageLoader for LocalBackend {
     async fn get_release(&self, package: &PackageRef, version: &Version) -> Result<Release, Error> {
         let path = self.version_path(package, version);
         tracing::debug!(path = %path.display(), "Reading content from path");
-        let content_digest = ContentDigest::sha256_from_file(path).await?;
+        let content_digest = sha256_from_file(path).await?;
         Ok(Release {
             version: version.clone(),
             content_digest,
@@ -122,4 +123,19 @@ impl PackagePublisher for LocalBackend {
             .map_err(Error::IoError)
             .map(|_| ())
     }
+}
+
+async fn sha256_from_file(path: impl AsRef<Path>) -> Result<ContentDigest, std::io::Error> {
+    use tokio::io::AsyncReadExt;
+    let mut file = tokio::fs::File::open(path).await?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0; 4096];
+    loop {
+        let n = file.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.into())
 }
