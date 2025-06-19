@@ -171,7 +171,7 @@ impl PushArgs {
 
 fn digest_from_manifest_url(url: &str) -> &str {
     url.split('/')
-        .last()
+        .next_back()
         .expect("url did not contain manifest sha256")
 }
 

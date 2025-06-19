@@ -1,19 +1,17 @@
 use futures_util::TryStreamExt;
-use testcontainers::{
-    core::{IntoContainerPort, WaitFor},
-    runners::AsyncRunner,
-    GenericImage, ImageExt,
-};
 use wasm_pkg_client::{Client, Config};
 
 const FIXTURE_WASM: &str = "./tests/testdata/binary_wit.wasm";
 
-#[cfg(any(target_os = "linux", feature = "_local"))]
-// NOTE: These are only run on linux for CI purposes, because they rely on the docker client being
-// available, and for various reasons this has proven to be problematic on both the Windows and
-// MacOS runners due to it not being installed (yay licensing).
+#[cfg(feature = "docker-tests")]
 #[tokio::test]
 async fn publish_and_fetch_smoke_test() {
+    use testcontainers::{
+        core::{IntoContainerPort, WaitFor},
+        runners::AsyncRunner,
+        GenericImage, ImageExt,
+    };
+
     let _container = GenericImage::new("registry", "2")
         .with_wait_for(WaitFor::message_on_stderr("listening on [::]:5000"))
         .with_mapped_port(5001, 5000.tcp())

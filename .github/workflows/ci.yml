@@ -10,24 +10,34 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            additional_test_flags: ""
+            run_lints: true
+            test_wasm_build: true
           - os: windows-latest
-            additional_test_flags: "--no-default-features"
+            docker_tests_flags: "--no-default-features"
           - os: macos-latest
-            additional_test_flags: "--no-default-features"
+            docker_tests_flags: "--no-default-features"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: "wasm32-wasip1"
-      # We have to run these separately so we can deactivate a feature for one of the tests
-      - name: Run client tests
-        working-directory: ./crates/wasm-pkg-client
-        run: cargo test ${{ matrix.additional_test_flags }}
-      - name: Run wkg tests
-        working-directory: ./crates/wkg
-        run: cargo test ${{ matrix.additional_test_flags }}
-      - name: Run other tests
+
+      - name: Run lints
+        if: matrix.run_lints
+        run: |
+          cargo clippy --workspace --no-default-features
+          cargo clippy --workspace --all-features
+
+      - name: Run tests
         run: cargo test --workspace --exclude wasm-pkg-client --exclude wkg
-      - name: Run cargo clippy
-        run: cargo clippy --all --workspace 
+
+      # NOTE: Docker tests are only run on linux because other platforms haven't
+      # always worked consistently.
+      - name: Run wasm-pkg-client tests
+        run: cargo test -p wasm-pkg-client ${{ matrix.docker_tests_flags }}
+      - name: Run wkg tests
+        run: cargo test -p wkg ${{ matrix.docker_tests_flags }}
+
+      - name: Test wasm32-wasip1 build for wasm-pkg-common
+        if: matrix.test_wasm_build
+        run: cargo build -p wasm-pkg-common --target wasm32-wasip1

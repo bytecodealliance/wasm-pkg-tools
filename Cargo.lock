@@ -4426,6 +4426,7 @@ dependencies = [
  "futures-util",
  "oci-client",
  "oci-wasm",
+ "reqwest",
  "secrecy",
  "serde",
  "serde_json",
@@ -4456,7 +4457,6 @@ dependencies = [
  "etcetera",
  "futures-util",
  "http",
- "reqwest",
  "semver",
  "serde",
  "serde_json",
@@ -4464,7 +4464,6 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "toml",
- "tracing",
 ]
 
 [[package]]

@@ -29,6 +29,7 @@
 pub mod caching;
 mod loader;
 pub mod local;
+pub mod metadata;
 pub mod oci;
 mod publisher;
 mod release;
@@ -55,6 +56,7 @@ pub use wasm_pkg_common::{
 };
 use wit_component::DecodedWasm;
 
+use crate::metadata::RegistryMetadataExt;
 use crate::{loader::PackageLoader, local::LocalBackend, oci::OciBackend, warg::WargBackend};
 
 pub use release::{Release, VersionInfo};

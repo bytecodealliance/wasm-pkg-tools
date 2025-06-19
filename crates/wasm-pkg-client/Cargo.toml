@@ -9,9 +9,9 @@ license.workspace = true
 readme = "../../README.md"
 
 [features]
-default = ["_local"]
-# An internal feature for making sure e2e tests can run locally but not in CI for Mac or Windows
-_local = []
+default = ["docker-tests"]
+# This feature enables tests that use Docker
+docker-tests = []
 
 [dependencies]
 anyhow = { workspace = true }
@@ -23,6 +23,13 @@ etcetera = { workspace = true }
 futures-util = { workspace = true, features = ["io"] }
 oci-client = { workspace = true }
 oci-wasm = { workspace = true }
+reqwest = { version = "0.12.0", default-features = false, features = [
+    "charset",
+    "http2",
+    "json",
+    "macos-system-configuration",
+    "rustls-tls",
+]}
 secrecy = { version = "0.8", features = ["serde"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -38,7 +45,7 @@ warg-client = "0.9.2"
 warg-crypto = "0.9.2"
 wasm-metadata = { workspace = true }
 warg-protocol = "0.9.2"
-wasm-pkg-common = { workspace = true, features = ["metadata-client", "tokio"] }
+wasm-pkg-common = { workspace = true, features = ["registry-config"] }
 wit-component = { workspace = true }
 
 [dev-dependencies]
