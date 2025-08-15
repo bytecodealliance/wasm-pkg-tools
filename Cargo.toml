@@ -15,10 +15,10 @@ bytes = "1.8"
 docker_credential = "1.2.1"
 etcetera = "0.8"
 futures-util = "0.3.30"
-oci-client = { version = "0.14", default-features = false, features = [
+oci-client = { version = "0.15", default-features = false, features = [
     "rustls-tls",
 ] }
-oci-wasm = { version = "0.2.1", default-features = false, features = [
+oci-wasm = { version = "0.3.0", default-features = false, features = [
     "rustls-tls",
 ] }
 semver = "1.0.23"
