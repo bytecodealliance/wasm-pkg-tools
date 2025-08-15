@@ -126,9 +126,9 @@ impl RegistryResolution {
             )
             .await?;
 
-        Ok(tokio_util::io::StreamReader::new(stream.map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, e)
-        })))
+        Ok(tokio_util::io::StreamReader::new(
+            stream.map_err(std::io::Error::other),
+        ))
     }
 }
 
@@ -181,7 +181,7 @@ impl DependencyResolution {
     }
 
     /// Decodes the resolved dependency.
-    pub async fn decode(&self) -> Result<DecodedDependency> {
+    pub async fn decode(&self) -> Result<DecodedDependency<'_>> {
         // If the dependency path is a directory, assume it contains wit to parse as a package.
         let bytes = match self {
             DependencyResolution::Local(LocalResolution { path, .. })

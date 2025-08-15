@@ -170,10 +170,9 @@ impl Client {
             let (mut data, p, v) = tokio::task::spawn_blocking(|| resolve_package(data))
                 .await
                 .map_err(|e| {
-                    crate::Error::IoError(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Error when performing blocking IO: {e:?}"),
-                    ))
+                    crate::Error::IoError(std::io::Error::other(format!(
+                        "Error when performing blocking IO: {e:?}"
+                    )))
                 })??;
             // We must rewind the reader because we read to the end to parse the component.
             data.rewind().await?;
