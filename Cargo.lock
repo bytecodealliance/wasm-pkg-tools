@@ -4424,7 +4424,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-pkg-client"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4459,7 +4459,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-pkg-common"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -4477,7 +4477,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-pkg-core"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "futures-util",
@@ -4923,7 +4923,7 @@ dependencies = [
 
 [[package]]
 name = "wkg"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
