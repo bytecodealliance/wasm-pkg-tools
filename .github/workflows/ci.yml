@@ -9,7 +9,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: "ubuntu-22.04"
             run_lints: true
             test_wasm_build: true
           - os: windows-latest
