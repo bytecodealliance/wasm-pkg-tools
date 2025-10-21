@@ -112,8 +112,7 @@ impl OciBackend {
             ));
         }
 
-        let server_url = format!("https://{}", self.oci_registry);
-        match docker_credential::get_credential(&server_url) {
+        match docker_credential::get_credential(&self.oci_registry) {
             Ok(DockerCredential::UsernamePassword(username, password)) => {
                 return Ok(RegistryAuth::Basic(username, password));
             }
