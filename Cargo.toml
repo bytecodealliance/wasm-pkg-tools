@@ -4,7 +4,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-version = "0.12.0"
+version = "0.13.0"
 authors = ["The Wasmtime Project Developers"]
 license = "Apache-2.0 WITH LLVM-exception"
 
@@ -12,8 +12,8 @@ license = "Apache-2.0 WITH LLVM-exception"
 anyhow = "1"
 base64 = "0.22"
 bytes = "1.8"
-docker_credential = "1.2.1"
-etcetera = "0.8"
+docker_credential = "1.3.2"
+etcetera = "0.11"
 futures-util = "0.3.30"
 oci-client = { version = "0.15", default-features = false, features = [
     "rustls-tls",
@@ -26,7 +26,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 tempfile = "3.10.1"
-testcontainers = { version = "0.23" }
+testcontainers = "0.25.2"
 thiserror = "1.0"
 tokio = "1.44.2"
 tokio-util = "0.7.10"
@@ -36,9 +36,9 @@ tracing-subscriber = { version = "0.3.20", default-features = false, features = 
     "fmt",
     "env-filter",
 ] }
-wasm-pkg-common = { version = "0.12.0", path = "crates/wasm-pkg-common" }
-wasm-pkg-client = { version = "0.12.0", path = "crates/wasm-pkg-client" }
-wasm-pkg-core = { version = "0.12.0", path = "crates/wasm-pkg-core" }
-wasm-metadata = "0.235"
-wit-component = "0.235"
-wit-parser = "0.235"
+wasm-pkg-common = { version = "0.13.0", path = "crates/wasm-pkg-common" }
+wasm-pkg-client = { version = "0.13.0", path = "crates/wasm-pkg-client" }
+wasm-pkg-core = { version = "0.13.0", path = "crates/wasm-pkg-core" }
+wasm-metadata = "0.240"
+wit-component = "0.240"
+wit-parser = "0.240"
