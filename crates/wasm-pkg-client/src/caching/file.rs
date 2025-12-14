@@ -78,14 +78,25 @@ impl From<ReleaseInfoOwned> for Release {
 impl Cache for FileCache {
     async fn put_data(&self, digest: ContentDigest, data: ContentStream) -> Result<(), Error> {
         let path = self.root.join(digest.to_string());
-        let mut file = tokio::fs::File::create(&path).await.map_err(|e| {
-            Error::CacheError(anyhow::anyhow!("Unable to create file for cache {e}"))
-        })?;
+        let temp_path = self.root.join(format!("{}.tmp.{}", digest, std::process::id()));
+
+        let mut file = tokio::fs::File::create(&temp_path)
+            .await
+            .map_err(|e| Error::CacheError(e.into()))?;
         let mut buf = StreamReader::new(data.map_err(std::io::Error::other));
         tokio::io::copy(&mut buf, &mut file)
             .await
-            .map_err(|e| Error::CacheError(e.into()))
-            .map(|_| ())
+            .map_err(|e| Error::CacheError(e.into()))?;
+        file.sync_all()
+            .await
+            .map_err(|e| Error::CacheError(e.into()))?;
+        drop(file);
+
+        tokio::fs::rename(&temp_path, &path)
+            .await
+            .map_err(|e| Error::CacheError(e.into()))?;
+
+        Ok(())
     }
 
     async fn get_data(&self, digest: &ContentDigest) -> Result<Option<ContentStream>, Error> {
