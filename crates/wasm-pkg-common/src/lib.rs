@@ -1,6 +1,7 @@
 use http::uri::InvalidUri;
 use label::Label;
 
+#[cfg(feature = "registry-config")]
 pub mod config;
 pub mod digest;
 pub mod label;
@@ -50,10 +51,4 @@ pub enum Error {
     RegistryMetadataError(#[source] anyhow::Error),
     #[error("version not found: {0}")]
     VersionNotFound(semver::Version),
-}
-
-impl Error {
-    fn invalid_config(err: impl Into<anyhow::Error>) -> Self {
-        Self::InvalidConfig(err.into())
-    }
 }

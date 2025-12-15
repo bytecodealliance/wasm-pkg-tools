@@ -9,9 +9,9 @@ license.workspace = true
 readme = "../../README.md"
 
 [features]
-default = ["_local"]
-# An internal feature for making sure e2e tests can run locally but not in CI for Mac or Windows
-_local = []
+default = ["docker-tests"]
+# This feature enables tests that use Docker
+docker-tests = []
 
 [dependencies]
 anyhow = { workspace = true }

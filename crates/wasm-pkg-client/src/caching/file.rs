@@ -81,8 +81,7 @@ impl Cache for FileCache {
         let mut file = tokio::fs::File::create(&path).await.map_err(|e| {
             Error::CacheError(anyhow::anyhow!("Unable to create file for cache {e}"))
         })?;
-        let mut buf =
-            StreamReader::new(data.map_err(std::io::Error::other));
+        let mut buf = StreamReader::new(data.map_err(std::io::Error::other));
         tokio::io::copy(&mut buf, &mut file)
             .await
             .map_err(|e| Error::CacheError(e.into()))

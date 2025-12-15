@@ -125,58 +125,6 @@ impl RegistryMetadata {
     }
 }
 
-#[cfg(feature = "metadata-client")]
-mod client {
-    use anyhow::Context;
-    use http::StatusCode;
-
-    use super::REGISTRY_METADATA_PATH;
-    use crate::{registry::Registry, Error};
-
-    impl super::RegistryMetadata {
-        pub async fn fetch_or_default(registry: &Registry) -> Self {
-            match Self::fetch(registry).await {
-                Ok(Some(meta)) => {
-                    tracing::debug!(?meta, "Got registry metadata");
-                    meta
-                }
-                Ok(None) => {
-                    tracing::debug!("Metadata not found");
-                    Default::default()
-                }
-                Err(err) => {
-                    tracing::warn!(error = ?err, "Error fetching registry metadata");
-                    Default::default()
-                }
-            }
-        }
-
-        pub async fn fetch(registry: &Registry) -> Result<Option<Self>, Error> {
-            let scheme = if registry.host() == "localhost" {
-                "http"
-            } else {
-                "https"
-            };
-            let url = format!("{scheme}://{registry}{REGISTRY_METADATA_PATH}");
-            Self::fetch_url(&url)
-                .await
-                .with_context(|| format!("error fetching registry metadata from {url:?}"))
-                .map_err(Error::RegistryMetadataError)
-        }
-
-        async fn fetch_url(url: &str) -> anyhow::Result<Option<Self>> {
-            tracing::debug!(?url, "Fetching registry metadata");
-
-            let resp = reqwest::get(url).await?;
-            if resp.status() == StatusCode::NOT_FOUND {
-                return Ok(None);
-            }
-            let resp = resp.error_for_status()?;
-            Ok(Some(resp.json().await?))
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use serde_json::json;

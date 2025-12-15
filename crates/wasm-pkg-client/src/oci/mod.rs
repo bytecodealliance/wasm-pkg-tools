@@ -112,32 +112,17 @@ impl OciBackend {
             ));
         }
 
-        let server_url = format!("https://{}", self.oci_registry);
-        match docker_credential::get_credential(&server_url) {
-            Ok(DockerCredential::UsernamePassword(username, password)) => {
-                return Ok(RegistryAuth::Basic(username, password));
-            }
-            Ok(DockerCredential::IdentityToken(_)) => {
-                return Err(Error::CredentialError(anyhow::anyhow!(
-                    "identity tokens not supported"
-                )));
-            }
-            Err(err) => {
-                if matches!(
-                    err,
-                    CredentialRetrievalError::ConfigNotFound
-                        | CredentialRetrievalError::ConfigReadError
-                        | CredentialRetrievalError::NoCredentialConfigured
-                        | CredentialRetrievalError::HelperFailure { .. }
-                ) {
-                    tracing::debug!("Failed to look up OCI credentials: {err}");
-                } else {
-                    tracing::warn!("Failed to look up OCI credentials: {err}");
-                };
+        match get_docker_credential(&self.oci_registry)? {
+            Some(c) => Ok(c),
+            None => {
+                tracing::debug!("Failed to look up OCI credentials by registry, trying server URL");
+                let server_url = format!("https://{}", self.oci_registry);
+                match get_docker_credential(&server_url)? {
+                    Some(c) => Ok(c),
+                    None => Ok(RegistryAuth::Anonymous),
+                }
             }
         }
-
-        Ok(RegistryAuth::Anonymous)
     }
 
     pub(crate) fn make_reference(
@@ -164,4 +149,32 @@ pub(crate) fn oci_registry_error(err: OciDistributionError) -> Error {
         OciDistributionError::ImageManifestNotFoundError(_) => Error::PackageNotFound,
         _ => Error::RegistryError(err.into()),
     }
+}
+
+fn get_docker_credential(registry: &str) -> Result<Option<RegistryAuth>, Error> {
+    match docker_credential::get_credential(registry) {
+        Ok(DockerCredential::UsernamePassword(username, password)) => {
+            return Ok(Some(RegistryAuth::Basic(username, password)));
+        }
+        Ok(DockerCredential::IdentityToken(_)) => {
+            return Err(Error::CredentialError(anyhow::anyhow!(
+                "identity tokens not supported"
+            )));
+        }
+        Err(err) => {
+            if matches!(
+                err,
+                CredentialRetrievalError::ConfigNotFound
+                    | CredentialRetrievalError::ConfigReadError
+                    | CredentialRetrievalError::NoCredentialConfigured
+                    | CredentialRetrievalError::HelperFailure { .. }
+            ) {
+                tracing::debug!("Failed to look up OCI credentials: {err}");
+            } else {
+                tracing::warn!("Failed to look up OCI credentials: {err}");
+            };
+        }
+    }
+
+    Ok(None)
 }

@@ -29,6 +29,7 @@
 pub mod caching;
 mod loader;
 pub mod local;
+pub mod metadata;
 pub mod oci;
 mod publisher;
 mod release;
@@ -55,6 +56,7 @@ pub use wasm_pkg_common::{
 };
 use wit_component::DecodedWasm;
 
+use crate::metadata::RegistryMetadataExt;
 use crate::{loader::PackageLoader, local::LocalBackend, oci::OciBackend, warg::WargBackend};
 
 pub use release::{Release, VersionInfo};
@@ -168,9 +170,9 @@ impl Client {
             let (mut data, p, v) = tokio::task::spawn_blocking(|| resolve_package(data))
                 .await
                 .map_err(|e| {
-                    crate::Error::IoError(std::io::Error::other(
-                        format!("Error when performing blocking IO: {e:?}"),
-                    ))
+                    crate::Error::IoError(std::io::Error::other(format!(
+                        "Error when performing blocking IO: {e:?}"
+                    )))
                 })??;
             // We must rewind the reader because we read to the end to parse the component.
             data.rewind().await?;

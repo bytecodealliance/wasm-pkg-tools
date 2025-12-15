@@ -149,7 +149,7 @@ impl RegistryResolution {
             .await?;
 
         Ok(tokio_util::io::StreamReader::new(
-            stream.map_err(|e| std::io::Error::other(e)),
+            stream.map_err(std::io::Error::other),
         ))
     }
 }

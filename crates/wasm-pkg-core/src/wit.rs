@@ -4,7 +4,7 @@ use std::{collections::HashSet, path::Path, str::FromStr};
 
 use anyhow::{Context, Result};
 use semver::{Version, VersionReq};
-use wasm_metadata::AddMetadata;
+use wasm_metadata::{AddMetadata, AddMetadataField};
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     PackageRef,
@@ -83,20 +83,25 @@ pub async fn build_package(
     let processed_by_version = option_env!("WIT_VERSION_INFO").unwrap_or(env!("CARGO_PKG_VERSION"));
 
     let metadata = config.metadata.clone().unwrap_or_default();
-    let add_metadata = AddMetadata {
-        name: Some(format!("{}:{}", pkg.name.namespace, pkg.name.name)),
-        processed_by: vec![(
+    let add_metadata = {
+        /// MetadataField::Set iff the given Option is Some
+        fn set<T: std::fmt::Debug + Clone>(opt: Option<T>) -> AddMetadataField<T> {
+            opt.map(AddMetadataField::Set).unwrap_or_default()
+        }
+        let mut add = AddMetadata::default();
+        add.name = set(Some(format!("{}:{}", pkg.name.namespace, pkg.name.name)));
+        add.processed_by = vec![(
             env!("CARGO_PKG_NAME").to_string(),
             processed_by_version.to_string(),
-        )],
-        authors: metadata.authors.map(|v| v.parse()).transpose()?,
-        description: metadata.description.map(|v| v.parse()).transpose()?,
-        licenses: metadata.licenses.map(|v| v.parse()).transpose()?,
-        source: metadata.source.map(|v| v.parse()).transpose()?,
-        homepage: metadata.homepage.map(|v| v.parse()).transpose()?,
-        revision: metadata.revision.map(|v| v.parse()).transpose()?,
-        version,
-        ..Default::default()
+        )];
+        add.authors = set(metadata.authors.map(|v| v.parse()).transpose()?);
+        add.description = set(metadata.description.map(|v| v.parse()).transpose()?);
+        add.licenses = set(metadata.licenses.map(|v| v.parse()).transpose()?);
+        add.source = set(metadata.source.map(|v| v.parse()).transpose()?);
+        add.homepage = set(metadata.homepage.map(|v| v.parse()).transpose()?);
+        add.revision = set(metadata.revision.map(|v| v.parse()).transpose()?);
+        add.version = set(version);
+        add
     };
     let bytes = add_metadata.to_wasm(&bytes)?;
 
