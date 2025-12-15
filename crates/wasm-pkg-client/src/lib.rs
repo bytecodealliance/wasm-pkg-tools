@@ -168,8 +168,7 @@ impl Client {
             let (mut data, p, v) = tokio::task::spawn_blocking(|| resolve_package(data))
                 .await
                 .map_err(|e| {
-                    crate::Error::IoError(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    crate::Error::IoError(std::io::Error::other(
                         format!("Error when performing blocking IO: {e:?}"),
                     ))
                 })??;
@@ -224,7 +223,7 @@ impl Client {
                     self.config
                         .namespace_registry(package.namespace())
                         .and_then(|meta| {
-                            // If the overriden registry matches the registry we are trying to resolve, we
+                            // If the overridden registry matches the registry we are trying to resolve, we
                             // should use the metadata, otherwise we'll need to fetch the metadata from the
                             // registry
                             match (meta, is_override) {

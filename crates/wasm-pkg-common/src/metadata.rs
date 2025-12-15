@@ -63,7 +63,7 @@ impl RegistryMetadata {
     }
 
     /// Returns an iterator of protocols configured by the registry.
-    pub fn configured_protocols(&self) -> impl Iterator<Item = Cow<str>> {
+    pub fn configured_protocols(&self) -> impl Iterator<Item = Cow<'_, str>> {
         let mut protos: BTreeSet<String> = self.protocol_configs.keys().cloned().collect();
         // Backward-compatibility aliases
         if self.oci_registry.is_some() || self.oci_namespace_prefix.is_some() {

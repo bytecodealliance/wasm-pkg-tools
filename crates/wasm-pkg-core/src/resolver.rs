@@ -38,6 +38,28 @@ pub enum Dependency {
     Local(PathBuf),
 }
 
+impl std::fmt::Display for Dependency {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Dependency::Package(RegistryPackage {
+                name,
+                version,
+                registry,
+            }) => {
+                let registry = registry.as_deref().unwrap_or("_");
+                let name = name.as_ref().map(|n| n.to_string());
+
+                write!(
+                    f,
+                    "{{ registry =  {registry} package = {}@{version} }}",
+                    name.as_deref().unwrap_or("_:_"),
+                )
+            }
+            Dependency::Local(path_buf) => write!(f, "{}", path_buf.display()),
+        }
+    }
+}
+
 impl FromStr for Dependency {
     type Err = anyhow::Error;
 
@@ -126,9 +148,9 @@ impl RegistryResolution {
             )
             .await?;
 
-        Ok(tokio_util::io::StreamReader::new(stream.map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, e)
-        })))
+        Ok(tokio_util::io::StreamReader::new(
+            stream.map_err(|e| std::io::Error::other(e)),
+        ))
     }
 }
 
@@ -181,7 +203,7 @@ impl DependencyResolution {
     }
 
     /// Decodes the resolved dependency.
-    pub async fn decode(&self) -> Result<DecodedDependency> {
+    pub async fn decode(&self) -> Result<DecodedDependency<'_>> {
         // If the dependency path is a directory, assume it contains wit to parse as a package.
         let bytes = match self {
             DependencyResolution::Local(LocalResolution { path, .. })
@@ -432,7 +454,7 @@ impl<'a> DependencyResolver<'a> {
                 });
 
                 // This is a bit of a hack, but if there are multiple local dependencies that are
-                // nested and overriden, getting the packages from the local package treats _all_
+                // nested and overridden, getting the packages from the local package treats _all_
                 // deps as registry deps. So if we're handling a local path and the dependencies
                 // have a registry package already, override it. Otherwise follow normal overrides.
                 // We should definitely fix this and change where we resolve these things
