@@ -42,6 +42,16 @@ pub enum RegistryMapping {
     Custom(CustomConfig),
 }
 
+impl RegistryMapping {
+    /// returns the inner [`Registry`] object for both mapping variants
+    fn get_registry(&self) -> &Registry {
+        match self {
+            RegistryMapping::Registry(reg) => reg,
+            RegistryMapping::Custom(custom) => &(custom.registry),
+        }
+    }
+}
+
 /// Custom registry configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CustomConfig {
@@ -184,10 +194,7 @@ impl Config {
         if let Some(reg) = self
             .package_registry_overrides
             .get(package)
-            .map(|m| match m {
-                RegistryMapping::Registry(reg) => reg,
-                RegistryMapping::Custom(custom) => &custom.registry,
-            })
+            .map(RegistryMapping::get_registry)
         {
             return Some(reg);
         }
@@ -195,10 +202,7 @@ impl Config {
         if let Some(reg) = self
             .namespace_registries
             .get(package.namespace())
-            .map(|m| match m {
-                RegistryMapping::Registry(reg) => reg,
-                RegistryMapping::Custom(custom) => &custom.registry,
-            })
+            .map(RegistryMapping::get_registry)
         {
             return Some(reg);
         }

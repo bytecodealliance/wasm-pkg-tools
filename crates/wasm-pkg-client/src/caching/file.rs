@@ -20,6 +20,12 @@ pub struct FileCache {
     root: PathBuf,
 }
 
+impl std::fmt::Display for FileCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.root.display())
+    }
+}
+
 impl FileCache {
     /// Creates a new file cache that stores data in the given directory.
     pub async fn new(root: impl AsRef<Path>) -> anyhow::Result<Self> {

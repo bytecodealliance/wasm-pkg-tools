@@ -66,6 +66,7 @@ impl Common {
         } else {
             FileCache::global_cache_path().context("unable to find cache directory")?
         };
+
         FileCache::new(dir).await
     }
 
@@ -76,6 +77,8 @@ impl Common {
         let config = self.load_config().await?;
         let cache = self.load_cache().await?;
         let client = Client::new(config);
+
+        tracing::debug!(filecache_dir = %cache);
         Ok(CachingClient::new(Some(client), cache))
     }
 }
