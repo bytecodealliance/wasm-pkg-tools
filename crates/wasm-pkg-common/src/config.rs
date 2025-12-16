@@ -181,27 +181,33 @@ impl Config {
     /// - The default registry
     /// - Hard-coded fallbacks for certain well-known namespaces
     pub fn resolve_registry(&self, package: &PackageRef) -> Option<&Registry> {
-        if let Some(RegistryMapping::Registry(reg)) = self.package_registry_overrides.get(package) {
-            Some(reg)
-        } else if let Some(RegistryMapping::Custom(custom)) =
-            self.package_registry_overrides.get(package)
+        if let Some(reg) = self
+            .package_registry_overrides
+            .get(package)
+            .map(|m| match m {
+                RegistryMapping::Registry(reg) => reg,
+                RegistryMapping::Custom(custom) => &custom.registry,
+            })
         {
-            Some(&custom.registry)
-        } else if let Some(RegistryMapping::Registry(reg)) =
-            self.namespace_registries.get(package.namespace())
-        {
-            Some(reg)
-        } else if let Some(RegistryMapping::Custom(custom)) =
-            self.namespace_registries.get(package.namespace())
-        {
-            Some(&custom.registry)
-        } else if let Some(reg) = self.default_registry.as_ref() {
-            Some(reg)
-        } else if let Some(reg) = self.fallback_namespace_registries.get(package.namespace()) {
-            Some(reg)
-        } else {
-            None
+            return Some(reg);
         }
+
+        if let Some(reg) = self
+            .namespace_registries
+            .get(package.namespace())
+            .map(|m| match m {
+                RegistryMapping::Registry(reg) => reg,
+                RegistryMapping::Custom(custom) => &custom.registry,
+            })
+        {
+            return Some(reg);
+        }
+
+        if let Some(reg) = self.default_registry.as_ref() {
+            return Some(reg);
+        }
+
+        self.fallback_namespace_registries.get(package.namespace())
     }
 
     /// Returns the default registry.

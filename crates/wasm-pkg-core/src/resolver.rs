@@ -51,7 +51,7 @@ impl std::fmt::Display for Dependency {
 
                 write!(
                     f,
-                    "{{ registry =  {registry} package = {}@{version} }}",
+                    "{{registry=\"{registry}\" package=\"{}@{version}\"}}",
                     name.as_deref().unwrap_or("_:_"),
                 )
             }
@@ -435,7 +435,7 @@ impl<'a> DependencyResolver<'a> {
                 if !force_override
                     && (self.resolutions.contains_key(name) || self.dependencies.contains_key(name))
                 {
-                    tracing::debug!(%name, "dependency already exists and override is not set, ignoring");
+                    tracing::debug!(%name, %dependency, "dependency already exists and override is not set, ignoring");
                     return Ok(());
                 }
                 self.dependencies.insert(
