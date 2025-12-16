@@ -201,7 +201,8 @@ pub async fn resolve_dependencies(
                     continue;
                 }
             };
-            tracing::debug!(dependency = ?dep);
+
+            tracing::debug!(dependency = %dep);
             resolver
                 .add_dependency(&pkg, &dep)
                 .await
