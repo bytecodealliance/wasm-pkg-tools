@@ -182,7 +182,7 @@ pub async fn resolve_dependencies(
         for (pkg, ovr) in overrides.iter() {
             let pkg: PackageRef = pkg.parse().context("Unable to parse as a package ref")?;
             let dep = match (ovr.path.as_ref(), ovr.version.as_ref()) {
-                (Some(path), v @ None | v @ Some(_)) => {
+                (Some(path), v) => {
                     if v.is_some() {
                         tracing::warn!("Ignoring version override for local package");
                     }
