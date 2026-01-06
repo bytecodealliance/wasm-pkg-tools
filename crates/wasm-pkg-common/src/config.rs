@@ -194,7 +194,7 @@ impl Config {
         if let Some(reg) = self
             .package_registry_overrides
             .get(package)
-            .map(RegistryMapping::get_registry)
+            .map(|pkg| pkg.registry())
         {
             return Some(reg);
         }
