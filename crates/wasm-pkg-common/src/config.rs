@@ -44,7 +44,7 @@ pub enum RegistryMapping {
 
 impl RegistryMapping {
     /// returns the inner [`Registry`] object for both mapping variants
-    fn get_registry(&self) -> &Registry {
+    fn registry(&self) -> &Registry {
         match self {
             RegistryMapping::Registry(reg) => reg,
             RegistryMapping::Custom(custom) => &custom.registry,
