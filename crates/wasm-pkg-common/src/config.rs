@@ -191,27 +191,21 @@ impl Config {
     /// - The default registry
     /// - Hard-coded fallbacks for certain well-known namespaces
     pub fn resolve_registry(&self, package: &PackageRef) -> Option<&Registry> {
+        let namespace = package.namespace();
+        // look in `self.package_registry_overrides `
+        // then in `self.namespace_registries`
         if let Some(reg) = self
             .package_registry_overrides
             .get(package)
+            .or_else(|| self.namespace_registries.get(namespace))
             .map(|pkg| pkg.registry())
         {
             return Some(reg);
-        }
-
-        if let Some(reg) = self
-            .namespace_registries
-            .get(package.namespace())
-            .map(RegistryMapping::get_registry)
-        {
+        } else if let Some(reg) = self.default_registry.as_ref() {
             return Some(reg);
         }
 
-        if let Some(reg) = self.default_registry.as_ref() {
-            return Some(reg);
-        }
-
-        self.fallback_namespace_registries.get(package.namespace())
+        self.fallback_namespace_registries.get(namespace)
     }
 
     /// Returns the default registry.
