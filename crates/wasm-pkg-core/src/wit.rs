@@ -206,8 +206,7 @@ pub async fn resolve_dependencies(
             resolver
                 .add_dependency(&pkg, &dep)
                 .await
-                .with_context(|| dep.clone())
-                .context("Unable to add dependency")?;
+                .with_context(|| format!("unable to add dependency {dep}"))?;
         }
     }
     let (_name, packages) = get_packages(path)?;
