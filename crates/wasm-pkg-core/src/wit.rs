@@ -188,7 +188,7 @@ pub async fn resolve_dependencies(
                     }
                     let path = tokio::fs::canonicalize(path)
                         .await
-                        .with_context(|| format!("{}", path.display()))?;
+                        .with_context(|| format!("resolving local dependency {}", path.display()))?;
                     Dependency::Local(path)
                 }
                 (None, Some(version)) => Dependency::Package(RegistryPackage {
