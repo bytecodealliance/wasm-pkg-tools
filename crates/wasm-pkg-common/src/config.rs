@@ -47,7 +47,7 @@ impl RegistryMapping {
     fn get_registry(&self) -> &Registry {
         match self {
             RegistryMapping::Registry(reg) => reg,
-            RegistryMapping::Custom(custom) => &(custom.registry),
+            RegistryMapping::Custom(custom) => &custom.registry,
         }
     }
 }
