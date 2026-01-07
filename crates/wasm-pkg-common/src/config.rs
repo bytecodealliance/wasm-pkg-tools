@@ -42,6 +42,16 @@ pub enum RegistryMapping {
     Custom(CustomConfig),
 }
 
+impl RegistryMapping {
+    /// returns the inner [`Registry`] object for both mapping variants
+    fn registry(&self) -> &Registry {
+        match self {
+            RegistryMapping::Registry(reg) => reg,
+            RegistryMapping::Custom(custom) => &custom.registry,
+        }
+    }
+}
+
 /// Custom registry configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CustomConfig {
@@ -181,27 +191,21 @@ impl Config {
     /// - The default registry
     /// - Hard-coded fallbacks for certain well-known namespaces
     pub fn resolve_registry(&self, package: &PackageRef) -> Option<&Registry> {
-        if let Some(RegistryMapping::Registry(reg)) = self.package_registry_overrides.get(package) {
-            Some(reg)
-        } else if let Some(RegistryMapping::Custom(custom)) =
-            self.package_registry_overrides.get(package)
+        let namespace = package.namespace();
+        // look in `self.package_registry_overrides `
+        // then in `self.namespace_registries`
+        if let Some(reg) = self
+            .package_registry_overrides
+            .get(package)
+            .or_else(|| self.namespace_registries.get(namespace))
+            .map(|pkg| pkg.registry())
         {
-            Some(&custom.registry)
-        } else if let Some(RegistryMapping::Registry(reg)) =
-            self.namespace_registries.get(package.namespace())
-        {
-            Some(reg)
-        } else if let Some(RegistryMapping::Custom(custom)) =
-            self.namespace_registries.get(package.namespace())
-        {
-            Some(&custom.registry)
+            return Some(reg);
         } else if let Some(reg) = self.default_registry.as_ref() {
-            Some(reg)
-        } else if let Some(reg) = self.fallback_namespace_registries.get(package.namespace()) {
-            Some(reg)
-        } else {
-            None
+            return Some(reg);
         }
+
+        self.fallback_namespace_registries.get(namespace)
     }
 
     /// Returns the default registry.

@@ -179,16 +179,16 @@ pub async fn resolve_dependencies(
     let mut resolver = DependencyResolver::new_with_client(client, lock_file)?;
     // add deps from config first in case they're local deps and then add deps from the directory
     if let Some(overrides) = config.overrides.as_ref() {
-        for (pkg, ovride) in overrides.iter() {
+        for (pkg, ovr) in overrides.iter() {
             let pkg: PackageRef = pkg.parse().context("Unable to parse as a package ref")?;
-            let dep = match (ovride.path.as_ref(), ovride.version.as_ref()) {
-                (Some(path), None) => {
-                    let path = tokio::fs::canonicalize(path).await?;
-                    Dependency::Local(path)
-                }
-                (Some(path), Some(_)) => {
-                    tracing::warn!("Ignoring version override for local package");
-                    let path = tokio::fs::canonicalize(path).await?;
+            let dep = match (ovr.path.as_ref(), ovr.version.as_ref()) {
+                (Some(path), v) => {
+                    if v.is_some() {
+                        tracing::warn!("Ignoring version override for local package");
+                    }
+                    let path = tokio::fs::canonicalize(path)
+                        .await
+                        .with_context(|| format!("resolving local dependency {}", path.display()))?;
                     Dependency::Local(path)
                 }
                 (None, Some(version)) => Dependency::Package(RegistryPackage {
@@ -201,10 +201,12 @@ pub async fn resolve_dependencies(
                     continue;
                 }
             };
+
+            tracing::debug!(dependency = %dep);
             resolver
                 .add_dependency(&pkg, &dep)
                 .await
-                .context("Unable to add dependency")?;
+                .with_context(|| format!("unable to add dependency {dep}"))?;
         }
     }
     let (_name, packages) = get_packages(path)?;

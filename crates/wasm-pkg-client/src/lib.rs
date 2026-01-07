@@ -225,7 +225,7 @@ impl Client {
                     self.config
                         .namespace_registry(package.namespace())
                         .and_then(|meta| {
-                            // If the overriden registry matches the registry we are trying to resolve, we
+                            // If the overridden registry matches the registry we are trying to resolve, we
                             // should use the metadata, otherwise we'll need to fetch the metadata from the
                             // registry
                             match (meta, is_override) {

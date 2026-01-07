@@ -364,7 +364,7 @@ impl AsRef<File> for Locker {
     }
 }
 
-// NOTE(thomastaylor312): These lock file primitives from here on down are mostly copyed wholesale
+// NOTE(thomastaylor312): These lock file primitives from here on down are mostly copied wholesale
 // from the lock file implementation of cargo-component with some minor modifications to make them
 // work with tokio
 

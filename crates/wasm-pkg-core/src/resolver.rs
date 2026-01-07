@@ -38,6 +38,28 @@ pub enum Dependency {
     Local(PathBuf),
 }
 
+impl std::fmt::Display for Dependency {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Dependency::Package(RegistryPackage {
+                name,
+                version,
+                registry,
+            }) => {
+                let registry = registry.as_deref().unwrap_or("_");
+                let name = name.as_ref().map(|n| n.to_string());
+
+                write!(
+                    f,
+                    "{{registry=\"{registry}\" package=\"{}@{version}\"}}",
+                    name.as_deref().unwrap_or("_:_"),
+                )
+            }
+            Dependency::Local(path_buf) => write!(f, "{}", path_buf.display()),
+        }
+    }
+}
+
 impl FromStr for Dependency {
     type Err = anyhow::Error;
 
@@ -413,7 +435,7 @@ impl<'a> DependencyResolver<'a> {
                 if !force_override
                     && (self.resolutions.contains_key(name) || self.dependencies.contains_key(name))
                 {
-                    tracing::debug!(%name, "dependency already exists and override is not set, ignoring");
+                    tracing::debug!(%name, %dependency, "dependency already exists and override is not set, ignoring");
                     return Ok(());
                 }
                 self.dependencies.insert(
@@ -432,7 +454,7 @@ impl<'a> DependencyResolver<'a> {
                 });
 
                 // This is a bit of a hack, but if there are multiple local dependencies that are
-                // nested and overriden, getting the packages from the local package treats _all_
+                // nested and overridden, getting the packages from the local package treats _all_
                 // deps as registry deps. So if we're handling a local path and the dependencies
                 // have a registry package already, override it. Otherwise follow normal overrides.
                 // We should definitely fix this and change where we resolve these things
