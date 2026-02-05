@@ -23,6 +23,7 @@ impl Clone for OciRegistryConfig {
         let client_config = ClientConfig {
             protocol: self.client_config.protocol.clone(),
             extra_root_certificates: self.client_config.extra_root_certificates.clone(),
+            tls_certs_only: self.client_config.tls_certs_only.clone(),
             platform_resolver: None,
             http_proxy: self.client_config.http_proxy.clone(),
             https_proxy: self.client_config.https_proxy.clone(),
