@@ -33,6 +33,9 @@ jobs:
           - rust-target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             cross: true
+          - rust-target: riscv64gc-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: true
           - rust-target: x86_64-apple-darwin
             os: macos-latest
           - rust-target: aarch64-apple-darwin
@@ -87,6 +90,9 @@ jobs:
           - rust-target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
           - rust-target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: true
+          - rust-target: riscv64gc-unknown-linux-gnu
             os: ubuntu-latest
             cross: true
           - rust-target: x86_64-apple-darwin
