@@ -142,14 +142,18 @@ config_file = "/a/path"
 auth = { username = "open", password = "sesame" }
 ```
 
-### Well-known metadata
+### Metadata via Well-known URI (`/.well-known`)
 
-For well-used or public registries, we recommend creating a well-known metadata file that is used by
+For well-used or public registries, we recommend creating a [well-known metadata file](https://en.wikipedia.org/wiki/Well-known_URI) that is used by
 the tool chain to simplify configuration and indicate to a client which protocols and mappings to
 use (although this can be set directly in config as well). The `wkg` tool and libraries expect a
 `registry.json` file to be present at a specific location to indicate to the tooling where the
 components are stored. For example, if a registry was `example.com`, then the tooling will attempt
-to find a `registry.json` file at `https://example.com/.well-known/wasm-pkg/registry.json`. 
+For well-used or public registries, we recommend creating a [`.well-known` metadata file](https://en.wikipedia.org/wiki/Well-known_URI) that is used by
+the tool chain to simplify configuration and indicate to a client which protocols and mappings to
+use (although this can be set directly in config as well).
+
+The `wkg` tool and libraries expect a `registry.json` file to be present at a specific location to indicate to the tooling where the components are stored. For example, given a registry `example.com`, then the tooling will attempt to find a `registry.json` file at `https://example.com/.well-known/wasm-pkg/registry.json`.
 
 A full example of what this `registry.json` file should look like is below:
 
