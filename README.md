@@ -212,6 +212,22 @@ file from the example above, then the component will be stored at
 `ghcr.io/webassembly/acme/foo:0.1.0`. Please note that the tag _MUST_ be a valid semantic version or
 the tooling will ignore it when pulling.
 
+### Default fallback registries
+
+If no configuration is found, the following mapping of namespace prefixes is used as a fallback:
+```
+wasi = "wasi.dev"
+ba = "bytecodealliance.org"
+```
+The `wkg` tool will therefore fetch registry metadata from the respective [well-known URIs](https://en.wikipedia.org/wiki/Well-known_URI):
+```
+https://wasi.dev/.well-known/wasm-pkg/registry.json
+https://bytecodealliance.org/.well-known/wasm-pkg/registry.json
+```
+Both registries store their packages as OCI artifacts in the GitHub Container Registry [ghcr.io](ghcr.io).
+
+
+
 ## `wkg.toml` and `wkg.lock`
 
 Whenever `wkg` is used to fetch dependencies or build a wit package, it will automatically create a
