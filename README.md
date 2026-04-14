@@ -142,14 +142,18 @@ config_file = "/a/path"
 auth = { username = "open", password = "sesame" }
 ```
 
-### Well-known metadata
+### Metadata via Well-known URI (`/.well-known`)
 
-For well-used or public registries, we recommend creating a well-known metadata file that is used by
+For well-used or public registries, we recommend creating a [well-known metadata file](https://en.wikipedia.org/wiki/Well-known_URI) that is used by
 the tool chain to simplify configuration and indicate to a client which protocols and mappings to
 use (although this can be set directly in config as well). The `wkg` tool and libraries expect a
 `registry.json` file to be present at a specific location to indicate to the tooling where the
 components are stored. For example, if a registry was `example.com`, then the tooling will attempt
-to find a `registry.json` file at `https://example.com/.well-known/wasm-pkg/registry.json`. 
+For well-used or public registries, we recommend creating a [`.well-known` metadata file](https://en.wikipedia.org/wiki/Well-known_URI) that is used by
+the tool chain to simplify configuration and indicate to a client which protocols and mappings to
+use (although this can be set directly in config as well).
+
+The `wkg` tool and libraries expect a `registry.json` file to be present at a specific location to indicate to the tooling where the components are stored. For example, given a registry `example.com`, then the tooling will attempt to find a `registry.json` file at `https://example.com/.well-known/wasm-pkg/registry.json`.
 
 A full example of what this `registry.json` file should look like is below:
 
@@ -207,6 +211,22 @@ a package called `acme:foo` should be stored with the name `acme/foo`. If we use
 file from the example above, then the component will be stored at
 `ghcr.io/webassembly/acme/foo:0.1.0`. Please note that the tag _MUST_ be a valid semantic version or
 the tooling will ignore it when pulling.
+
+### Default fallback registries
+
+If no configuration is found, the following mapping of namespace prefixes is used as a fallback:
+```
+wasi = "wasi.dev"
+ba = "bytecodealliance.org"
+```
+The `wkg` tool will therefore fetch registry metadata from the respective [well-known URIs](https://en.wikipedia.org/wiki/Well-known_URI):
+```
+https://wasi.dev/.well-known/wasm-pkg/registry.json
+https://bytecodealliance.org/.well-known/wasm-pkg/registry.json
+```
+Both registries store their packages as OCI artifacts in the GitHub Container Registry [ghcr.io](ghcr.io).
+
+
 
 ## `wkg.toml` and `wkg.lock`
 
