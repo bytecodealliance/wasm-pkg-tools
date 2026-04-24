@@ -730,6 +730,11 @@ impl DependencyResolutionMap {
                     package,
                 } => {
                     source_files.extend(package.source_map.source_files().map(Path::to_path_buf));
+                    // handle cases for a workspace level `wkg.toml` where overrides may reference
+                    // the package being built
+                    if package.main.name == root.main.name {
+                        continue;
+                    }
                     merged.push_group(package).with_context(|| {
                         format!(
                             "failed to merge dependency `{name}`",
