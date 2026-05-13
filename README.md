@@ -224,9 +224,8 @@ The `wkg` tool will therefore fetch registry metadata from the respective [well-
 https://wasi.dev/.well-known/wasm-pkg/registry.json
 https://bytecodealliance.org/.well-known/wasm-pkg/registry.json
 ```
-Both registries store their packages as OCI artifacts in the GitHub Container Registry [ghcr.io](ghcr.io).
-
-
+Both registries store their packages as OCI artifacts in the
+[GitHub Package Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
 
 ## `wkg.toml` and `wkg.lock`
 
