@@ -154,8 +154,8 @@ mod tests {
 
             [package_registry_overrides]
 
-            [registry."localhost:1234".warg]
-            config_file = "/a/path"
+            [registry."localhost:1234".oci]
+            auth = { username = "open", password = "sesame" }
         };
 
         let toml_cfg: TomlConfig = toml_config.try_into().unwrap();
@@ -167,7 +167,7 @@ mod tests {
             reg_conf
                 .default_backend()
                 .expect("Should have a default set"),
-            "warg"
+            "oci"
         );
 
         let toml_config = toml::toml! {
@@ -176,10 +176,10 @@ mod tests {
 
             [package_registry_overrides]
 
-            [registry."localhost:1234".warg]
-            config_file = "/a/path"
             [registry."localhost:1234".oci]
             auth = { username = "open", password = "sesame" }
+            [registry."localhost:1234".other]
+            config = "value"
         };
 
         let toml_cfg: TomlConfig = toml_config.try_into().unwrap();
@@ -200,10 +200,10 @@ mod tests {
 
             [registry."localhost:1234"]
             type = "foobar"
-            [registry."localhost:1234".warg]
-            config_file = "/a/path"
             [registry."localhost:1234".oci]
             auth = { username = "open", password = "sesame" }
+            [registry."localhost:1234".other]
+            config = "value"
         };
 
         let toml_cfg: TomlConfig = toml_config.try_into().unwrap();
@@ -224,10 +224,10 @@ mod tests {
 
             [registry."localhost:1234"]
             default = "foobar"
-            [registry."localhost:1234".warg]
-            config_file = "/a/path"
             [registry."localhost:1234".oci]
             auth = { username = "open", password = "sesame" }
+            [registry."localhost:1234".other]
+            config = "value"
         };
 
         let toml_cfg: TomlConfig = toml_config.try_into().unwrap();

@@ -8,13 +8,13 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use semver::{Version, VersionReq};
+use semver::VersionReq;
 use serde::{Deserialize, Serialize};
 use tokio::{
     fs::{File, OpenOptions},
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
 };
-use wasm_pkg_client::{ContentDigest, PackageRef};
+use wasm_pkg_client::{ContentDigest, PackageRef, Version};
 
 use crate::resolver::{DependencyResolution, DependencyResolutionMap};
 
