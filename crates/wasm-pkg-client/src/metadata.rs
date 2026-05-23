@@ -37,7 +37,7 @@ impl RegistryMetadataExt for RegistryMetadata {
     }
 
     async fn fetch(registry: &Registry) -> Result<Option<Self>, Error> {
-        let scheme = if registry.host() == "localhost" {
+        let scheme = if registry.host() == "localhost" || registry.host() == "127.0.0.1" {
             "http"
         } else {
             "https"
