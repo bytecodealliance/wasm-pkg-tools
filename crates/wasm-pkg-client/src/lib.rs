@@ -338,7 +338,18 @@ fn resolve_package(
         })?;
 
     let version = version.ok_or_else(|| {
-        crate::Error::InvalidComponent(anyhow::anyhow!("component package version not found"))
+        crate::Error::InvalidComponent(anyhow::anyhow!(
+            "component package version not found in the Wasm binary\n\
+            \n\
+            The Wasm file was built without a version in the WIT `package` statement.\n\
+            Add a version to the `package` statement in your .wit file, e.g.:\n\
+            \n\
+            \tpackage example:my-package@1.0.0;\n\
+            \n\
+            Alternatively, specify the package and version explicitly with the --package flag:\n\
+            \n\
+            \twkg publish <file> --package <namespace>:<name>@<version>"
+        ))
     })?;
     Ok((data.into_inner(), package, version))
 }
