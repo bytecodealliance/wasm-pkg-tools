@@ -322,6 +322,13 @@ impl GetArgs {
                 .context("Failed to resolve output parent dir")?
         };
 
+        if !parent_dir.exists() {
+            anyhow::bail!(
+                "output directory {:?} does not exist; create it first or choose a different path",
+                parent_dir
+            );
+        }
+
         let (tmp_file, tmp_path) =
             tempfile::NamedTempFile::with_prefix_in(".wkg-get", parent_dir)?.into_parts();
         tracing::debug!(?tmp_path, "Created temporary file");
