@@ -315,7 +315,12 @@ impl GetArgs {
 
         let output_trailing_slash = self.output.as_os_str().to_string_lossy().ends_with('/');
         let parent_dir = if output_trailing_slash {
-            self.output.as_path()
+            let parent_dir = self.output.as_path();
+            if !tokio::fs::try_exists(parent_dir).await? {
+                tokio::fs::create_dir_all(parent_dir).await
+                    .context("Failed to create output dir")?
+            }
+            parent_dir
         } else {
             self.output
                 .parent()
