@@ -41,4 +41,5 @@ features = [
 [dev-dependencies]
 tempfile = { workspace = true }
 sha2 = { workspace = true }
-rstest = "0.23"
+rstest = "0.25"
+tokio = { workspace = true, features = ["rt", "macros", "process"] }
