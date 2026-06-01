@@ -21,6 +21,7 @@ oci-client = { version = "0.16", default-features = false, features = [
 oci-wasm = { version = "0.4", default-features = false, features = [
     "rustls-tls",
 ] }
+rcgen = "0.14.8"
 semver = "1.0.23"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1"

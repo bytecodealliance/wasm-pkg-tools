@@ -3,7 +3,7 @@ use base64::{
     engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig},
     Engine,
 };
-use oci_client::client::ClientConfig;
+use oci_client::client::{Certificate, CertificateEncoding, ClientConfig};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize, Serializer};
 use wasm_pkg_common::{config::RegistryConfig, Error};
@@ -50,8 +50,12 @@ impl TryFrom<&RegistryConfig> for OciRegistryConfig {
     type Error = Error;
 
     fn try_from(registry_config: &RegistryConfig) -> Result<Self, Self::Error> {
-        let OciRegistryConfigToml { auth, protocol } =
-            registry_config.backend_config("oci")?.unwrap_or_default();
+        let OciRegistryConfigToml {
+            auth,
+            protocol,
+            accept_invalid_certificates,
+            extra_root_certificates,
+        } = registry_config.backend_config("oci")?.unwrap_or_default();
         let mut client_config = ClientConfig::default();
         if let Some(protocol) = protocol {
             client_config.protocol = oci_client_protocol(&protocol)?;
@@ -59,6 +63,12 @@ impl TryFrom<&RegistryConfig> for OciRegistryConfig {
         let credentials = auth
             .map(TryInto::try_into)
             .transpose()
+            .map_err(Error::InvalidConfig)?;
+        client_config.accept_invalid_certificates = accept_invalid_certificates;
+        client_config.extra_root_certificates = extra_root_certificates
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<_>, _>>()
             .map_err(Error::InvalidConfig)?;
         Ok(Self {
             client_config,
@@ -71,16 +81,31 @@ impl TryFrom<&RegistryConfig> for OciRegistryConfig {
 struct OciRegistryConfigToml {
     auth: Option<TomlAuth>,
     protocol: Option<String>,
+    #[serde(default)]
+    accept_invalid_certificates: bool,
+    #[serde(default)]
+    extra_root_certificates: Vec<TomlCertificate>,
 }
 
 impl From<OciRegistryConfig> for OciRegistryConfigToml {
     fn from(value: OciRegistryConfig) -> Self {
+        let OciRegistryConfig {
+            client_config,
+            credentials,
+        } = value;
+
         OciRegistryConfigToml {
-            auth: value.credentials.map(|c| TomlAuth::UsernamePassword {
+            auth: credentials.map(|c| TomlAuth::UsernamePassword {
                 username: c.username,
                 password: c.password,
             }),
-            protocol: Some(oci_protocol_string(&value.client_config.protocol)),
+            protocol: Some(oci_protocol_string(&client_config.protocol)),
+            accept_invalid_certificates: client_config.accept_invalid_certificates,
+            extra_root_certificates: client_config
+                .extra_root_certificates
+                .into_iter()
+                .map(Into::into)
+                .collect(),
         }
     }
 }
@@ -161,6 +186,47 @@ fn serialize_secret<S: Serializer>(
     secret.expose_secret().serialize(serializer)
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum TomlCertificateEncoding {
+    Der,
+    Pem,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct TomlCertificate {
+    encoding: TomlCertificateEncoding,
+    data: String,
+}
+
+impl TryFrom<TomlCertificate> for Certificate {
+    type Error = anyhow::Error;
+
+    fn try_from(value: TomlCertificate) -> Result<Self, Self::Error> {
+        let (encoding, data) = match value.encoding {
+            TomlCertificateEncoding::Der => (CertificateEncoding::Der, value.data.into_bytes()),
+            TomlCertificateEncoding::Pem => (CertificateEncoding::Pem, value.data.into_bytes()),
+        };
+        Ok(Self { encoding, data })
+    }
+}
+
+impl From<Certificate> for TomlCertificate {
+    fn from(value: Certificate) -> Self {
+        let (encoding, data) = match value.encoding {
+            CertificateEncoding::Der => (
+                TomlCertificateEncoding::Der,
+                String::from_utf8_lossy(&value.data).into_owned(),
+            ),
+            CertificateEncoding::Pem => (
+                TomlCertificateEncoding::Pem,
+                String::from_utf8_lossy(&value.data).into_owned(),
+            ),
+        };
+        Self { encoding, data }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use wasm_pkg_common::config::RegistryMapping;
@@ -197,6 +263,8 @@ mod tests {
             oci_client::client::ClientProtocol::Http,
             oci_config.client_config.protocol
         );
+        assert!(!oci_config.client_config.accept_invalid_certificates);
+        assert!(oci_config.client_config.extra_root_certificates.is_empty());
 
         let oci_config: OciRegistryConfig = cfg
             .registry_config(&"wasi.dev".parse().unwrap())
