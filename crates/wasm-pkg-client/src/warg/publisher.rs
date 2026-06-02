@@ -18,6 +18,7 @@ impl PackagePublisher for WargBackend {
         package: &PackageRef,
         version: &Version,
         data: PublishingSource,
+        dry_run: bool,
     ) -> Result<(), crate::Error> {
         // store the Wasm in Warg cache, so that it is available to Warg client for uploading
         let content = self
@@ -36,6 +37,10 @@ impl PackagePublisher for WargBackend {
 
         // convert package name to Warg package name
         let name = super::package_ref_to_name(package)?;
+
+        if dry_run {
+            return Ok(());
+        }
 
         // start Warg publish, using the keyring to sign
         let version = version.clone();

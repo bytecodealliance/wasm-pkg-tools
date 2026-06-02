@@ -184,12 +184,9 @@ impl Client {
         let source = self
             .resolve_source(&package, additional_options.registry)
             .await?;
-        if additional_options.dry_run {
-            println!("Aborting publish due to dry run: {}@{}", package, version);
-            return Ok((package, version));
-        }
+
         source
-            .publish(&package, &version, data)
+            .publish(&package, &version, data, additional_options.dry_run)
             .await
             .map(|_| (package, version))
     }

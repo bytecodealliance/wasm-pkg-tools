@@ -271,7 +271,9 @@ impl PublishArgs {
                 },
             )
             .await?;
-        if !self.dry_run {
+        if self.dry_run {
+            println!("Aborting publish due to dry run: {}@{}", package, version);
+        } else {
             println!("Published {}@{}", package, version);
         }
         Ok(())

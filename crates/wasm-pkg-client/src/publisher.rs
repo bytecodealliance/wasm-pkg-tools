@@ -10,5 +10,6 @@ pub trait PackagePublisher: Send + Sync {
         package: &PackageRef,
         version: &Version,
         data: PublishingSource,
+        dry_run: bool,
     ) -> Result<(), crate::Error>;
 }

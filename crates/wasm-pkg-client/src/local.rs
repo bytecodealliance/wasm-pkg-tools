@@ -112,11 +112,15 @@ impl PackagePublisher for LocalBackend {
         package: &PackageRef,
         version: &Version,
         mut data: PublishingSource,
+        dry_run: bool,
     ) -> Result<(), Error> {
         let package_dir = self.package_dir(package);
         // Ensure the package directory exists.
         tokio::fs::create_dir_all(package_dir).await?;
         let path = self.version_path(package, version);
+        if dry_run {
+            return Ok(());
+        }
         let mut out = tokio::fs::File::create(path).await?;
         tokio::io::copy(&mut data, &mut out)
             .await
