@@ -271,11 +271,6 @@ impl PublishArgs {
             let prev_lock_ref = (lock_file.version, lock_file.packages.clone());
             let (build_ref, _, bytes) =
                 wit::build_wit_dir(&self.path, client.clone(), &mut lock_file).await?;
-            let tmp = tempfile::Builder::new()
-                .prefix(&build_ref.to_string())
-                .suffix(".wasm")
-                .tempfile()
-                .context("Failed to create temporary file for built WIT package")?;
             // There is no way to check if we are in a git repository unlike `cargo publish --allow-dirty` so
             // check against previous values.
             if lock_file != prev_lock_ref {
@@ -284,6 +279,12 @@ impl PublishArgs {
                 ))
                 .context("Run `wkg wit fetch` before attempting to publish");
             }
+
+            let tmp = tempfile::Builder::new()
+                .prefix(&build_ref.to_string())
+                .suffix(".wasm")
+                .tempfile()
+                .context("Failed to create temporary file for built WIT package")?;
             tokio::fs::write(tmp.path(), &bytes)
                 .await
                 .context("Failed to write built WIT package to temp file")?;
