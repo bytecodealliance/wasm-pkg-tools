@@ -101,6 +101,13 @@ impl OciBackend {
                 Ok(auth)
             })
             .await
+            .map_err(|e| {
+                if let Error::RegistryError(anyhow_err) = e {
+                    Error::RegistryError(anyhow_err.context(reference.repository().to_owned()))
+                } else {
+                    e
+                }
+            })
             .cloned()
     }
 
