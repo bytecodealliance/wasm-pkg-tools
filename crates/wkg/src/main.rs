@@ -290,7 +290,10 @@ impl PublishArgs {
             tokio::fs::write(tmp.path(), &bytes)
                 .await
                 .context("Failed to write built WIT package to temp file")?;
-            (tmp.path().to_path_buf(), Some(tmp))
+            let tmp_pkg_path = tmp.path().to_path_buf();
+            tracing::debug!(tmp_pkg_path = %tmp_pkg_path.display(), "Wrote temporary WIT package file");
+
+            (tmp_pkg_path, Some(tmp))
         } else {
             (self.path.clone(), None)
         };
