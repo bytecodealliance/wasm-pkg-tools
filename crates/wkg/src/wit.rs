@@ -119,7 +119,7 @@ pub async fn build_wit_dir(
 ) -> anyhow::Result<(PackageRef, Option<Version>, Vec<u8>)> {
     check_dir(&dir).await?;
     let wkg_config = wasm_pkg_core::config::Config::load().await?;
-    let result = wit::build_package(&wkg_config, dir, &mut lock_file, client).await?;
+    let result = wit::build_package(&wkg_config, dir, lock_file, client).await?;
     Ok(result)
 }
 
