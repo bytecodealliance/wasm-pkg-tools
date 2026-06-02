@@ -266,10 +266,7 @@ impl PublishArgs {
         // If the input is a directory, build a WIT package from it into a temp
         // file first. _tmp is held until the publish completes so the file
         // isn't deleted out from under us.
-        let metadata = tokio::fs::metadata(&self.path)
-            .await
-            .with_context(|| format!("Failed to stat {:?}", self.path))?;
-        let (publish_path, _tmp) = if metadata.is_dir() {
+        let (publish_path, _tmp) = if self.path.is_dir() {
             let mut lock_file = LockFile::load(false).await?;
             let prev_lock_ref = (lock_file.version, lock_file.packages.clone());
             let (build_ref, _, bytes) =
