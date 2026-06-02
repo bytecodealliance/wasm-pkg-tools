@@ -51,7 +51,7 @@ impl Common {
     /// Helper to load the config from the given path
     pub async fn load_config(&self) -> anyhow::Result<Config> {
         if let Some(config_file) = self.config.as_ref() {
-            tracing::warn!(config = %config_file.display());
+            tracing::info!(config = %config_file.display());
             Config::from_file(config_file)
                 .await
                 .context(format!("error loading config file {config_file:?}"))
