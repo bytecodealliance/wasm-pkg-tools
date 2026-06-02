@@ -274,7 +274,7 @@ impl Config {
 #[derive(Clone, Default)]
 pub struct RegistryConfig {
     default_backend: Option<String>,
-    pub backend_configs: HashMap<String, ::toml::Table>,
+    backend_configs: HashMap<String, ::toml::Table>,
 }
 
 impl RegistryConfig {
