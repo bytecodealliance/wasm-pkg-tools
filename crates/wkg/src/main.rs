@@ -15,6 +15,7 @@ use wasm_pkg_common::{
     package::PackageSpec,
     registry::Registry,
 };
+use wasm_pkg_core::lock::LockFile;
 use wit_component::DecodedWasm;
 
 mod oci;
@@ -227,8 +228,9 @@ struct GetArgs {
 
 #[derive(Args, Debug)]
 struct PublishArgs {
-    /// The file to publish
-    file: PathBuf,
+    /// The file or directory to publish.
+    /// If a directory is provided, the package is built to a tempfile before publishing.
+    path: PathBuf,
 
     #[command(flatten)]
     registry_args: RegistryArgs,
@@ -260,10 +262,44 @@ impl PublishArgs {
         } else {
             None
         };
+
+        // If the input is a directory, build a WIT package from it into a temp
+        // file first. _tmp is held until the publish completes so the file
+        // isn't deleted out from under us.
+        let (publish_path, _tmp) = if self.path.is_dir() {
+            let mut lock_file = LockFile::load(false).await?;
+            let prev_lock_ref = (lock_file.version, lock_file.packages.clone());
+            let (build_ref, _, bytes) =
+                wit::build_wit_dir(&self.path, client.clone(), &mut lock_file).await?;
+            // There is no way to check if we are in a git repository unlike `cargo publish --allow-dirty` so
+            // check against previous values.
+            if lock_file != prev_lock_ref {
+                return Err(anyhow::anyhow!(
+                    "wkg.lock would be updated during publish, aborting"
+                ))
+                .context("Run `wkg wit fetch` before attempting to publish");
+            }
+
+            let tmp = tempfile::Builder::new()
+                .prefix(&build_ref.to_string())
+                .suffix(".wasm")
+                .tempfile()
+                .context("Failed to create temporary file for built WIT package")?;
+            tokio::fs::write(tmp.path(), &bytes)
+                .await
+                .context("Failed to write built WIT package to temp file")?;
+            let tmp_pkg_path = tmp.path().to_path_buf();
+            tracing::debug!(tmp_pkg_path = %tmp_pkg_path.display(), "Wrote temporary WIT package file");
+
+            (tmp_pkg_path, Some(tmp))
+        } else {
+            (self.path.clone(), None)
+        };
+
         let (package, version) = client
             .client()?
             .publish_release_file(
-                &self.file,
+                &publish_path,
                 PublishOpts {
                     package,
                     registry: self.registry_args.registry,
