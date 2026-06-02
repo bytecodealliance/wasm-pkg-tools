@@ -48,6 +48,11 @@ impl PartialEq for LockFile {
         self.packages == other.packages && self.version == other.version
     }
 }
+impl PartialEq<(u64, BTreeSet<LockedPackage>)> for LockFile {
+    fn eq(&self, other: &(u64, BTreeSet<LockedPackage>)) -> bool {
+        self.packages == other.1 && self.version == other.0
+    }
+}
 
 impl Eq for LockFile {}
 
