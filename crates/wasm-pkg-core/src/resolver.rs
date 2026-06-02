@@ -530,7 +530,8 @@ impl<'a> DependencyResolver<'a> {
             } else {
                 let versions =
                     load_package(&mut self.packages, &self.client, dependency.package.clone())
-                        .await?
+                        .await
+                        .with_context(|| format!("package: {}", dependency.package.clone()))?
                         .with_context(|| {
                             format!(
                                 "package `{name}` was not found in component registry",

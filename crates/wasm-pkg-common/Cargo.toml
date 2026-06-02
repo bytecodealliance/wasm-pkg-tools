@@ -30,6 +30,7 @@ sha2 = { workspace = true }
 tokio = { workspace = true, optional = true, features = ["fs"] }
 toml = { workspace = true, optional = true }
 thiserror = { workspace = true }
+tracing.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

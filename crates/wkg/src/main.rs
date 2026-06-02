@@ -51,6 +51,7 @@ impl Common {
     /// Helper to load the config from the given path
     pub async fn load_config(&self) -> anyhow::Result<Config> {
         if let Some(config_file) = self.config.as_ref() {
+            tracing::warn!(config = %config_file.display());
             Config::from_file(config_file)
                 .await
                 .context(format!("error loading config file {config_file:?}"))
@@ -237,6 +238,10 @@ struct PublishArgs {
     #[arg(long, env = "WKG_PACKAGE")]
     package: Option<PackageSpec>,
 
+    /// Attempt package, version, and registry resolution without publishing.
+    #[arg(long)]
+    dry_run: bool,
+
     #[command(flatten)]
     common: Common,
 }
@@ -262,10 +267,13 @@ impl PublishArgs {
                 PublishOpts {
                     package,
                     registry: self.registry_args.registry,
+                    dry_run: self.dry_run,
                 },
             )
             .await?;
-        println!("Published {}@{}", package, version);
+        if !self.dry_run {
+            println!("Published {}@{}", package, version);
+        }
         Ok(())
     }
 }

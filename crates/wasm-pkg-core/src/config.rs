@@ -30,6 +30,7 @@ pub struct Config {
 impl Config {
     /// Loads a configuration file from the given path.
     pub async fn load_from_path(path: impl AsRef<Path>) -> Result<Config> {
+        tracing::info!(path = %path.as_ref().display(), "loading wkg config file");
         let contents = tokio::fs::read_to_string(path)
             .await
             .context("unable to load config from file")?;

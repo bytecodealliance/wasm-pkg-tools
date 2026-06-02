@@ -118,6 +118,8 @@ impl Config {
             Some(path) => path,
             None => return Ok(None),
         };
+
+        tracing::debug!(path = %path.display(), "using global config");
         let contents = match tokio::fs::read_to_string(&path).await {
             Ok(contents) => contents,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
@@ -272,7 +274,7 @@ impl Config {
 #[derive(Clone, Default)]
 pub struct RegistryConfig {
     default_backend: Option<String>,
-    backend_configs: HashMap<String, ::toml::Table>,
+    pub backend_configs: HashMap<String, ::toml::Table>,
 }
 
 impl RegistryConfig {

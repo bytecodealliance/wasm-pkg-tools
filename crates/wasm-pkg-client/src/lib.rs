@@ -85,6 +85,9 @@ pub struct PublishOpts {
     pub package: Option<(PackageRef, Version)>,
     /// Override the registry to publish to.
     pub registry: Option<Registry>,
+    /// If true, resolve the package, version, and registry but do not call the
+    /// backend to publish.
+    pub dry_run: bool,
 }
 
 /// A read-only registry client.
@@ -181,6 +184,10 @@ impl Client {
         let source = self
             .resolve_source(&package, additional_options.registry)
             .await?;
+        if additional_options.dry_run {
+            println!("Aborting publish due to dry run: {}@{}", package, version);
+            return Ok((package, version));
+        }
         source
             .publish(&package, &version, data)
             .await

@@ -54,6 +54,7 @@ pub async fn build_package(
 ) -> Result<(PackageRef, Option<Version>, Vec<u8>)> {
     let dependencies = resolve_dependencies(config, &wit_dir, Some(lock_file), client)
         .await
+        .with_context(|| format!("wit_dir: {}", wit_dir.as_ref().display()))
         .context("Unable to resolve dependencies")?;
 
     lock_file.update_dependencies(&dependencies);
@@ -179,6 +180,7 @@ pub async fn resolve_dependencies(
     let mut resolver = DependencyResolver::new_with_client(client, lock_file)?;
     // add deps from config first in case they're local deps and then add deps from the directory
     if let Some(overrides) = config.overrides.as_ref() {
+        tracing::debug!("detected config overrides");
         for (pkg, ovr) in overrides.iter() {
             let pkg: PackageRef = pkg.parse().context("Unable to parse as a package ref")?;
             let dep = match (ovr.path.as_ref(), ovr.version.as_ref()) {
@@ -186,9 +188,9 @@ pub async fn resolve_dependencies(
                     if v.is_some() {
                         tracing::warn!("Ignoring version override for local package");
                     }
-                    let path = tokio::fs::canonicalize(path)
-                        .await
-                        .with_context(|| format!("resolving local dependency {}", path.display()))?;
+                    let path = tokio::fs::canonicalize(path).await.with_context(|| {
+                        format!("resolving local dependency {}", path.display())
+                    })?;
                     Dependency::Local(path)
                 }
                 (None, Some(version)) => Dependency::Package(RegistryPackage {
