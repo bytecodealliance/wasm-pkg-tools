@@ -173,7 +173,7 @@ impl Client {
         let semver_check: bool = additional_options.skip_semver_check;
         let pkg_authority = additional_options.package;
 
-        // construct verificable publishing source
+        // construct verifiable publishing source
         let (data, candidate) =
             DecodedComponent::from_publishing_source_with_package(data, pkg_authority).await?;
 
@@ -181,13 +181,11 @@ impl Client {
             candidate.package().to_owned(),
             candidate.version().to_owned(),
         );
-
-        // instantiate LoaderPublisher
         let source = self.resolve_source(&package, registry).await?;
 
-        // execute pre-flight
+        // execute pre-flight checks
         if !semver_check {
-            // fetch nearest neighbors of interest
+            // fetch nearest neighbors of interest, sorted in descending order
             let mut neighbors: [Option<VersionInfo>; 2] = [None, None];
             for version_info in
                 fetch_semver_series(source.as_ref().as_ref(), &package, &version).await?
@@ -195,10 +193,12 @@ impl Client {
                 match version.cmp(&version_info.version) {
                     Ordering::Equal => return Err(Error::VersionAlreadyExists(version.to_owned())),
                     Ordering::Greater => {
+                        // incoming version is greater than neighbor
                         neighbors[0] = Some(version_info);
                         break;
                     }
                     Ordering::Less => {
+                        // incoming version is lesser than neighbor
                         neighbors[1] = Some(version_info);
                     }
                 }
@@ -347,15 +347,6 @@ impl Client {
 // Fetch every prior release in the same semver compatibility series as
 // `version`, sorted in descending order.
 //
-// The "series" here is the cargo-style `^` compat range, not just
-// `~major.minor.*`. We can be that permissive because
-// `wit_component::semver_check` is *structural*: it strips every package
-// version to `None` before comparing, so it enforces additive-only changes
-// regardless of how the version numbers move. The only thing the version
-// numbers are used for here is *which neighbors to check against* — and the
-// semver contract already says everything inside a compat range must be
-// additive, so that's the right gate.
-//
 //   X.y.z (X >= 1) -> X.*       (minors are additive within a major)
 //   0.Y.z (Y >= 1) -> 0.Y.*     (in 0.x, minor bumps are breaking)
 //   0.0.Z          -> 0.0.Z     (every patch is its own series)
@@ -379,7 +370,6 @@ async fn fetch_semver_series(
         .await
 }
 
-// fetch a package from
 async fn fetch_and_resolve_package(
     source: &(dyn LoaderPublisher + Sync),
     package: &PackageRef,

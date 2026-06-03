@@ -1,8 +1,4 @@
 //! Integration tests for publish-time semver compatibility checking (issue #128).
-//!
-//! All cases share a single `Client` + `TempDir`: each row uses a unique
-//! package name, so the per-row series is naturally isolated without needing
-//! a fresh backend.
 
 use std::{io::Cursor, path::Path};
 use tempfile::TempDir;
