@@ -96,6 +96,9 @@ impl BuildArgs {
             path
         } else {
             let mut file_name = pkg_ref.to_string();
+            // Windows does not support colons in file names
+            #[cfg(windows)]
+            file_name.replace(':', "_");
             if let Some(version) = version {
                 file_name.push_str(&format!("@{version}"));
             }
