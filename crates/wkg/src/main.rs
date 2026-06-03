@@ -242,6 +242,10 @@ struct PublishArgs {
     #[arg(long)]
     dry_run: bool,
 
+    /// Disable semver compatibility checks.
+    #[arg(long)]
+    no_verify: bool,
+
     #[command(flatten)]
     common: Common,
 }
@@ -268,6 +272,7 @@ impl PublishArgs {
                     package,
                     registry: self.registry_args.registry,
                     dry_run: self.dry_run,
+                    skip_semver_check: self.no_verify,
                 },
             )
             .await?;
