@@ -20,6 +20,7 @@ base64 = { workspace = true }
 bytes = { workspace = true }
 docker_credential = { workspace = true }
 etcetera = { workspace = true }
+futures-concurrency = { workspace = true }
 futures-util = { workspace = true, features = ["io"] }
 oci-client = { workspace = true }
 oci-wasm = { workspace = true }
@@ -46,7 +47,8 @@ warg-crypto = "0.9.2"
 wasm-metadata = { workspace = true }
 warg-protocol = "0.9.2"
 wasm-pkg-common = { workspace = true, features = ["registry-config"] }
-wit-component = { workspace = true }
+wit-component = { workspace = true, features = ["semver-check"] }
+wit-parser = { workspace = true }
 
 [dev-dependencies]
 rcgen = { workspace = true }
