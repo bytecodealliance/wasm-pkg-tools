@@ -1,5 +1,3 @@
-//! Wasm Package Client
-//!
 //! [`Client`] implements a unified interface for loading package content from
 //! multiple kinds of package registries.
 //!
@@ -144,6 +142,20 @@ impl Client {
         source.stream_content(package, release).await
     }
 
+    pub async fn publish_release_files(
+        &self,
+        files: &[impl AsRef<Path>],
+        additional_options: PublishOpts,
+    ) -> Result<(PackageRef, Version), Error> {
+        let data = tokio::fs::OpenOptions::new()
+            .read(true)
+            .open(files[0].as_ref())
+            .await?;
+
+        self.publish_release_data(Box::pin(data), additional_options)
+            .await
+    }
+
     /// Publishes the given file as a package release. The package name and version will be read
     /// from the component if not given as part of `additional_options`. Returns the package name
     /// and version of the published release.
@@ -158,7 +170,7 @@ impl Client {
             .await
     }
 
-    /// Publishes the given reader as a package release. TThe package name and version will be read
+    /// Publishes the given reader as a package release. The package name and version will be read
     /// from the component if not given as part of `additional_options`. Returns the package name
     /// and version of the published release.
     pub async fn publish_release_data(

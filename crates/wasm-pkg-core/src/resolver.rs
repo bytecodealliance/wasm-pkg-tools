@@ -12,6 +12,11 @@ use std::{
 use anyhow::{bail, Context, Result};
 use futures_util::TryStreamExt;
 use indexmap::{IndexMap, IndexSet};
+use petgraph::{
+    acyclic::{Acyclic, AcyclicEdgeError},
+    graph::DiGraph,
+    Graph,
+};
 use semver::{Comparator, Op, Version, VersionReq};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use wasm_pkg_client::{
@@ -161,6 +166,32 @@ pub struct LocalResolution {
     pub name: PackageRef,
     /// The path to the resolved dependency.
     pub path: PathBuf,
+}
+
+pub struct LocalDependencies {
+    pub packages: HashMap<PackageRef, LocalResolution>,
+    pub graph: DiGraph<PackageRef, DependencyOf>,
+}
+
+impl LocalDependencies {
+    pub fn sort(&self) -> Result<Vec<PackageRef>> {
+        // sort our packages topologically
+        let acyclic_graph = Acyclic::try_from(self.graph.clone()).map_err(|e| {
+            anyhow::anyhow!(
+                "detected cyclical dependencies with package: {}",
+                self.graph[e.node_id()]
+            )
+        })?;
+
+        Ok(acyclic_graph
+            .nodes_iter()
+            .map(|id| self.graph[id].clone())
+            .collect())
+    }
+
+    pub fn has_no_dependencies(&self) -> bool {
+        self.graph.raw_edges().is_empty()
+    }
 }
 
 /// Represents a resolution of a dependency.
