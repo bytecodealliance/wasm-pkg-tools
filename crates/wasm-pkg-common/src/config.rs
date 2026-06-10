@@ -302,13 +302,10 @@ impl RegistryConfig {
     pub fn default_backend(&self) -> Option<&str> {
         match self.default_backend.as_deref() {
             Some(ty) => Some(ty),
-            None => {
-                if self.backend_configs.len() == 1 {
-                    self.backend_configs.keys().next().map(|ty| ty.as_str())
-                } else {
-                    None
-                }
+            _ if self.backend_configs.len() == 1 => {
+                self.backend_configs.keys().next().map(|ty| ty.as_str())
             }
+            None => None,
         }
     }
 

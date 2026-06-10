@@ -23,6 +23,7 @@ use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     Client, Config, ContentDigest, Error as WasmPkgError, PackageRef, Release, VersionInfo,
 };
+use wasm_pkg_common::registry::DependencyOf;
 use wit_component::DecodedWasm;
 use wit_parser::{PackageId, PackageName, Resolve, UnresolvedPackageGroup, WorldId};
 

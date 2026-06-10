@@ -30,7 +30,7 @@ pub struct LocalConfig {
 }
 
 pub(crate) struct LocalBackend {
-    root: PathBuf,
+    pub(crate) root: PathBuf,
 }
 
 impl LocalBackend {
