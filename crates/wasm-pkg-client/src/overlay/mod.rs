@@ -1,8 +1,16 @@
+use std::io::Cursor;
+
 use async_trait::async_trait;
 use tempfile::TempDir;
-use wasm_pkg_common::Error;
+use wasm_pkg_common::{
+    package::{PackageRef, Version},
+    Error,
+};
 
-use crate::{loader::PackageLoader, local::LocalBackend, publisher::PackagePublisher, InnerClient};
+use crate::{
+    loader::PackageLoader, local::LocalBackend, publisher::PackagePublisher, ContentStream,
+    InnerClient, PublishingSource, Release, VersionInfo,
+};
 
 pub(crate) struct OverlayBackend {
     local: LocalBackend,
@@ -54,7 +62,7 @@ impl PackageLoader for OverlayBackend {
         {
             return Ok(stream);
         }
-        tracing::debug!(%package, %version, method = "stream_content_unvalidated", "OverlayBackend falling back to remote");
+        tracing::debug!(%package, version = %content.version, method = "stream_content_unvalidated", "OverlayBackend falling back to remote");
 
         self.local
             .stream_content_unvalidated(package, content)
@@ -63,7 +71,7 @@ impl PackageLoader for OverlayBackend {
 }
 
 #[async_trait::async_trait]
-impl PackagePublisher for LocalBackend {
+impl PackagePublisher for OverlayBackend {
     async fn publish(
         &self,
         package: &PackageRef,
@@ -71,14 +79,17 @@ impl PackagePublisher for LocalBackend {
         mut data: PublishingSource,
         dry_run: bool,
     ) -> Result<(), Error> {
+        let mut local_data = Box::pin(Cursor::new(Vec::new()));
+        tokio::io::copy(&mut data, &mut local_data).await?;
+
         self.local
-            .publish(&package, &version, data, additional_options.dry_run)
+            .publish(&package, &version, local_data.clone(), dry_run)
             .await?;
         if dry_run {
             return Ok(());
         }
         self.remote
-            .publish(&package, &version, data, additional_options.dry_run)
+            .publish(&package, &version, local_data, dry_run)
             .await?;
 
         Ok(())

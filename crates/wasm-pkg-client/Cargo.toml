@@ -48,8 +48,8 @@ warg-protocol = "0.9.2"
 wasm-pkg-common = { workspace = true, features = ["registry-config"] }
 wit-component = { workspace = true }
 petgraph = "0.8.3"
+tempfile = { workspace = true }
 
 [dev-dependencies]
 rcgen = { workspace = true }
-tempfile = { workspace = true }
 testcontainers = { workspace = true }

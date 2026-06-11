@@ -37,6 +37,7 @@ impl RegistryMetadataExt for RegistryMetadata {
     }
 
     async fn fetch(registry: &Registry) -> Result<Option<Self>, Error> {
+        // TODO use `core::net::Ipv4Addr::is_loopback()`
         let scheme = if registry.host() == "localhost" || registry.host() == "127.0.0.1" {
             "http"
         } else {
