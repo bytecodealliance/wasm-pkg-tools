@@ -1,4 +1,5 @@
 use http::uri::Authority;
+use petgraph::{acyclic::Acyclic, graph::DiGraph};
 use serde::{Deserialize, Serialize};
 
 use crate::Error;
@@ -55,3 +56,9 @@ impl TryFrom<String> for Registry {
         Ok(Self(value.try_into()?))
     }
 }
+
+/// Represents a directed edge in a package dependnecy graph.
+#[derive(Clone, Debug)]
+pub struct DependencyOf;
+
+pub type DependencyGraph<N> = Acyclic<DiGraph<N, DependencyOf>>;

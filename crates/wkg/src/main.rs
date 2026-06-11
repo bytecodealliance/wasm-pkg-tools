@@ -228,7 +228,7 @@ struct GetArgs {
 #[derive(Args, Debug)]
 struct PublishArgs {
     /// The file to publish
-    file: PathBuf,
+    files: Vec<PathBuf>,
 
     #[command(flatten)]
     registry_args: RegistryArgs,
@@ -262,8 +262,8 @@ impl PublishArgs {
         };
         let (package, version) = client
             .client()?
-            .publish_release_file(
-                &self.file,
+            .publish_release_files(
+                &self.files,
                 PublishOpts {
                     package,
                     registry: self.registry_args.registry,
