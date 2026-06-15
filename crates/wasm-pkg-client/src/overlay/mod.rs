@@ -82,23 +82,15 @@ impl PackagePublisher for OverlayBackend {
         &self,
         package: &PackageRef,
         version: &Version,
-        mut data: PublishingSource,
+        data: PublishingSource,
         dry_run: bool,
     ) -> Result<(), Error> {
-        let mut local_data = Box::pin(Cursor::new(Vec::new()));
-        tokio::io::copy(&mut data, &mut local_data).await?;
-
         if dry_run {
-            self.local
-                .publish(&package, &version, local_data.clone(), dry_run)
-                .await?;
-            return Ok(());
+            self.local.publish(&package, &version, data, dry_run).await
+        } else {
+            self.remote(package)?
+                .publish(&package, &version, data, dry_run)
+                .await
         }
-
-        self.remote(package)?
-            .publish(&package, &version, local_data, dry_run)
-            .await?;
-
-        Ok(())
     }
 }

@@ -238,8 +238,6 @@ impl Client {
             .cloned()
             .unwrap_or_default();
 
-        // Skip fetching metadata for "local" source
-        let should_fetch_meta = registry_config.default_backend() != LOCAL_PROTOCOL.into();
         let maybe_metadata = self
             .config
             .package_registry_override(package)
@@ -270,10 +268,11 @@ impl Client {
 
         let registry_meta = if let Some(meta) = maybe_metadata {
             meta
-        } else if should_fetch_meta {
-            RegistryMetadata::fetch_or_default(&registry).await
-        } else {
+        } else if registry_config.default_backend() == LOCAL_PROTOCOL.into() {
+            // Skip fetching metadata for "local" source
             RegistryMetadata::default()
+        } else {
+            RegistryMetadata::fetch_or_default(&registry).await
         };
 
         // Resolve backend type
