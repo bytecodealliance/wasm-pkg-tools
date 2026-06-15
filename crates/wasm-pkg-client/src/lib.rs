@@ -46,6 +46,7 @@ use tokio::io::AsyncSeekExt;
 use tokio::sync::RwLock;
 use tokio_util::io::SyncIoBridge;
 use wasm_pkg_common::config::RegistryConfig;
+use wasm_pkg_common::metadata::{LOCAL_PROTOCOL, OCI_PROTOCOL, WARG_PROTOCOL};
 pub use wasm_pkg_common::{
     config::{Config, CustomConfig, RegistryMapping},
     digest::ContentDigest,
@@ -219,76 +220,6 @@ impl Client {
             .ok_or_else(|| Error::NoRegistryForNamespace(package.namespace().clone()))
     }
 
-    fn resolve_backend(
-        &self,
-        registry: &Registry,
-        registry_meta: RegistryMetadata,
-    ) -> Result<InnerClient, Error> {
-        let registry_config = self
-            .config
-            .registry_config(&registry)
-            .cloned()
-            .unwrap_or_default();
-
-        let backend_type = match registry_config.default_backend() {
-            // If the local config specifies a backend type, use it
-            Some(backend_type) => Some(backend_type),
-            None => {
-                // If the registry metadata indicates a preferred protocol, use it
-                let preferred_protocol = registry_meta.preferred_protocol();
-                // ...except registry metadata cannot force a local backend
-                if preferred_protocol == Some("local") {
-                    return Err(Error::InvalidRegistryMetadata(anyhow!(
-                        "registry metadata with 'local' protocol not allowed"
-                    )));
-                }
-                preferred_protocol
-            }
-        }
-        // Otherwise use the default backend
-        .unwrap_or("oci");
-
-        todo!();
-    }
-
-    fn resolve_metadata(
-        &self,
-        package: &PackageRef,
-        registry_config: &RegistryConfig,
-        registry_override: bool,
-        registry: &Registry,
-    ) -> &RegistryMetadata {
-        if let Some(metadata) = self
-            .config
-            .package_registry_override(package)
-            .and_then(|mapping| mapping.metadata())
-        {
-            return metadata;
-        }
-
-        let _ = self
-            .config
-            .namespace_registry(package.namespace())
-            .and_then(|mapping| {
-                // If the overridden registry matches the registry we are trying to resolve, we
-                // should use the metadata, otherwise we'll need to fetch the metadata from the
-                // registry
-                match (mapping, registry_override) {
-                    (RegistryMapping::Custom(custom), true) if custom.registry == *registry => {
-                        Some(custom.metadata.clone())
-                    }
-                    (RegistryMapping::Custom(custom), false) => Some(custom.metadata.clone()),
-                    _ => None,
-                }
-            });
-        todo!();
-    }
-
-    async fn has_registry(&self, registry: &Registry) -> bool {
-        let sources = self.sources.read().await;
-        sources.contains_key(registry)
-    }
-
     async fn resolve_source(
         &self,
         package: &PackageRef,
@@ -308,7 +239,7 @@ impl Client {
             .unwrap_or_default();
 
         // Skip fetching metadata for "local" source
-        let should_fetch_meta = registry_config.default_backend() != Some("local");
+        let should_fetch_meta = registry_config.default_backend() != LOCAL_PROTOCOL.into();
         let maybe_metadata = self
             .config
             .package_registry_override(package)
@@ -353,7 +284,7 @@ impl Client {
                 // If the registry metadata indicates a preferred protocol, use it
                 let preferred_protocol = registry_meta.preferred_protocol();
                 // ...except registry metadata cannot force a local backend
-                if preferred_protocol == Some("local") {
+                if preferred_protocol == Some(LOCAL_PROTOCOL) {
                     return Err(Error::InvalidRegistryMetadata(anyhow!(
                         "registry metadata with 'local' protocol not allowed"
                     )));
@@ -362,17 +293,17 @@ impl Client {
             }
         }
         // Otherwise use the default backend
-        .unwrap_or("oci");
+        .unwrap_or(OCI_PROTOCOL);
         tracing::debug!(?backend_type, "Resolved backend type");
 
         let source: InnerClient = match backend_type {
-            "local" => Box::new(LocalBackend::new(registry_config)?),
-            "oci" => Box::new(OciBackend::new(
+            LOCAL_PROTOCOL => Box::new(LocalBackend::new(registry_config)?),
+            OCI_PROTOCOL => Box::new(OciBackend::new(
                 &registry,
                 &registry_config,
                 &registry_meta,
             )?),
-            "warg" => {
+            WARG_PROTOCOL => {
                 Box::new(WargBackend::new(&registry, &registry_config, &registry_meta).await?)
             }
             other => {

@@ -204,18 +204,22 @@ impl Config {
         let namespace = package.namespace();
         // look in `self.package_registry_overrides `
         // then in `self.namespace_registries`
-        if let Some(reg) = self
-            .package_registry_overrides
-            .get(package)
-            .or_else(|| self.namespace_registries.get(namespace))
-            .map(|pkg| pkg.registry())
-        {
+        if let Some(reg) = self.resolve_mapping(package).map(|ns| ns.registry()) {
             return Some(reg);
         } else if let Some(reg) = self.default_registry.as_ref() {
             return Some(reg);
         }
 
         self.fallback_namespace_registries.get(namespace)
+    }
+
+    pub fn resolve_mapping(&self, package: &PackageRef) -> Option<&RegistryMapping> {
+        let namespace = package.namespace();
+        // look in `self.package_registry_overrides `
+        // then in `self.namespace_registries`
+        self.package_registry_overrides
+            .get(package)
+            .or_else(|| self.namespace_registries.get(namespace))
     }
 
     /// Returns the default registry.

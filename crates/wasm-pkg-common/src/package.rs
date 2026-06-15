@@ -23,7 +23,7 @@ impl PackageRef {
     }
 
     /// Returns the namespace of the package.
-    pub fn namespace(&self) -> &Label {
+    pub const fn namespace(&self) -> &Label {
         &self.namespace
     }
 

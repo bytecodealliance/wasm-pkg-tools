@@ -41,7 +41,7 @@ pub const OCI_PROTOCOL: &str = "oci";
 /// Warg registry key
 pub const WARG_PROTOCOL: &str = "warg";
 /// Local filesystem key
-pub const LOCAL_FS: &str = "local";
+pub const LOCAL_PROTOCOL: &str = "local";
 
 impl RegistryMetadata {
     /// Returns the registry's preferred protocol.

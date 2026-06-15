@@ -1,4 +1,4 @@
-use std::io::Cursor;
+use std::{collections::HashMap, io::Cursor};
 
 use async_trait::async_trait;
 use tempfile::TempDir;
@@ -14,20 +14,26 @@ use crate::{
 
 pub(crate) struct OverlayBackend {
     local: LocalBackend,
-    remote: InnerClient,
+    remotes: HashMap<PackageRef, InnerClient>,
     _handle: TempDir,
 }
 
 impl OverlayBackend {
-    fn new(remote: InnerClient) -> Result<Self, Error> {
+    fn new(remotes: HashMap<PackageRef, InnerClient>) -> Result<Self, Error> {
         let handle = TempDir::new()?;
         let root = handle.path().to_owned();
         let local = LocalBackend { root };
         Ok(Self {
             local,
-            remote,
+            remotes,
             _handle: handle,
         })
+    }
+
+    fn remote(&self, package: &PackageRef) -> Result<&InnerClient, Error> {
+        self.remotes
+            .get(package)
+            .ok_or_else(|| Error::InvalidPackageRef(package.to_string()))
     }
 }
 
@@ -35,7 +41,7 @@ impl OverlayBackend {
 impl PackageLoader for OverlayBackend {
     async fn list_all_versions(&self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
         let mut versions = self.local.list_all_versions(package).await?;
-        let mut remote_versions = self.remote.list_all_versions(package).await?;
+        let mut remote_versions = self.remote(package)?.list_all_versions(package).await?;
         versions.append(&mut remote_versions);
         versions.sort();
         versions.dedup();
@@ -47,7 +53,7 @@ impl PackageLoader for OverlayBackend {
             return Ok(release);
         }
         tracing::debug!(%package, %version, method = "get_release", "OverlayBackend falling back to remote");
-        self.remote.get_release(package, version).await
+        self.remote(package)?.get_release(package, version).await
     }
 
     async fn stream_content_unvalidated(
@@ -82,13 +88,14 @@ impl PackagePublisher for OverlayBackend {
         let mut local_data = Box::pin(Cursor::new(Vec::new()));
         tokio::io::copy(&mut data, &mut local_data).await?;
 
-        self.local
-            .publish(&package, &version, local_data.clone(), dry_run)
-            .await?;
         if dry_run {
+            self.local
+                .publish(&package, &version, local_data.clone(), dry_run)
+                .await?;
             return Ok(());
         }
-        self.remote
+
+        self.remote(package)?
             .publish(&package, &version, local_data, dry_run)
             .await?;
 
