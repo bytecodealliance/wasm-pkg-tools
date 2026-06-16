@@ -136,6 +136,16 @@ impl Config {
             .map(|strat| strat.config_dir().join("wasm-pkg").join("config.toml"))
     }
 
+    // take relative paths (such as those provided by [`LocalConfig`]'s `root` field) and make them
+    // absolute
+    fn normalize_paths(mut self, config_file: &Path) -> Result<Self, Error> {
+        for (_, registry_config) in self.registry_configs.iter_mut() {
+            if let Some(local_config) = registry_config.backend_config::<LocalConfig>("local")? {}
+
+            if let Some(path) = backend_configs.get_mut("local").map(|v| v.get_mut("root")) {}
+        }
+    }
+
     /// Reads config from a TOML file at the given path.
     pub async fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
         let contents = tokio::fs::read_to_string(path)

@@ -2,7 +2,10 @@
 //!
 //! Each package release is a file: `<root>/<namespace>/<name>/<version>.wasm`
 
-use std::path::{Path, PathBuf};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -33,6 +36,11 @@ pub(crate) struct LocalBackend {
     root: PathBuf,
 }
 
+fn registry_path_context(err: io::Error, path: &Path) -> Error {
+    let err = anyhow::Error::new(err).context(format!("path: {}", path.display()));
+    Error::RegistryError(err)
+}
+
 impl LocalBackend {
     pub fn new(registry_config: RegistryConfig) -> Result<Self, Error> {
         let config = registry_config
@@ -60,7 +68,10 @@ impl PackageLoader for LocalBackend {
         let mut versions = vec![];
         let package_dir = self.package_dir(package);
         tracing::debug!(?package_dir, "Reading versions from path");
-        let mut entries = tokio::fs::read_dir(package_dir).await?;
+        let mut entries = tokio::fs::read_dir(&package_dir)
+            .await
+            .map_err(|e| registry_path_context(e, &package_dir))?;
+        tracing::debug!("READ IT");
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
             if path.extension() != Some("wasm".as_ref()) {
@@ -86,7 +97,9 @@ impl PackageLoader for LocalBackend {
     async fn get_release(&self, package: &PackageRef, version: &Version) -> Result<Release, Error> {
         let path = self.version_path(package, version);
         tracing::debug!(path = %path.display(), "Reading content from path");
-        let content_digest = sha256_from_file(path).await?;
+        let content_digest = sha256_from_file(&path)
+            .await
+            .map_err(|e| registry_path_context(e, &path))?;
         Ok(Release {
             version: version.clone(),
             content_digest,
@@ -100,7 +113,9 @@ impl PackageLoader for LocalBackend {
     ) -> Result<ContentStream, Error> {
         let path = self.version_path(package, &content.version);
         tracing::debug!("Streaming content from {path:?}");
-        let file = tokio::fs::File::open(path).await?;
+        let file = tokio::fs::File::open(&path)
+            .await
+            .map_err(|e| registry_path_context(e, &path))?;
         Ok(ReaderStream::new(file).map_err(Into::into).boxed())
     }
 }
@@ -116,12 +131,16 @@ impl PackagePublisher for LocalBackend {
     ) -> Result<(), Error> {
         let package_dir = self.package_dir(package);
         // Ensure the package directory exists.
-        tokio::fs::create_dir_all(package_dir).await?;
+        tokio::fs::create_dir_all(&package_dir)
+            .await
+            .map_err(|e| registry_path_context(e, &package_dir))?;
         let path = self.version_path(package, version);
         if dry_run {
             return Ok(());
         }
-        let mut out = tokio::fs::File::create(path).await?;
+        let mut out = tokio::fs::File::create(&path)
+            .await
+            .map_err(|e| registry_path_context(e, &path))?;
         tokio::io::copy(&mut data, &mut out)
             .await
             .map_err(Error::IoError)
