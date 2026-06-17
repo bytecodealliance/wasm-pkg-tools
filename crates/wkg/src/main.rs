@@ -273,11 +273,16 @@ impl PublishArgs {
                 wit::build_wit_dir(&self.path, client.clone(), &mut lock_file).await?;
             // There is no way to check if we are in a git repository unlike `cargo publish --allow-dirty` so
             // check against previous values.
-            if lock_file != prev_lock_ref {
+            if lock_file != prev_lock_ref && !self.dry_run {
                 return Err(anyhow::anyhow!(
                     "wkg.lock would be updated during publish, aborting"
                 ))
-                .context("Run `wkg wit fetch` before attempting to publish");
+                .with_context(|| {
+                    format!(
+                        "Run `wkg wit build {}` before attempting to publish",
+                        self.path.to_string_lossy()
+                    )
+                });
             }
 
             let tmp = tempfile::Builder::new()

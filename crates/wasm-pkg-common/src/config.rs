@@ -4,7 +4,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use ::toml::Value;
 use serde::{Deserialize, Serialize};
 
 use crate::{
