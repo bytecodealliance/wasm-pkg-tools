@@ -115,7 +115,7 @@ impl BuildArgs {
 pub async fn build_wit_dir(
     dir: impl AsRef<Path>,
     client: CachingClient<FileCache>,
-    mut lock_file: &mut LockFile,
+    lock_file: &mut LockFile,
 ) -> anyhow::Result<(PackageRef, Option<Version>, Vec<u8>)> {
     check_dir(&dir).await?;
     let wkg_config = wasm_pkg_core::config::Config::load().await?;
