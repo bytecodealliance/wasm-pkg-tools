@@ -48,6 +48,9 @@ impl PartialEq for LockFile {
         self.packages == other.packages && self.version == other.version
     }
 }
+/// Compares a [`LockFile`] against a `(version, packages)` snapshot. This is used to
+/// detect whether a build would mutate the lock file (e.g. before publishing) without
+/// having to hold a second [`LockFile`].
 impl PartialEq<(u64, BTreeSet<LockedPackage>)> for LockFile {
     fn eq(&self, other: &(u64, BTreeSet<LockedPackage>)) -> bool {
         self.packages == other.1 && self.version == other.0

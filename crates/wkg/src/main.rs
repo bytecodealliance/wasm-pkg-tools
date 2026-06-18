@@ -285,8 +285,12 @@ impl PublishArgs {
                 });
             }
 
+            // Sanitize the package ref for use as a filename prefix: `namespace:name`
+            // contains characters (`:`, `/`) that are invalid in filenames on some
+            // platforms (notably Windows).
+            let prefix: String = build_ref.to_string().replace([':', '/'], "_");
             let tmp = tempfile::Builder::new()
-                .prefix(&build_ref.to_string())
+                .prefix(&prefix)
                 .suffix(".wasm")
                 .tempfile()
                 .context("Failed to create temporary file for built WIT package")?;
