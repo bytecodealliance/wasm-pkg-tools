@@ -45,7 +45,7 @@ pub enum Error {
     NoRegistryForNamespace(Label),
     #[error("Package not found")]
     PackageNotFound,
-    #[error("registry error")]
+    #[error("registry error: {0:#}")]
     RegistryError(#[source] anyhow::Error),
     #[error("registry metadata error: {0:#}")]
     RegistryMetadataError(#[source] anyhow::Error),
