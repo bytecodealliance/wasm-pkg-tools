@@ -267,7 +267,7 @@ impl PublishArgs {
         // file first. _tmp is held until the publish completes so the file
         // isn't deleted out from under us.
         let (publish_path, _tmp) = if self.path.is_dir() {
-            let mut lock_file = LockFile::load(false).await?;
+            let mut lock_file = LockFile::load(true).await?;
             let prev_lock_ref = (lock_file.version, lock_file.packages.clone());
             let (build_ref, _, bytes) =
                 wit::build_wit_dir(&self.path, client.clone(), &mut lock_file).await?;
