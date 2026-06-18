@@ -227,8 +227,8 @@ struct GetArgs {
 
 #[derive(Args, Debug)]
 struct PublishArgs {
-    /// The file to publish
-    files: Vec<PathBuf>,
+    /// The directories and files to publish
+    paths: Vec<PathBuf>,
 
     #[command(flatten)]
     registry_args: RegistryArgs,
@@ -250,22 +250,22 @@ impl PublishArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         let client = self.common.get_client().await?;
 
-        let package = if let Some(package) = self.package {
-            Some((
-                package.package,
-                package.version.ok_or_else(|| {
-                    anyhow::anyhow!("version is required when manually overriding the package ID")
-                })?,
-            ))
-        } else {
-            None
+        let spec = match self.package {
+            Some(PackageSpec {
+                package,
+                version: Some(v),
+            }) => Some((package, v)),
+            Some(PackageSpec { version: None, .. }) => {
+                anyhow::bail!("version is required when manually overriding the package ID");
+            }
+            None => None,
         };
         let (package, version) = client
             .client()?
             .publish_release_files(
-                &self.files,
+                &self.paths,
                 PublishOpts {
-                    package,
+                    package: spec,
                     registry: self.registry_args.registry,
                     dry_run: self.dry_run,
                 },

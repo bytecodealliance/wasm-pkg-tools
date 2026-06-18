@@ -1,13 +1,22 @@
 //! Functions for building WIT packages and fetching their dependencies.
 
-use std::{collections::HashSet, path::Path, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+    str::FromStr,
+};
 
 use anyhow::{Context, Result};
+use petgraph::{data::Build, graph::NodeIndex};
 use semver::{Version, VersionReq};
 use wasm_metadata::{AddMetadata, AddMetadataField};
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     PackageRef,
+};
+use wasm_pkg_common::{
+    package::PackageSpec,
+    registry::{DependencyGraph, DependencyOf},
 };
 use wit_component::WitPrinter;
 use wit_parser::{PackageId, PackageName, Resolve};
@@ -134,11 +143,11 @@ pub async fn fetch_dependencies(
 /// for resolving dependencies.
 pub fn get_packages(
     path: impl AsRef<Path>,
-) -> Result<(PackageRef, HashSet<(PackageRef, VersionReq)>)> {
+) -> Result<(PackageSpec, HashSet<(PackageRef, VersionReq)>)> {
     let group =
         wit_parser::UnresolvedPackageGroup::parse_path(path).context("Couldn't parse package")?;
 
-    let name = PackageRef::new(
+    let package = PackageRef::new(
         group
             .main
             .name
@@ -152,6 +161,10 @@ pub fn get_packages(
             .parse()
             .context("Invalid name found in package")?,
     );
+    let package = PackageSpec {
+        package,
+        version: group.main.name.version.clone(),
+    };
 
     // Get all package refs from the main package and then from any nested packages
     let packages: HashSet<(PackageRef, VersionReq)> =
@@ -164,7 +177,34 @@ pub fn get_packages(
             )
             .collect();
 
-    Ok((name, packages))
+    Ok((package, packages))
+}
+
+pub fn get_local_dependencies(
+    paths: Vec<impl AsRef<Path>>,
+) -> Result<(DependencyGraph<PackageRef>, HashMap<PackageRef, NodeIndex>)> {
+    let pkg_trees = paths
+        .into_iter()
+        .map(|p| get_packages(p))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut graph = DependencyGraph::new();
+    let mut indices = HashMap::new();
+    // establish all nodes
+    for (spec, _) in &pkg_trees {
+        let id = graph.add_node(spec.package());
+        if indices.insert(spec.package(), id).is_some() {
+            anyhow::bail!("duplicate references to package detected: {spec}");
+        }
+    }
+    for (spec, deps) in pkg_trees {
+        // TODO handle version matching for dependencies
+        for (dep, _version) in deps {
+            if let Some(&dep_id) = indices.get(&dep) {
+                graph.add_edge(dep_id, indices[&spec.package], DependencyOf);
+            }
+        }
+    }
+    Ok((graph, indices))
 }
 
 /// Builds a list of resolved dependencies loaded from the component or path containing the WIT.
@@ -211,7 +251,7 @@ pub async fn resolve_dependencies(
                 .with_context(|| format!("unable to add dependency {dep}"))?;
         }
     }
-    let (_name, packages) = get_packages(path)?;
+    let (_spec, packages) = get_packages(path)?;
     resolver.add_packages(packages).await?;
     resolver.resolve().await
 }
