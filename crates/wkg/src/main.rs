@@ -24,6 +24,8 @@ mod wit;
 use oci::OciCommands;
 use wit::WitCommands;
 
+use crate::wit::temp_wit_file;
+
 #[derive(Parser, Debug)]
 #[command(version)]
 struct Cli {
@@ -252,7 +254,7 @@ impl PublishArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         let client = self.common.get_client().await?;
 
-        let spec = match self.package {
+        let package = match self.package {
             Some(PackageSpec {
                 package,
                 version: Some(v),
@@ -269,7 +271,7 @@ impl PublishArgs {
         let (publish_path, _tmp) = if self.path.is_dir() {
             let mut lock_file = LockFile::load(true).await?;
             let prev_lock_ref = (lock_file.version, lock_file.packages.clone());
-            let (build_ref, _, bytes) =
+            let (pkg_ref, _, bytes) =
                 wit::build_wit_dir(&self.path, client.clone(), &mut lock_file).await?;
             // There is no way to check if we are in a git repository unlike `cargo publish --allow-dirty` so
             // check against previous values.
@@ -285,22 +287,9 @@ impl PublishArgs {
                 });
             }
 
-            // Sanitize the package ref for use as a filename prefix: `namespace:name`
-            // contains characters (`:`, `/`) that are invalid in filenames on some
-            // platforms (notably Windows).
-            let prefix: String = build_ref.to_string().replace([':', '/'], "_");
-            let tmp = tempfile::Builder::new()
-                .prefix(&prefix)
-                .suffix(".wasm")
-                .tempfile()
-                .context("Failed to create temporary file for built WIT package")?;
-            tokio::fs::write(tmp.path(), &bytes)
-                .await
-                .context("Failed to write built WIT package to temp file")?;
-            let tmp_pkg_path = tmp.path().to_path_buf();
-            tracing::debug!(tmp_pkg_path = %tmp_pkg_path.display(), "Wrote temporary WIT package file");
+            let tmp = temp_wit_file(&pkg_ref, &bytes).await?;
 
-            (tmp_pkg_path, Some(tmp))
+            (tmp.path().to_path_buf(), Some(tmp))
         } else {
             (self.path.clone(), None)
         };
@@ -310,7 +299,7 @@ impl PublishArgs {
             .publish_release_file(
                 &publish_path,
                 PublishOpts {
-                    package: spec,
+                    package,
                     registry: self.registry_args.registry,
                     dry_run: self.dry_run,
                 },

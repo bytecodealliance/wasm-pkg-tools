@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use clap::{Args, Subcommand};
+use tempfile::NamedTempFile;
 use wasm_pkg_client::caching::{CachingClient, FileCache};
 use wasm_pkg_common::package::{PackageRef, Version};
 use wasm_pkg_core::{
@@ -121,6 +122,26 @@ pub async fn build_wit_dir(
     let wkg_config = wasm_pkg_core::config::Config::load().await?;
     let result = wit::build_package(&wkg_config, dir, lock_file, client).await?;
     Ok(result)
+}
+
+pub async fn temp_wit_file(package: &PackageRef, bytes: &[u8]) -> anyhow::Result<NamedTempFile> {
+    // Sanitize the package ref for use as a filename prefix: `namespace:name`
+    // contains characters (`:`, `/`) that are invalid in filenames on some
+    // platforms (notably Windows).
+    let prefix: String = package.to_string().replace([':', '/'], "_");
+    let tmp_handle = tempfile::Builder::new()
+        .prefix(&prefix)
+        .suffix(".wasm")
+        .tempfile()
+        .context("Failed to create temporary file for built WIT package")
+        .with_context(|| format!("package: {package}"))?;
+    tokio::fs::write(tmp_handle.path(), &bytes)
+        .await
+        .context("Failed to write built WIT package to temp file")
+        .with_context(|| format!("package: {package}"))?;
+
+    tracing::debug!(tmp_pkg_path = %tmp_handle.path().display(), "Wrote temporary WIT package file");
+    Ok(tmp_handle)
 }
 
 impl FetchArgs {
