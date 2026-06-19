@@ -57,7 +57,7 @@ impl TryFrom<String> for Registry {
     }
 }
 
-/// Represents a directed edge in a package dependnecy graph.
+/// Represents a directed edge in a package dependency graph.
 #[derive(Clone, Debug)]
 pub struct DependencyOf;
 

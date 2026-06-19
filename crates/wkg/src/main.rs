@@ -15,7 +15,7 @@ use wasm_pkg_common::{
     package::PackageSpec,
     registry::Registry,
 };
-use wasm_pkg_core::lock::LockFile;
+use wasm_pkg_core::{lock::LockFile, resolver::PublishPlan};
 use wit_component::DecodedWasm;
 
 mod oci;
@@ -255,6 +255,9 @@ impl PublishArgs {
         let client = self.common.get_client().await?;
 
         let package = match self.package {
+            Some(_) if self.paths.len() > 2 => {
+                anyhow::bail!("`--package` is currently unsupported when providing more than one path argument");
+            }
             Some(PackageSpec {
                 package,
                 version: Some(v),
@@ -265,14 +268,26 @@ impl PublishArgs {
             None => None,
         };
 
+        let path = match &self.paths[..] {
+            [path] => path,
+            paths => {
+                let plan = PublishPlan::from_paths(paths)?;
+
+                for pkg in plan.iter() {
+                    println!("{pkg}");
+                }
+                todo!();
+            }
+        };
+
         // If the input is a directory, build a WIT package from it into a temp
         // file first. _tmp is held until the publish completes so the file
         // isn't deleted out from under us.
-        let (publish_path, _tmp) = if self.path.is_dir() {
+        let (publish_path, _tmp) = if path.is_dir() {
             let mut lock_file = LockFile::load(true).await?;
             let prev_lock_ref = (lock_file.version, lock_file.packages.clone());
             let (pkg_ref, _, bytes) =
-                wit::build_wit_dir(&self.path, client.clone(), &mut lock_file).await?;
+                wit::build_wit_dir(&path.clone(), client.clone(), &mut lock_file).await?;
             // There is no way to check if we are in a git repository unlike `cargo publish --allow-dirty` so
             // check against previous values.
             if lock_file != prev_lock_ref && !self.dry_run {
@@ -282,7 +297,7 @@ impl PublishArgs {
                 .with_context(|| {
                     format!(
                         "Run `wkg wit build {}` before attempting to publish",
-                        self.path.to_string_lossy()
+                        path.to_string_lossy()
                     )
                 });
             }
@@ -291,7 +306,7 @@ impl PublishArgs {
 
             (tmp.path().to_path_buf(), Some(tmp))
         } else {
-            (self.path.clone(), None)
+            (path.clone(), None)
         };
 
         let (package, version) = client

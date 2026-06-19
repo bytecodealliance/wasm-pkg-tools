@@ -1,10 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
 
-use petgraph::{
-    acyclic::Acyclic,
-    graph::{DiGraph, NodeIndex},
-};
-use wasm_pkg_common::registry::{DependencyGraph, DependencyOf};
 
 use crate::{PackageRef, PublishingSource, Version};
 

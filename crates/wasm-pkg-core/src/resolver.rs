@@ -13,9 +13,8 @@ use anyhow::{bail, Context, Result};
 use futures_util::TryStreamExt;
 use indexmap::{IndexMap, IndexSet};
 use petgraph::{
-    acyclic::{Acyclic, AcyclicEdgeError},
+    acyclic::Acyclic,
     graph::{DiGraph, NodeIndex},
-    Graph,
 };
 use semver::{Comparator, Op, Version, VersionReq};
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -882,7 +881,7 @@ pub struct PublishPlan {
 
 impl PublishPlan {
     /// Generate [`Self`] from a list of WIT package paths (files or directories).
-    fn from_paths(paths: &[impl AsRef<Path>]) -> Result<Self> {
+    pub fn from_paths(paths: &[impl AsRef<Path>]) -> Result<Self> {
         let (graph, indices) = get_local_dependencies(paths)?;
         let mut dependents = graph.into_inner();
         dependents.reverse();
@@ -895,22 +894,22 @@ impl PublishPlan {
         })
     }
 
-    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a PackageRef> + 'a {
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a PackageRef> + 'a {
         self.indices.iter().map(|(pkg, _)| pkg)
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.indices.is_empty()
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.indices.len()
     }
 
     /// Returns the set of packages that are ready for publishing (i.e. have no outstanding dependencies).
     ///
     /// These will not be returned in future calls.
-    fn take_ready(&mut self) -> BTreeSet<PackageRef> {
+    pub fn take_ready(&mut self) -> BTreeSet<PackageRef> {
         self.dependents
             .nodes_iter()
             // there are no dependents on `self.dendents[id]`
@@ -925,7 +924,7 @@ impl PublishPlan {
 
     /// Packages confirmed to be available in the registry, potentially allowing additional
     /// packages to be "ready".
-    fn mark_confirmed(&mut self, published: impl IntoIterator<Item = PackageRef>) {
+    pub fn mark_confirmed(&mut self, published: impl IntoIterator<Item = PackageRef>) {
         for pkg in published {
             let id = self
                 .indices
@@ -943,7 +942,7 @@ impl PublishPlan {
 /// e.g. "foo:a@0.1.0, bar:b@0.2.0, and baz:c@0.3.0".
 ///
 /// Note: the final separator (e.g. "and" in the previous example) can be chosen.
-fn package_list(pkgs: impl IntoIterator<Item = PackageRef>, final_sep: &str) -> String {
+pub fn package_list(pkgs: impl IntoIterator<Item = PackageRef>, final_sep: &str) -> String {
     let mut names: Vec<_> = pkgs.into_iter().map(|pkg| pkg.to_string()).collect();
     names.sort();
 

@@ -45,7 +45,6 @@ pub use publisher::PackagePublisher;
 use tokio::io::AsyncSeekExt;
 use tokio::sync::RwLock;
 use tokio_util::io::SyncIoBridge;
-use wasm_pkg_common::config::RegistryConfig;
 use wasm_pkg_common::metadata::{LOCAL_PROTOCOL, OCI_PROTOCOL, WARG_PROTOCOL};
 pub use wasm_pkg_common::{
     config::{Config, CustomConfig, RegistryMapping},
