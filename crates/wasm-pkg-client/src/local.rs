@@ -10,8 +10,9 @@ use std::{
 use anyhow::anyhow;
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tempfile::TempDir;
 use tokio_util::io::ReaderStream;
 use wasm_pkg_common::{
     config::RegistryConfig,
@@ -27,12 +28,13 @@ use crate::{
     ContentStream, PublishingSource,
 };
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LocalConfig {
     pub root: PathBuf,
 }
 
-pub(crate) struct LocalBackend {
+#[derive(Clone)]
+pub struct LocalBackend {
     pub(crate) root: PathBuf,
 }
 
@@ -59,6 +61,13 @@ impl LocalBackend {
 
     fn version_path(&self, package: &PackageRef, version: &Version) -> PathBuf {
         self.package_dir(package).join(format!("{version}.wasm"))
+    }
+
+    pub fn temp_dir() -> Result<(Self, TempDir), Error> {
+        let handle = TempDir::new()?;
+        let root = handle.path().to_owned();
+        tracing::debug!(registry_dir=%root.display(), "created temporary directory");
+        Ok((Self { root }, handle))
     }
 }
 

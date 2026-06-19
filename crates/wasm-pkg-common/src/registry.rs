@@ -57,8 +57,4 @@ impl TryFrom<String> for Registry {
     }
 }
 
-/// Represents a directed edge in a package dependency graph.
-#[derive(Clone, Debug)]
-pub struct DependencyOf;
-
-pub type DependencyGraph<N> = Acyclic<DiGraph<N, DependencyOf>>;
+pub type DependencyGraph<N> = Acyclic<DiGraph<N, petgraph::Direction>>;

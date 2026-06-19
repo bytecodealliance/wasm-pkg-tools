@@ -20,9 +20,7 @@ pub(crate) struct OverlayBackend {
 
 impl OverlayBackend {
     fn new(remotes: HashMap<PackageRef, InnerClient>) -> Result<Self, Error> {
-        let handle = TempDir::new()?;
-        let root = handle.path().to_owned();
-        let local = LocalBackend { root };
+        let (local, handle) = LocalBackend::temp_dir()?;
         Ok(Self {
             local,
             remotes,
@@ -41,10 +39,14 @@ impl OverlayBackend {
 impl PackageLoader for OverlayBackend {
     async fn list_all_versions(&self, package: &PackageRef) -> Result<Vec<VersionInfo>, Error> {
         let mut versions = self.local.list_all_versions(package).await?;
-        let mut remote_versions = self.remote(package)?.list_all_versions(package).await?;
-        versions.append(&mut remote_versions);
-        versions.sort();
-        versions.dedup();
+
+        if let Some(remote) = self.remotes.get(package) {
+            let mut remote_versions = remote.list_all_versions(package).await?;
+            versions.append(&mut remote_versions);
+            versions.sort();
+            versions.dedup();
+        }
+
         Ok(versions)
     }
 

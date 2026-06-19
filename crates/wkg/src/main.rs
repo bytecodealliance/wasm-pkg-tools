@@ -7,11 +7,11 @@ use tokio::io::AsyncWriteExt;
 use tracing::level_filters::LevelFilter;
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
-    Client, PublishOpts,
+    Client, PackagePublisher, PublishOpts,
 };
 use wasm_pkg_common::{
     self,
-    config::{Config, RegistryMapping},
+    config::{Config, RegistryConfig, RegistryMapping},
     package::PackageSpec,
     registry::Registry,
 };
@@ -40,7 +40,7 @@ struct RegistryArgs {
     registry: Option<Registry>,
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Default)]
 struct Common {
     /// The path to the configuration file.
     #[arg(long = "config", value_name = "CONFIG", env = "WKG_CONFIG_FILE")]
@@ -252,7 +252,7 @@ struct PublishArgs {
 
 impl PublishArgs {
     pub async fn run(self) -> anyhow::Result<()> {
-        let client = self.common.get_client().await?;
+        let mut client = self.common.get_client().await?;
 
         let package = match self.package {
             Some(_) if self.paths.len() > 2 => {
@@ -271,12 +271,48 @@ impl PublishArgs {
         let path = match &self.paths[..] {
             [path] => path,
             paths => {
+                let (overlay, tmp_dir) = wasm_pkg_client::local::LocalBackend::temp_dir()?;
                 let plan = PublishPlan::from_paths(paths)?;
+                let mut lock_file = LockFile::load(true).await?;
+                for spec in plan.iter_edges() {
+                    let mut reg_config = RegistryConfig::default();
+                    reg_config.set_default_backend(Some("local".to_owned()));
+                    reg_config.set_backend_config(
+                        "local",
+                        wasm_pkg_client::local::LocalConfig {
+                            root: tmp_dir.path().to_path_buf(),
+                        },
+                    );
+                    let client = client.client.as_mut().unwrap();
+                    let path = plan.get_path(&spec.package).unwrap();
+                    let (publish_path, _tmp) = if path.is_dir() {
+                        let _prev_lock_ref = (lock_file.version, lock_file.packages.clone());
+                        let (pkg_ref, _, bytes) =
+                            wit::build_wit_dir(&path, client.clone(), &mut lock_file).await?;
+                        let tmp = temp_wit_file(&pkg_ref, &bytes).await?;
 
-                for pkg in plan.iter() {
-                    println!("{pkg}");
+                        (tmp.path().to_path_buf(), Some(tmp))
+                    } else {
+                        (path.to_owned(), None)
+                    };
+
+                    let data = tokio::fs::OpenOptions::new()
+                        .read(true)
+                        .open(publish_path)
+                        .await?;
+
+                    overlay
+                        .publish(
+                            &spec.package,
+                            spec.version.as_ref().unwrap(),
+                            Box::pin(data),
+                            false,
+                        )
+                        .await
+                        .unwrap();
                 }
-                todo!();
+                return Ok(());
+                // todo!();
             }
         };
 

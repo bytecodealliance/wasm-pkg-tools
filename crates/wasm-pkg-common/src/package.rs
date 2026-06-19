@@ -79,7 +79,7 @@ impl std::fmt::Display for PackageSpec {
 }
 
 /// A package spec combines a [`PackageRef`] with an optional version.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub struct PackageSpec {
     pub package: PackageRef,
     pub version: Option<Version>,

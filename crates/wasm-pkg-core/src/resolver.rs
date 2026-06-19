@@ -15,14 +15,16 @@ use indexmap::{IndexMap, IndexSet};
 use petgraph::{
     acyclic::Acyclic,
     graph::{DiGraph, NodeIndex},
+    Direction,
 };
 use semver::{Comparator, Op, Version, VersionReq};
 use tokio::io::{AsyncRead, AsyncReadExt};
+use tracing::Level;
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     Client, Config, ContentDigest, Error as WasmPkgError, PackageRef, Release, VersionInfo,
 };
-use wasm_pkg_common::registry::{DependencyGraph, DependencyOf};
+use wasm_pkg_common::{package::PackageSpec, registry::DependencyGraph};
 use wit_component::DecodedWasm;
 use wit_parser::{PackageId, PackageName, Resolve, UnresolvedPackageGroup, WorldId};
 
@@ -169,32 +171,6 @@ pub struct LocalResolution {
     pub name: PackageRef,
     /// The path to the resolved dependency.
     pub path: PathBuf,
-}
-
-pub struct LocalDependencies {
-    pub packages: HashMap<PackageRef, LocalResolution>,
-    pub graph: DiGraph<PackageRef, DependencyOf>,
-}
-
-impl LocalDependencies {
-    pub fn sort(&self) -> Result<Vec<PackageRef>> {
-        // sort our packages topologically
-        let acyclic_graph = Acyclic::try_from(self.graph.clone()).map_err(|e| {
-            anyhow::anyhow!(
-                "detected cyclical dependencies with package: {}",
-                self.graph[e.node_id()]
-            )
-        })?;
-
-        Ok(acyclic_graph
-            .nodes_iter()
-            .map(|id| self.graph[id].clone())
-            .collect())
-    }
-
-    pub fn has_no_dependencies(&self) -> bool {
-        self.graph.raw_edges().is_empty()
-    }
 }
 
 /// Represents a resolution of a dependency.
@@ -872,11 +848,11 @@ fn visit<'a>(
 /// State for tracking dependencies during upload.
 pub struct PublishPlan {
     /// Graph of publishable packages where the edges are `(dependency -DependencyOf->) dependent)`
-    dependents: DependencyGraph<PackageRef>,
+    dependents: DependencyGraph<PackageSpec>,
     /// Mapping [`PackageRef`]s to the respective index inside the dependency graph.
     // TODO look at using cargo's `InternedString` type for `PackageRef`:
     // https://docs.rs/cargo/latest/cargo/util/interning/struct.InternedString.html
-    indices: HashMap<PackageRef, NodeIndex>,
+    indices: HashMap<PackageRef, (NodeIndex, PathBuf)>,
 }
 
 impl PublishPlan {
@@ -894,8 +870,32 @@ impl PublishPlan {
         })
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a PackageRef> + 'a {
-        self.indices.iter().map(|(pkg, _)| pkg)
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a PackageSpec> + 'a {
+        self.dependents.nodes_iter().map(|id| &self.dependents[id])
+    }
+
+    pub fn iter_edges<'a>(&'a self) -> impl Iterator<Item = &'a PackageSpec> + 'a {
+        use petgraph::visit::IntoNeighborsDirected;
+        self.dependents.nodes_iter().map(|id| {
+            let dep = &self.dependents[id];
+            tracing::warn!("ITER {dep}");
+            let mut neighbors = self
+                .dependents
+                .neighbors_directed(id, Direction::Outgoing)
+                .peekable();
+            if neighbors.peek().is_none() {
+                tracing::debug!("{dep} has no dependents");
+            }
+
+            if tracing::enabled!(Level::DEBUG) {
+                while let Some(id) = neighbors.next() {
+                    let pkg = &self.dependents[id];
+                    tracing::debug!("{dep} -(DependencyOF)-> {pkg}");
+                }
+            }
+
+            dep
+        })
     }
 
     pub fn is_empty(&self) -> bool {
@@ -909,30 +909,35 @@ impl PublishPlan {
     /// Returns the set of packages that are ready for publishing (i.e. have no outstanding dependencies).
     ///
     /// These will not be returned in future calls.
-    pub fn take_ready(&mut self) -> BTreeSet<PackageRef> {
+    pub fn take_ready(&mut self) -> BTreeSet<PackageSpec> {
         self.dependents
             .nodes_iter()
             // there are no dependents on `self.dendents[id]`
             .filter(|id| self.dependents.neighbors(*id).count() == 0)
             .map(|id| {
                 let pkg = &self.dependents[id];
-                self.indices.remove(&pkg);
+                self.indices.remove(&pkg.package);
                 pkg.clone()
             })
             .collect()
+    }
+
+    ///
+    pub fn get_path(&self, pkg: &PackageRef) -> Option<&Path> {
+        self.indices.get(pkg).map(|(_, p)| p.as_ref())
     }
 
     /// Packages confirmed to be available in the registry, potentially allowing additional
     /// packages to be "ready".
     pub fn mark_confirmed(&mut self, published: impl IntoIterator<Item = PackageRef>) {
         for pkg in published {
-            let id = self
+            let (id, _) = self
                 .indices
                 .remove(&pkg)
-                .expect("PackageRef has no associated index");
+                .expect("PackageSpec has no associated index");
             self.dependents
                 .remove_node(id)
-                .expect("index has no associated PackageRef");
+                .expect("index has no associated PackageSpec");
         }
     }
 }
@@ -942,7 +947,7 @@ impl PublishPlan {
 /// e.g. "foo:a@0.1.0, bar:b@0.2.0, and baz:c@0.3.0".
 ///
 /// Note: the final separator (e.g. "and" in the previous example) can be chosen.
-pub fn package_list(pkgs: impl IntoIterator<Item = PackageRef>, final_sep: &str) -> String {
+pub fn package_list(pkgs: impl IntoIterator<Item = PackageSpec>, final_sep: &str) -> String {
     let mut names: Vec<_> = pkgs.into_iter().map(|pkg| pkg.to_string()).collect();
     names.sort();
 

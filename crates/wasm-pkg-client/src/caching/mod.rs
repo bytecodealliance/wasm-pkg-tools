@@ -46,7 +46,7 @@ pub trait Cache {
 /// A client that caches response data using the given cache implementation. Can be used without an
 /// underlying client to be used as a read-only cache.
 pub struct CachingClient<T> {
-    client: Option<Client>,
+    pub client: Option<Client>,
     cache: Arc<T>,
 }
 

@@ -2,22 +2,19 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
+    path::{Path, PathBuf},
     str::FromStr,
 };
 
 use anyhow::{Context, Result};
-use petgraph::{data::Build, graph::NodeIndex};
+use petgraph::{data::Build, graph::NodeIndex, Direction};
 use semver::{Version, VersionReq};
 use wasm_metadata::{AddMetadata, AddMetadataField};
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     PackageRef,
 };
-use wasm_pkg_common::{
-    package::PackageSpec,
-    registry::{DependencyGraph, DependencyOf},
-};
+use wasm_pkg_common::{package::PackageSpec, registry::DependencyGraph};
 use wit_component::WitPrinter;
 use wit_parser::{PackageId, PackageName, Resolve};
 
@@ -182,25 +179,45 @@ pub fn get_packages(
 
 pub fn get_local_dependencies(
     paths: &[impl AsRef<Path>],
-) -> Result<(DependencyGraph<PackageRef>, HashMap<PackageRef, NodeIndex>)> {
+) -> Result<(
+    DependencyGraph<PackageSpec>,
+    HashMap<PackageRef, (NodeIndex, PathBuf)>,
+)> {
     let pkg_trees = paths
         .into_iter()
-        .map(|p| get_packages(p))
+        .map(|path| get_packages(path).map(|(pkg, deps)| ((pkg, path), deps)))
         .collect::<Result<Vec<_>, _>>()?;
     let mut graph = DependencyGraph::new();
     let mut indices = HashMap::new();
     // establish all nodes
-    for (spec, _) in &pkg_trees {
-        let id = graph.add_node(spec.package());
-        if indices.insert(spec.package(), id).is_some() {
+    for ((spec, path), _) in &pkg_trees {
+        let id = graph.add_node(spec.clone());
+        if indices
+            .insert(spec.package(), (id, path.as_ref().to_owned()))
+            .is_some()
+        {
             anyhow::bail!("duplicate references to package detected: {spec}");
         }
     }
-    for (spec, deps) in pkg_trees {
+    for ((spec, _), deps) in pkg_trees {
         // TODO handle version matching for dependencies
         for (dep, _version) in deps {
-            if let Some(&dep_id) = indices.get(&dep) {
-                graph.add_edge(dep_id, indices[&spec.package], DependencyOf);
+            if let Some(&(dep, _)) = indices.get(&dep) {
+                let (pkg, _) = indices[&spec.package];
+                // // dep -(DependencyOF)-> pkg
+                // graph.try_update_edge(dep, pkg, Direction::Outgoing);
+                // // pkg -(DependsOn)-> dep
+                graph
+                    .try_update_edge(pkg, dep, Direction::Outgoing)
+                    .map_err(|e| match e {
+                        petgraph::acyclic::AcyclicEdgeError::Cycle(cycle) => {
+                            anyhow::anyhow!("cyclical depndency detected")
+                                .context(format!("package {}", graph[cycle.node_id()]))
+                                .context(format!("package {}", graph[pkg]))
+                        }
+                        petgraph::acyclic::AcyclicEdgeError::SelfLoop => todo!(),
+                        petgraph::acyclic::AcyclicEdgeError::InvalidEdge => todo!(),
+                    })?;
             }
         }
     }
