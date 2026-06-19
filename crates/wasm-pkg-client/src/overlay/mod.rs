@@ -18,6 +18,7 @@ pub(crate) struct OverlayBackend {
     _handle: TempDir,
 }
 
+#[expect(unused)]
 impl OverlayBackend {
     fn new(remotes: HashMap<PackageRef, InnerClient>) -> Result<Self, Error> {
         let (local, handle) = LocalBackend::temp_dir()?;
