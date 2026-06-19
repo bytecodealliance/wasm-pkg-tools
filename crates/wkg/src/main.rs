@@ -272,18 +272,35 @@ impl PublishArgs {
             [path] => path,
             paths => {
                 let (overlay, tmp_dir) = wasm_pkg_client::local::LocalBackend::temp_dir()?;
+                let local_backend = wasm_pkg_client::local::LocalConfig {
+                    root: tmp_dir.path().to_path_buf(),
+                };
+                let mut reg_config = RegistryConfig::default();
+                reg_config.set_default_backend(Some("local".to_owned()));
+                reg_config.set_backend_config("local", &local_backend)?;
+
                 let plan = PublishPlan::from_paths(paths)?;
                 let mut lock_file = LockFile::load(true).await?;
-                for spec in plan.iter_edges() {
-                    let mut reg_config = RegistryConfig::default();
-                    reg_config.set_default_backend(Some("local".to_owned()));
-                    reg_config.set_backend_config(
-                        "local",
-                        wasm_pkg_client::local::LocalConfig {
-                            root: tmp_dir.path().to_path_buf(),
-                        },
+
+                // Route every package in the plan to the local overlay registry
+                // backed by `reg_config`, so the client used in `build_wit_dir`
+                // resolves these packages against the local overlay instead of
+                // an upstream remote.
+                let mut config = self.common.load_config().await?;
+                let local_registry: Registry = "local".parse()?;
+                config
+                    .get_or_insert_registry_config_mut(&local_registry)
+                    .merge(reg_config);
+                for spec in plan.iter() {
+                    config.set_package_registry_override(
+                        spec.package.clone(),
+                        RegistryMapping::Registry(local_registry.clone()),
                     );
-                    let client = client.client.as_mut().unwrap();
+                }
+                let cache = self.common.load_cache().await?;
+                let client = CachingClient::new(Some(Client::new(config)), cache);
+
+                for spec in plan.iter_edges() {
                     let path = plan.get_path(&spec.package).unwrap();
                     let (publish_path, _tmp) = if path.is_dir() {
                         let _prev_lock_ref = (lock_file.version, lock_file.packages.clone());

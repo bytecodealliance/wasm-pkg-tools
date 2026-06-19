@@ -884,13 +884,15 @@ impl PublishPlan {
                 .neighbors_directed(id, Direction::Outgoing)
                 .peekable();
             if neighbors.peek().is_none() {
-                tracing::debug!("{dep} has no dependents");
+                // tracing::debug!("{dep} has no dependents");
+                println!("{dep} has no dependents");
             }
 
-            if tracing::enabled!(Level::DEBUG) {
+            // if tracing::enabled!(Level::DEBUG) {
+            if true {
                 while let Some(id) = neighbors.next() {
                     let pkg = &self.dependents[id];
-                    tracing::debug!("{dep} -(DependencyOF)-> {pkg}");
+                    println!("{dep} -(DependencyOF)-> {pkg}");
                 }
             }
 
