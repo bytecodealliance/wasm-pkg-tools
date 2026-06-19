@@ -181,7 +181,7 @@ pub fn get_packages(
 }
 
 pub fn get_local_dependencies(
-    paths: Vec<impl AsRef<Path>>,
+    paths: &[impl AsRef<Path>],
 ) -> Result<(DependencyGraph<PackageRef>, HashMap<PackageRef, NodeIndex>)> {
     let pkg_trees = paths
         .into_iter()

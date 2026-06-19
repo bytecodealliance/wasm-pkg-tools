@@ -41,7 +41,7 @@ use std::{collections::HashMap, pin::Pin};
 use anyhow::anyhow;
 use bytes::Bytes;
 use futures_util::Stream;
-use publisher::PackagePublisher;
+pub use publisher::PackagePublisher;
 use tokio::io::AsyncSeekExt;
 use tokio::sync::RwLock;
 use tokio_util::io::SyncIoBridge;
