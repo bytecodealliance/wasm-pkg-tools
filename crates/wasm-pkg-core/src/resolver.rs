@@ -591,10 +591,18 @@ impl<'a> DependencyResolver<'a> {
                         // the version requirement; this can happen when packages are yanked. If we did
                         // find an exact match, return the digest for comparison after fetching the
                         // release
-                        find_latest_release(versions, &exact_req).map(|v| (&v.version, Some(digest))).or_else(|| find_latest_release(versions, &dependency.version).map(|v| (&v.version, None)))
-                    }
+                        find_latest_release(versions, &exact_req)
+                            .map(|v| (&v.version, Some(digest)))
+                            .or_else(|| find_latest_release(versions, &dependency.version).map(|v| (&v.version, None)))
+                        }
                     None => find_latest_release(versions, &dependency.version).map(|v| (&v.version, None)),
-                }.with_context(|| format!("component registry package `{name}` has no release matching version requirement `{version}`", name = dependency.package, version = dependency.version))?
+                }.with_context(||
+                    format!(
+                        "component registry package `{name}` has no release matching version requirement `{version}`",
+                        name = dependency.package,
+                        version = dependency.version
+                    )
+                )?
             };
 
             // We need to clone a handle to the client because we mutably borrow self above. Might

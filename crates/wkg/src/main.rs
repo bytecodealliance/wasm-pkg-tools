@@ -15,6 +15,7 @@ use wasm_pkg_common::{
     package::PackageSpec,
     registry::Registry,
 };
+use wasm_pkg_core::lock::LockFile;
 use wit_component::DecodedWasm;
 
 mod oci;
@@ -227,7 +228,8 @@ struct GetArgs {
 
 #[derive(Args, Debug)]
 struct PublishArgs {
-    /// The directories and files to publish
+    /// The files and directories to publish.
+    /// If a directory is provided, the package is built to a tempfile before publishing.
     paths: Vec<PathBuf>,
 
     #[command(flatten)]
@@ -260,10 +262,53 @@ impl PublishArgs {
             }
             None => None,
         };
+
+        // If the input is a directory, build a WIT package from it into a temp
+        // file first. _tmp is held until the publish completes so the file
+        // isn't deleted out from under us.
+        let (publish_path, _tmp) = if self.path.is_dir() {
+            let mut lock_file = LockFile::load(true).await?;
+            let prev_lock_ref = (lock_file.version, lock_file.packages.clone());
+            let (build_ref, _, bytes) =
+                wit::build_wit_dir(&self.path, client.clone(), &mut lock_file).await?;
+            // There is no way to check if we are in a git repository unlike `cargo publish --allow-dirty` so
+            // check against previous values.
+            if lock_file != prev_lock_ref && !self.dry_run {
+                return Err(anyhow::anyhow!(
+                    "wkg.lock would be updated during publish, aborting"
+                ))
+                .with_context(|| {
+                    format!(
+                        "Run `wkg wit build {}` before attempting to publish",
+                        self.path.to_string_lossy()
+                    )
+                });
+            }
+
+            // Sanitize the package ref for use as a filename prefix: `namespace:name`
+            // contains characters (`:`, `/`) that are invalid in filenames on some
+            // platforms (notably Windows).
+            let prefix: String = build_ref.to_string().replace([':', '/'], "_");
+            let tmp = tempfile::Builder::new()
+                .prefix(&prefix)
+                .suffix(".wasm")
+                .tempfile()
+                .context("Failed to create temporary file for built WIT package")?;
+            tokio::fs::write(tmp.path(), &bytes)
+                .await
+                .context("Failed to write built WIT package to temp file")?;
+            let tmp_pkg_path = tmp.path().to_path_buf();
+            tracing::debug!(tmp_pkg_path = %tmp_pkg_path.display(), "Wrote temporary WIT package file");
+
+            (tmp_pkg_path, Some(tmp))
+        } else {
+            (self.path.clone(), None)
+        };
+
         let (package, version) = client
             .client()?
-            .publish_release_files(
-                &self.paths,
+            .publish_release_file(
+                &publish_path,
                 PublishOpts {
                     package: spec,
                     registry: self.registry_args.registry,

@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use clap::{Args, Subcommand};
+use wasm_pkg_client::caching::{CachingClient, FileCache};
+use wasm_pkg_common::package::{PackageRef, Version};
 use wasm_pkg_core::{
     lock::LockFile,
     wit::{self, OutputType},
@@ -86,12 +88,9 @@ pub struct UpdateArgs {
 
 impl BuildArgs {
     pub async fn run(self) -> anyhow::Result<()> {
-        check_dir(&self.dir).await?;
         let client = self.common.get_client().await?;
-        let wkg_config = wasm_pkg_core::config::Config::load().await?;
         let mut lock_file = LockFile::load(false).await?;
-        let (pkg_ref, version, bytes) =
-            wit::build_package(&wkg_config, self.dir, &mut lock_file, client).await?;
+        let (pkg_ref, version, bytes) = build_wit_dir(&self.dir, client, &mut lock_file).await?;
         let output_path = if let Some(path) = self.output {
             path
         } else {
@@ -109,6 +108,19 @@ impl BuildArgs {
         println!("WIT package written to {}", output_path.display());
         Ok(())
     }
+}
+
+/// Build a WIT package from a directory, returning the resolved package ref, optional
+/// version, and the encoded component bytes.
+pub async fn build_wit_dir(
+    dir: impl AsRef<Path>,
+    client: CachingClient<FileCache>,
+    lock_file: &mut LockFile,
+) -> anyhow::Result<(PackageRef, Option<Version>, Vec<u8>)> {
+    check_dir(&dir).await?;
+    let wkg_config = wasm_pkg_core::config::Config::load().await?;
+    let result = wit::build_package(&wkg_config, dir, lock_file, client).await?;
+    Ok(result)
 }
 
 impl FetchArgs {
@@ -154,5 +166,9 @@ impl UpdateArgs {
 }
 
 async fn check_dir(dir: impl AsRef<Path>) -> anyhow::Result<()> {
-    tokio::fs::metadata(dir).await.context("Unable to read wit directory. This command should be run from the parent directory of the wit directory or a directory can be overridden with the --wit-dir argument").map(|_|())
+    let dir = dir.as_ref();
+    tokio::fs::metadata(dir).await
+        .with_context(|| format!("unable to read wit directory: {}", dir.display()))
+        .context("This command should be run from the parent directory of the wit directory or a directory can be overridden with the --wit-dir argument")
+        .map(|_|())
 }
