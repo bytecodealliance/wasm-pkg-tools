@@ -290,6 +290,16 @@ pub struct RegistryConfig {
 }
 
 impl RegistryConfig {
+    pub fn with_default_backend<T: Serialize>(
+        mut self,
+        default_backend: &str,
+        backend_config: T,
+    ) -> Result<Self, Error> {
+        self.default_backend = Some(default_backend.to_string());
+        self.set_backend_config("local", backend_config)?;
+        Ok(self)
+    }
+
     /// Merges the given other config into this one.
     pub fn merge(&mut self, other: Self) {
         let Self {

@@ -944,6 +944,59 @@ impl PublishPlan {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use std::path::PathBuf;
+
+    use super::PublishPlan;
+    use wasm_pkg_client::PackageRef;
+
+    fn transitive_local_paths() -> Vec<PathBuf> {
+        let fixtures =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/transitive-local");
+        ["example-a", "example-b", "example-c"]
+            .into_iter()
+            .map(|name| fixtures.join(name).join("wit"))
+            .collect()
+    }
+
+    #[test]
+    fn publish_plan_from_paths_collects_all_packages() {
+        let paths = transitive_local_paths();
+        let plan = PublishPlan::from_paths(&paths).expect("plan should build");
+
+        assert!(!plan.is_empty());
+        assert_eq!(plan.len(), 3);
+
+        for name in ["example-a:foo", "example-b:bar", "example-c:baz"] {
+            let pkg: PackageRef = name.parse().expect("valid package ref");
+            assert!(
+                plan.get_path(&pkg).is_some(),
+                "expected `{name}` to have an associated path in the plan",
+            );
+        }
+    }
+
+    #[test]
+    fn publish_plan_iter_yields_each_package_once() {
+        let paths = transitive_local_paths();
+        let plan = PublishPlan::from_paths(&paths).expect("plan should build");
+
+        let seen: Vec<PackageRef> = plan.iter().map(|spec| spec.package.clone()).collect();
+        assert_eq!(seen.len(), 3, "iter should yield one entry per package");
+
+        let unique: HashSet<_> = seen.iter().cloned().collect();
+        assert_eq!(unique.len(), seen.len(), "iter must not yield duplicates");
+
+        let expected: HashSet<PackageRef> = ["example-a:foo", "example-b:bar", "example-c:baz"]
+            .into_iter()
+            .map(|s| s.parse().unwrap())
+            .collect();
+        assert_eq!(unique, expected);
+    }
+}
+
 /// Format a collection of packages as a list
 ///
 /// e.g. "foo:a@0.1.0, bar:b@0.2.0, and baz:c@0.3.0".

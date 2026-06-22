@@ -4,10 +4,11 @@ use std::sync::Arc;
 use wasm_pkg_common::{
     digest::ContentDigest,
     package::{PackageRef, Version},
+    registry::Registry,
     Error,
 };
 
-use crate::{Client, ContentStream, Release, VersionInfo};
+use crate::{Client, ContentStream, InnerClient, Release, VersionInfo};
 
 mod file;
 
@@ -45,18 +46,10 @@ pub trait Cache {
 
 /// A client that caches response data using the given cache implementation. Can be used without an
 /// underlying client to be used as a read-only cache.
+#[derive(Clone)]
 pub struct CachingClient<T> {
     pub client: Option<Client>,
     cache: Arc<T>,
-}
-
-impl<T: Cache> Clone for CachingClient<T> {
-    fn clone(&self) -> Self {
-        Self {
-            client: self.client.clone(),
-            cache: self.cache.clone(),
-        }
-    }
 }
 
 impl<T: Cache> CachingClient<T> {
@@ -68,6 +61,16 @@ impl<T: Cache> CachingClient<T> {
             client,
             cache: Arc::new(cache),
         }
+    }
+
+    async fn with_overlays(
+        mut self,
+        overlays: impl IntoIterator<Item = (Registry, Arc<InnerClient>)>,
+    ) -> Self {
+        if let Some(client) = &mut self.client {
+            client.overlays = overlays.into_iter().collect();
+        }
+        self
     }
 
     /// Returns whether or not the client is in read-only mode.

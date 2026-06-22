@@ -95,6 +95,8 @@ pub struct PublishOpts {
 pub struct Client {
     config: Arc<Config>,
     sources: Arc<RwLock<RegistrySources>>,
+    /// Mapping of sources to local registries that will be overlaid on them.
+    overlays: RegistrySources,
 }
 
 impl Client {
@@ -103,6 +105,20 @@ impl Client {
         Self {
             config: Arc::new(config),
             sources: Default::default(),
+            overlays: Default::default(),
+        }
+    }
+
+    /// Like [`Self::new`] but includes sources from source
+    /// replacement configurations.
+    pub fn new_with_overlays(
+        config: Config,
+        overlays: impl IntoIterator<Item = (Registry, Arc<InnerClient>)>,
+    ) -> Self {
+        Self {
+            config: Arc::new(config),
+            sources: Default::default(),
+            overlays: overlays.into_iter().collect(),
         }
     }
 

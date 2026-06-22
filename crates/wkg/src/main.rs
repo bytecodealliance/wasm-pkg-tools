@@ -7,6 +7,7 @@ use tokio::io::AsyncWriteExt;
 use tracing::level_filters::LevelFilter;
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
+    local::LocalConfig,
     Client, PackagePublisher, PublishOpts,
 };
 use wasm_pkg_common::{
@@ -252,8 +253,6 @@ struct PublishArgs {
 
 impl PublishArgs {
     pub async fn run(self) -> anyhow::Result<()> {
-        let mut client = self.common.get_client().await?;
-
         let package = match self.package {
             Some(_) if self.paths.len() > 2 => {
                 anyhow::bail!("`--package` is currently unsupported when providing more than one path argument");
@@ -271,35 +270,41 @@ impl PublishArgs {
         let path = match &self.paths[..] {
             [path] => path,
             paths => {
+                let mut config = self.common.load_config().await?;
+                let cache = self.common.load_cache().await?;
+
                 let (overlay, tmp_dir) = wasm_pkg_client::local::LocalBackend::temp_dir()?;
-                let local_backend = wasm_pkg_client::local::LocalConfig {
-                    root: tmp_dir.path().to_path_buf(),
-                };
-                let mut reg_config = RegistryConfig::default();
-                reg_config.set_default_backend(Some("local".to_owned()));
-                reg_config.set_backend_config("local", &local_backend)?;
-
-                let plan = PublishPlan::from_paths(paths)?;
-                let mut lock_file = LockFile::load(true).await?;
-
+                let reg_config = RegistryConfig::default().with_default_backend(
+                    "local",
+                    LocalConfig {
+                        root: tmp_dir.path().to_path_buf(),
+                    },
+                )?;
                 // Route every package in the plan to the local overlay registry
                 // backed by `reg_config`, so the client used in `build_wit_dir`
                 // resolves these packages against the local overlay instead of
                 // an upstream remote.
-                let mut config = self.common.load_config().await?;
-                let local_registry: Registry = "local".parse()?;
+                let local_registry: Registry = "tmp_local_publish".parse()?;
                 config
                     .get_or_insert_registry_config_mut(&local_registry)
                     .merge(reg_config);
+
+                let plan = PublishPlan::from_paths(paths)?;
+
+                // TODO(mkatychev): Add support for `PackageLoader::get_release` to handle
+                // querying on a per package, namespace, and registry level
+                // to handle cargo style overlays.
+                // see this reference of `cargo::core::Dependency` usage for local overlays in Cargo:
+                // https://github.com/rust-lang/cargo/blob/d6900d00af2644ea1c0068c5694d9dbe11a3ab39/src/cargo/sources/overlay.rs#L47
                 for spec in plan.iter() {
                     config.set_package_registry_override(
                         spec.package.clone(),
                         RegistryMapping::Registry(local_registry.clone()),
                     );
                 }
-                let cache = self.common.load_cache().await?;
                 let client = CachingClient::new(Some(Client::new(config)), cache);
 
+                let mut lock_file = LockFile::load(true).await?;
                 for spec in plan.iter_edges() {
                     let path = plan.get_path(&spec.package).unwrap();
                     let (publish_path, _tmp) = if path.is_dir() {
@@ -332,6 +337,8 @@ impl PublishArgs {
                 // todo!();
             }
         };
+
+        let client = self.common.get_client().await?;
 
         // If the input is a directory, build a WIT package from it into a temp
         // file first. _tmp is held until the publish completes so the file

@@ -16,6 +16,7 @@ use crate::{ContentStream, Release};
 
 use super::Cache;
 
+#[derive(Clone)]
 pub struct FileCache {
     root: PathBuf,
 }
