@@ -48,7 +48,7 @@ pub trait Cache {
 /// underlying client to be used as a read-only cache.
 #[derive(Clone)]
 pub struct CachingClient<T> {
-    pub client: Option<Client>,
+    client: Option<Client>,
     cache: Arc<T>,
 }
 
