@@ -109,19 +109,6 @@ impl Client {
         }
     }
 
-    /// Like [`Self::new`] but includes sources from source
-    /// replacement configurations.
-    pub fn new_with_overlays(
-        config: Config,
-        overlays: impl IntoIterator<Item = (Registry, Arc<InnerClient>)>,
-    ) -> Self {
-        Self {
-            config: Arc::new(config),
-            sources: Default::default(),
-            overlays: overlays.into_iter().collect(),
-        }
-    }
-
     /// Returns a reference to the configuration this client was initialized with.
     pub fn config(&self) -> &Config {
         &self.config

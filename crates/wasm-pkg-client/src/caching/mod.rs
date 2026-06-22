@@ -63,16 +63,6 @@ impl<T: Cache> CachingClient<T> {
         }
     }
 
-    async fn with_overlays(
-        mut self,
-        overlays: impl IntoIterator<Item = (Registry, Arc<InnerClient>)>,
-    ) -> Self {
-        if let Some(client) = &mut self.client {
-            client.overlays = overlays.into_iter().collect();
-        }
-        self
-    }
-
     /// Returns whether or not the client is in read-only mode.
     pub fn is_readonly(&self) -> bool {
         self.client.is_none()
