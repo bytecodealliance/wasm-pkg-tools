@@ -43,6 +43,11 @@ fn registry_path_context(err: io::Error, path: &Path) -> Error {
     Error::RegistryError(err)
 }
 
+fn registry_path_context(err: io::Error, path: &Path) -> Error {
+    let err = anyhow::Error::new(err).context(format!("path: {}", path.display()));
+    Error::RegistryError(err)
+}
+
 impl LocalBackend {
     pub fn new(registry_config: RegistryConfig) -> Result<Self, Error> {
         let config = registry_config
