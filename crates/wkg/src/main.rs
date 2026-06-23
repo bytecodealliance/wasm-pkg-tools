@@ -270,7 +270,7 @@ impl PublishArgs {
         let path = match &self.paths[..] {
             [path] => path,
             paths => {
-                let mut config = self.common.load_config().await?;
+                let mut overlay_config = self.common.load_config().await?;
                 let cache = self.common.load_cache().await?;
 
                 let (overlay, tmp_dir) = wasm_pkg_client::local::LocalBackend::temp_dir()?;
@@ -285,7 +285,7 @@ impl PublishArgs {
                 // resolves these packages against the local overlay instead of
                 // an upstream remote.
                 let local_registry: Registry = "tmp_local_publish".parse()?;
-                config
+                overlay_config
                     .get_or_insert_registry_config_mut(&local_registry)
                     .merge(reg_config);
 
@@ -297,15 +297,15 @@ impl PublishArgs {
                 // see this reference of `cargo::core::Dependency` usage for local overlays in Cargo:
                 // https://github.com/rust-lang/cargo/blob/d6900d00af2644ea1c0068c5694d9dbe11a3ab39/src/cargo/sources/overlay.rs#L47
                 for spec in plan.iter() {
-                    config.set_package_registry_override(
+                    overlay_config.set_package_registry_override(
                         spec.package.clone(),
                         RegistryMapping::Registry(local_registry.clone()),
                     );
                 }
-                let client = CachingClient::new(Some(Client::new(config)), cache);
+                let client = CachingClient::new(Some(Client::new(overlay_config)), cache);
 
                 let mut lock_file = LockFile::load(true).await?;
-                for spec in plan.iter_edges() {
+                for spec in plan.iter() {
                     let path = plan.get_path(&spec.package).unwrap();
                     let (publish_path, _tmp) = if path.is_dir() {
                         let _prev_lock_ref = (lock_file.version, lock_file.packages.clone());

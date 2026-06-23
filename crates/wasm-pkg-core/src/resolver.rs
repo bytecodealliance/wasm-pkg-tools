@@ -871,29 +871,26 @@ impl PublishPlan {
     }
 
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a PackageSpec> + 'a {
-        self.dependents.nodes_iter().map(|id| &self.dependents[id])
-    }
-
-    pub fn iter_edges<'a>(&'a self) -> impl Iterator<Item = &'a PackageSpec> + 'a {
-        use petgraph::visit::IntoNeighborsDirected;
         self.dependents.nodes_iter().map(|id| {
             let dep = &self.dependents[id];
-            tracing::warn!("ITER {dep}");
+            if !tracing::enabled!(Level::DEBUG) {
+                return dep;
+            }
+
+            // initial dependency graph visualization
             let mut neighbors = self
                 .dependents
                 .neighbors_directed(id, Direction::Outgoing)
                 .peekable();
+
             if neighbors.peek().is_none() {
                 // tracing::debug!("{dep} has no dependents");
                 println!("{dep} has no dependents");
             }
 
-            // if tracing::enabled!(Level::DEBUG) {
-            if true {
-                while let Some(id) = neighbors.next() {
-                    let pkg = &self.dependents[id];
-                    println!("{dep} -(DependencyOF)-> {pkg}");
-                }
+            while let Some(id) = neighbors.next() {
+                let pkg = &self.dependents[id];
+                println!("{dep} -(DependencyOF)-> {pkg}");
             }
 
             dep
@@ -924,7 +921,7 @@ impl PublishPlan {
             .collect()
     }
 
-    ///
+    /// NOTE
     pub fn get_path(&self, pkg: &PackageRef) -> Option<&Path> {
         self.indices.get(pkg).map(|(_, p)| p.as_ref())
     }
