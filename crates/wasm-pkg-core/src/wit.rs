@@ -204,14 +204,12 @@ pub fn get_local_dependencies(
         for (dep, _version) in deps {
             if let Some(&(dep, _)) = indices.get(&dep) {
                 let (pkg, _) = indices[&spec.package];
-                // // dep -(DependencyOF)-> pkg
-                // graph.try_update_edge(dep, pkg, Direction::Outgoing);
-                // // pkg -(DependsOn)-> dep
+                // // pkg <=DependsOn= dep
                 graph
-                    .try_update_edge(pkg, dep, Direction::Outgoing)
+                    .try_update_edge(pkg, dep, Direction::Incoming)
                     .map_err(|e| match e {
                         petgraph::acyclic::AcyclicEdgeError::Cycle(cycle) => {
-                            anyhow::anyhow!("cyclical depndency detected")
+                            anyhow::anyhow!("cyclical dependency detected")
                                 .context(format!("package {}", graph[cycle.node_id()]))
                                 .context(format!("package {}", graph[pkg]))
                         }

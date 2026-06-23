@@ -885,12 +885,20 @@ impl PublishPlan {
 
             if neighbors.peek().is_none() {
                 // tracing::debug!("{dep} has no dependents");
-                println!("{dep} has no dependents");
+                println!("[{dep} has no dependents]");
+            } else {
+                println!("[{dep}]");
             }
 
             while let Some(id) = neighbors.next() {
                 let pkg = &self.dependents[id];
-                println!("{dep} -(DependencyOF)-> {pkg}");
+                let separator = if neighbors.peek().is_some() {
+                    "├─"
+                } else {
+                    "╰─"
+                };
+
+                println!("{separator}(DependencyOf)─▶ {pkg}");
             }
 
             dep
@@ -912,12 +920,13 @@ impl PublishPlan {
         self.dependents
             .nodes_iter()
             // there are no dependents on `self.dendents[id]`
-            .filter(|id| self.dependents.neighbors(*id).count() == 0)
-            .map(|id| {
-                let pkg = &self.dependents[id];
-                self.indices.remove(&pkg.package);
-                pkg.clone()
+            .filter(|id| {
+                self.dependents
+                    .neighbors_directed(*id, Direction::Incoming)
+                    .count()
+                    == 0
             })
+            .map(|id| self.dependents[id].clone())
             .collect()
     }
 
@@ -928,69 +937,15 @@ impl PublishPlan {
 
     /// Packages confirmed to be available in the registry, potentially allowing additional
     /// packages to be "ready".
-    pub fn mark_confirmed(&mut self, published: impl IntoIterator<Item = PackageRef>) {
-        for pkg in published {
+    pub fn mark_confirmed(&mut self, published: impl IntoIterator<Item = PackageSpec>) {
+        for spec in published {
             let (id, _) = self
                 .indices
-                .remove(&pkg)
+                .remove(&spec.package)
                 .expect("PackageSpec has no associated index");
-            self.dependents
-                .remove_node(id)
-                .expect("index has no associated PackageSpec");
+            // NOTE: nodes without edges will return None here
+            self.dependents.remove_node(id);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::HashSet;
-    use std::path::PathBuf;
-
-    use super::PublishPlan;
-    use wasm_pkg_client::PackageRef;
-
-    fn transitive_local_paths() -> Vec<PathBuf> {
-        let fixtures =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/transitive-local");
-        ["example-a", "example-b", "example-c"]
-            .into_iter()
-            .map(|name| fixtures.join(name).join("wit"))
-            .collect()
-    }
-
-    #[test]
-    fn publish_plan_from_paths_collects_all_packages() {
-        let paths = transitive_local_paths();
-        let plan = PublishPlan::from_paths(&paths).expect("plan should build");
-
-        assert!(!plan.is_empty());
-        assert_eq!(plan.len(), 3);
-
-        for name in ["example-a:foo", "example-b:bar", "example-c:baz"] {
-            let pkg: PackageRef = name.parse().expect("valid package ref");
-            assert!(
-                plan.get_path(&pkg).is_some(),
-                "expected `{name}` to have an associated path in the plan",
-            );
-        }
-    }
-
-    #[test]
-    fn publish_plan_iter_yields_each_package_once() {
-        let paths = transitive_local_paths();
-        let plan = PublishPlan::from_paths(&paths).expect("plan should build");
-
-        let seen: Vec<PackageRef> = plan.iter().map(|spec| spec.package.clone()).collect();
-        assert_eq!(seen.len(), 3, "iter should yield one entry per package");
-
-        let unique: HashSet<_> = seen.iter().cloned().collect();
-        assert_eq!(unique.len(), seen.len(), "iter must not yield duplicates");
-
-        let expected: HashSet<PackageRef> = ["example-a:foo", "example-b:bar", "example-c:baz"]
-            .into_iter()
-            .map(|s| s.parse().unwrap())
-            .collect();
-        assert_eq!(unique, expected);
     }
 }
 
@@ -999,7 +954,11 @@ mod tests {
 /// e.g. "foo:a@0.1.0, bar:b@0.2.0, and baz:c@0.3.0".
 ///
 /// Note: the final separator (e.g. "and" in the previous example) can be chosen.
-pub fn package_list(pkgs: impl IntoIterator<Item = PackageSpec>, final_sep: &str) -> String {
+pub fn package_list<'a>(
+    pkgs: impl IntoIterator<Item = &'a PackageSpec>,
+    final_sep: Option<&str>,
+) -> String {
+    let final_sep = final_sep.unwrap_or("and");
     let mut names: Vec<_> = pkgs.into_iter().map(|pkg| pkg.to_string()).collect();
     names.sort();
 
@@ -1010,5 +969,65 @@ pub fn package_list(pkgs: impl IntoIterator<Item = PackageSpec>, final_sep: &str
         [names @ .., last] => {
             format!("{}, {final_sep} {last}", names.join(", "))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use std::path::PathBuf;
+
+    use super::*;
+    use glob::glob;
+    use wasm_pkg_client::PackageRef;
+
+    fn transitive_local_paths() -> Vec<PathBuf> {
+        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/transitive-local/*/wit/");
+        glob(fixtures.to_str().unwrap())
+            .unwrap()
+            .into_iter()
+            .map(|p| p.expect("glob path error"))
+            .collect()
+    }
+
+    #[test]
+    fn publish_plan_iter() {
+        let paths = transitive_local_paths();
+        let plan = PublishPlan::from_paths(&paths).unwrap();
+        assert_eq!(
+            plan.iter().count(),
+            4,
+            "unexpected package count\npackages found: {}",
+            package_list(plan.iter(), None)
+        );
+    }
+
+    #[test]
+    fn publish_plan_chunks() {
+        let paths = transitive_local_paths();
+        let mut plan = PublishPlan::from_paths(&paths).unwrap();
+        let mut ready_for_publish = plan.take_ready();
+        assert_eq!(
+            ready_for_publish.iter().collect::<Vec<_>>(),
+            ["example-c:baz@0.1.0", "example-d:foo@0.1.0"],
+        );
+        plan.mark_confirmed(ready_for_publish.into_iter());
+
+        ready_for_publish = plan.take_ready();
+        assert_eq!(
+            ready_for_publish.iter().collect::<Vec<_>>(),
+            ["example-b:bar@0.1.0"],
+        );
+        plan.mark_confirmed(ready_for_publish.into_iter());
+
+        ready_for_publish = plan.take_ready();
+        assert_eq!(
+            ready_for_publish.iter().collect::<Vec<_>>(),
+            ["example-a:foo@0.1.0"],
+        );
+        plan.mark_confirmed(ready_for_publish.into_iter());
+
+        assert!(plan.is_empty());
     }
 }

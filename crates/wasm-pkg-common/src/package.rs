@@ -95,6 +95,12 @@ impl PackageSpec {
     }
 }
 
+impl PartialEq<str> for PackageSpec {
+    fn eq(&self, other: &str) -> bool {
+        &format!("{self}") == other
+    }
+}
+
 impl FromStr for PackageSpec {
     type Err = Error;
 

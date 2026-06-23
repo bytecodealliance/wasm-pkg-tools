@@ -43,3 +43,4 @@ features = [
 tempfile = { workspace = true }
 sha2 = { workspace = true }
 rstest = "0.23"
+glob = "0.3.3"

@@ -1,0 +1,5 @@
+package example-d:foo@0.1.0;
+
+interface bar {
+    type baz = string;
+}
