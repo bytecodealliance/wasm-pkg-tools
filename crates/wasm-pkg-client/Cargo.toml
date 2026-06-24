@@ -53,3 +53,4 @@ tempfile = { workspace = true }
 [dev-dependencies]
 rcgen = { workspace = true }
 testcontainers = { workspace = true }
+wasm-pkg-core = { workspace = true }

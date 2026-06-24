@@ -849,7 +849,7 @@ pub struct PublishPlan {
     dependents: DependencyGraph<PackageSpec>,
     // TODO look at using cargo's `InternedString` type for `PackageRef`:
     // https://docs.rs/cargo/latest/cargo/util/interning/struct.InternedString.html
-    indices: HashMap<PackageRef, (NodeIndex, PathBuf)>,
+    indices: LocalPackageIndex,
 }
 
 impl PublishPlan {
@@ -898,7 +898,7 @@ impl PublishPlan {
             .collect()
     }
 
-    /// NOTE
+    /// Return the path associated with a local package.
     pub fn get_path(&self, pkg: &PackageRef) -> Option<&Path> {
         self.indices.get(pkg).map(|(_, p)| p.as_ref())
     }

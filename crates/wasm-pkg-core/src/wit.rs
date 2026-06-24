@@ -177,6 +177,12 @@ pub fn get_packages(
     Ok((package, packages))
 }
 
+/// Build an acyclic [`DependencyGraph`] for the provided WIT package paths alongside a [`LocalPackageIndex`].
+///
+/// # Errors
+///
+/// The function will return an error if there are duplicate references to the same package or if
+/// there are cyclical dependencies between packages.
 pub fn get_local_dependencies(
     paths: &[impl AsRef<Path>],
 ) -> Result<(DependencyGraph<PackageSpec>, LocalPackageIndex)> {

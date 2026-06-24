@@ -55,7 +55,7 @@ impl RegistryMapping {
         }
     }
 
-    /// returns the inner [`RegistryMetadata`] if `Self` holds a [`CustomConfig`]
+    /// Returns the inner [`RegistryMetadata`] if `Self` holds a [`CustomConfig`].
     pub fn metadata(&self) -> Option<&RegistryMetadata> {
         if let Self::Custom(config) = self {
             return Some(&config.metadata);

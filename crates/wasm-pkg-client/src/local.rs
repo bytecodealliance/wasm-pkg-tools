@@ -35,8 +35,8 @@ pub struct LocalConfig {
 }
 
 impl LocalConfig {
-    // creates a [`Self`] using a generated temporary directory. Upon dropping the [`TempDir`] handle,
-    // the temporary directory will be deleted.
+    /// Creates a [`Self`] using a generated temporary directory. Upon dropping the [`TempDir`] handle,
+    /// the temporary directory will be deleted.
     pub fn temp_dir() -> Result<(Self, TempDir), Error> {
         let handle = TempDir::new()?;
         let root = handle.path().to_owned();
