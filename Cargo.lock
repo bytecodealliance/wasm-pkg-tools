@@ -5162,7 +5162,6 @@ dependencies = [
  "warg-protocol",
  "wasm-metadata",
  "wasm-pkg-common",
- "wasm-pkg-core",
  "wit-component",
 ]
 
