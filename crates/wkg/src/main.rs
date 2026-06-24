@@ -296,6 +296,9 @@ impl PublishArgs {
                 let mut lock_file = LockFile::load(false).await?;
                 // these are packages that have been successfully pushed to our "tmp_local_publish"
                 let mut validated_packages = HashMap::new();
+
+                // 1. Publish our packages to "tmp_local_publish" ensuring all dependencies are
+                //    resolved by the local backend
                 for spec in plan.iter() {
                     let path = plan.get_path(&spec.package).unwrap();
                     let data = if path.is_dir() {
@@ -331,6 +334,8 @@ impl PublishArgs {
                 }
 
                 let client = self.common.get_client().await?;
+                // 2. Publish our packages in "waves" to the actual registries ensuring all
+                //    possible dependency free pacakges are published in the same group
                 while !plan.is_empty() {
                     let ready_for_publish = plan.take_ready();
                     for spec in &ready_for_publish {
