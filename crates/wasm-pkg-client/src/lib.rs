@@ -1,3 +1,5 @@
+//! Wasm Package Client
+//!
 //! [`Client`] implements a unified interface for loading package content from
 //! multiple kinds of package registries.
 //!

@@ -12,10 +12,7 @@ use std::{
 use anyhow::{bail, Context, Result};
 use futures_util::TryStreamExt;
 use indexmap::{IndexMap, IndexSet};
-use petgraph::{
-    graph::NodeIndex,
-    Direction,
-};
+use petgraph::{graph::NodeIndex, Direction};
 use semver::{Comparator, Op, Version, VersionReq};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use wasm_pkg_client::{
@@ -843,11 +840,13 @@ fn visit<'a>(
     Ok(())
 }
 
+/// Mapping of [`PackageRef`]s to the respective index inside the dependency graph.
+pub type LocalPackageIndex = HashMap<PackageRef, (NodeIndex, PathBuf)>;
+
 /// State for tracking dependencies during upload.
 pub struct PublishPlan {
     /// Graph of publishable packages where the edges are `(dependency -DependencyOf->) dependent)`
     dependents: DependencyGraph<PackageSpec>,
-    /// Mapping [`PackageRef`]s to the respective index inside the dependency graph.
     // TODO look at using cargo's `InternedString` type for `PackageRef`:
     // https://docs.rs/cargo/latest/cargo/util/interning/struct.InternedString.html
     indices: HashMap<PackageRef, (NodeIndex, PathBuf)>,
@@ -975,19 +974,17 @@ pub fn package_list<'a>(
 
 #[cfg(test)]
 mod tests {
-    
+
     use std::path::PathBuf;
 
     use super::*;
     use glob::glob;
-    
 
     fn transitive_local_paths() -> Vec<PathBuf> {
         let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/transitive-local/*/wit/");
         glob(fixtures.to_str().unwrap())
             .unwrap()
-            .into_iter()
             .map(|p| p.expect("glob path error"))
             .collect()
     }
@@ -1013,21 +1010,21 @@ mod tests {
             ready_for_publish.iter().collect::<Vec<_>>(),
             ["example-c:baz@0.1.0", "example-d:foo@0.1.0"],
         );
-        plan.mark_confirmed(ready_for_publish.into_iter());
+        plan.mark_confirmed(ready_for_publish);
 
         ready_for_publish = plan.take_ready();
         assert_eq!(
             ready_for_publish.iter().collect::<Vec<_>>(),
             ["example-b:bar@0.1.0"],
         );
-        plan.mark_confirmed(ready_for_publish.into_iter());
+        plan.mark_confirmed(ready_for_publish);
 
         ready_for_publish = plan.take_ready();
         assert_eq!(
             ready_for_publish.iter().collect::<Vec<_>>(),
             ["example-a:foo@0.1.0"],
         );
-        plan.mark_confirmed(ready_for_publish.into_iter());
+        plan.mark_confirmed(ready_for_publish);
 
         assert!(plan.is_empty());
     }

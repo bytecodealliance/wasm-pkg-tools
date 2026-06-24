@@ -306,7 +306,7 @@ impl PublishArgs {
                     } else {
                         let mut file = tokio::fs::OpenOptions::new().read(true).open(path).await?;
                         let mut buf = Vec::new();
-                        file.read(&mut buf).await?;
+                        file.read_exact(&mut buf).await?;
                         buf
                     };
 

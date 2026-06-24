@@ -99,7 +99,7 @@ impl PackageSpec {
 
 impl PartialEq<str> for PackageSpec {
     fn eq(&self, other: &str) -> bool {
-        &format!("{self}") == other
+        format!("{self}") == other
     }
 }
 

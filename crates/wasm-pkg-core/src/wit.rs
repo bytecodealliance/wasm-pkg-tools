@@ -2,12 +2,12 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
+    path::Path,
     str::FromStr,
 };
 
 use anyhow::{Context, Result};
-use petgraph::{data::Build, graph::NodeIndex, Direction};
+use petgraph::{data::Build, Direction};
 use semver::{Version, VersionReq};
 use wasm_metadata::{AddMetadata, AddMetadataField};
 use wasm_pkg_client::{
@@ -23,7 +23,7 @@ use crate::{
     lock::LockFile,
     resolver::{
         DecodedDependency, Dependency, DependencyResolution, DependencyResolutionMap,
-        DependencyResolver, LocalResolution, RegistryPackage,
+        DependencyResolver, LocalPackageIndex, LocalResolution, RegistryPackage,
     },
 };
 
@@ -179,12 +179,9 @@ pub fn get_packages(
 
 pub fn get_local_dependencies(
     paths: &[impl AsRef<Path>],
-) -> Result<(
-    DependencyGraph<PackageSpec>,
-    HashMap<PackageRef, (NodeIndex, PathBuf)>,
-)> {
+) -> Result<(DependencyGraph<PackageSpec>, LocalPackageIndex)> {
     let pkg_trees = paths
-        .into_iter()
+        .iter()
         .map(|path| get_packages(path).map(|(pkg, deps)| ((pkg, path), deps)))
         .collect::<Result<Vec<_>, _>>()?;
     let mut graph = DependencyGraph::new();

@@ -57,4 +57,5 @@ impl TryFrom<String> for Registry {
     }
 }
 
+/// Graph of publishable packages with the [`petgraph::Direction`] edges describing the dependency direction.
 pub type DependencyGraph<N> = Acyclic<DiGraph<N, petgraph::Direction>>;
