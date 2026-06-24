@@ -154,7 +154,7 @@ impl PackagePublisher for LocalBackend {
         let mut out = tokio::fs::File::create(&path)
             .await
             .map_err(|e| registry_path_context(e, &path))?;
-        tracing::info!("publishing to {}", path.display());
+        tracing::debug!("publishing to {}", path.display());
         tokio::io::copy(&mut data, &mut out)
             .await
             .map_err(Error::IoError)

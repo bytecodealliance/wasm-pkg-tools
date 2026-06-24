@@ -919,6 +919,7 @@ impl PublishPlan {
 
 impl std::fmt::Display for PublishPlan {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // TODO(mkatychev): handle with anstyle and anstream, passing in `anstream::AutoStream` for colour choice
         for id in self.dependents.nodes_iter() {
             let dep = &self.dependents[id];
             // initial dependency graph visualization
@@ -942,7 +943,7 @@ impl std::fmt::Display for PublishPlan {
                     "╰─"
                 };
 
-                writeln!(f, "{separator}(DependencyOf)─▶ {pkg}")?;
+                writeln!(f, "{separator}─▶ {pkg}")?;
             }
         }
         Ok(())
