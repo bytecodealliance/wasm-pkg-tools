@@ -43,7 +43,7 @@ impl LocalConfig {
 }
 
 #[derive(Clone)]
-struct LocalBackend {
+pub(crate) struct LocalBackend {
     pub(crate) root: PathBuf,
 }
 

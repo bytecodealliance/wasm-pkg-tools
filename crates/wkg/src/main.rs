@@ -265,13 +265,9 @@ impl PublishArgs {
                 let mut overlay_config = self.common.load_config().await?;
                 let cache = self.common.load_cache().await?;
 
-                let (backend, tmp_dir) = LocalConfig::temp_dir()?;
-                let reg_config = RegistryConfig::default().with_default_backend(
-                    "local",
-                    LocalConfig {
-                        root: tmp_dir.path().to_path_buf(),
-                    },
-                )?;
+                let (local_config, _tmp_dir_handle) = LocalConfig::temp_dir()?;
+                let reg_config =
+                    RegistryConfig::default().with_default_backend("local", local_config)?;
                 // Route every package in the plan to the local overlay registry
                 // backed by `reg_config`, so the client used in `build_wit_dir`
                 // resolves these packages against the local overlay instead of
