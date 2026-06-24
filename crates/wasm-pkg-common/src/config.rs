@@ -206,8 +206,6 @@ impl Config {
     /// - Hard-coded fallbacks for certain well-known namespaces
     pub fn resolve_registry(&self, package: &PackageRef) -> Option<&Registry> {
         let namespace = package.namespace();
-        // look in `self.package_registry_overrides `
-        // then in `self.namespace_registries`
         if let Some(reg) = self.resolve_mapping(package).map(|ns| ns.registry()) {
             return Some(reg);
         } else if let Some(reg) = self.default_registry.as_ref() {
@@ -219,7 +217,7 @@ impl Config {
 
     pub fn resolve_mapping(&self, package: &PackageRef) -> Option<&RegistryMapping> {
         let namespace = package.namespace();
-        // look in `self.package_registry_overrides `
+        // look in `self.package_registry_overrides`
         // then in `self.namespace_registries`
         self.package_registry_overrides
             .get(package)
@@ -294,12 +292,13 @@ pub struct RegistryConfig {
 }
 
 impl RegistryConfig {
+    // Created a [`Self`] a default local backend associated with the provided `backend_name` label.
     pub fn with_default_backend<T: Serialize>(
         mut self,
-        default_backend: &str,
+        backend_name: &str,
         backend_config: T,
     ) -> Result<Self, Error> {
-        self.default_backend = Some(default_backend.to_string());
+        self.default_backend = Some(backend_name.to_string());
         self.set_backend_config(LOCAL_PROTOCOL, backend_config)?;
         Ok(self)
     }
