@@ -11,7 +11,7 @@ use tracing::level_filters::LevelFilter;
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     local::LocalConfig,
-    Client, PackageLoader, PublishOpts,
+    Client, PublishOpts,
 };
 use wasm_pkg_common::{
     self,

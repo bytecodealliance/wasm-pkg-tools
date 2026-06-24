@@ -67,11 +67,6 @@ pub type ContentStream = Pin<Box<dyn Stream<Item = Result<Bytes, Error>> + Send 
 /// An alias for a PublishingSource (generally a file)
 pub type PublishingSource = Pin<Box<dyn ReaderSeeker + Send + Sync + 'static>>;
 
-// Convenience method to convert a byte array into a [`PublishingSource`]
-pub fn source_from_slice<'a>(data: &'a [u8]) -> Pin<Box<dyn ReaderSeeker + Send + Sync + 'a>> {
-    Box::pin(std::io::Cursor::new(data))
-}
-
 /// A supertrait combining tokio's AsyncRead and AsyncSeek.
 pub trait ReaderSeeker: tokio::io::AsyncRead + tokio::io::AsyncSeek {}
 

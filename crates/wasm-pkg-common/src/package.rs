@@ -86,10 +86,12 @@ pub struct PackageSpec {
 }
 
 impl PackageSpec {
+    // Returns a copy of the associated package reference.
     pub fn package(&self) -> PackageRef {
         self.package.clone()
     }
 
+    // Returns a copy of the attached semver [`Version`] object if it exists.
     pub fn version(&self) -> Option<Version> {
         self.version.clone()
     }
