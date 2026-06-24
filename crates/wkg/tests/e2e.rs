@@ -1,3 +1,7 @@
+use wasm_pkg_client::{Version, VersionInfo};
+
+use crate::common::copy_dir;
+
 mod common;
 
 #[cfg(feature = "docker-tests")]
@@ -83,6 +87,69 @@ async fn build_and_publish_with_metadata() {
         meta.homepage.as_ref(),
         "Name should match"
     );
+}
+
+#[cfg(feature = "docker-tests")]
+#[tokio::test]
+async fn publish_multiple_transitive_local_packages() {
+    use std::path::PathBuf;
+
+    let (config, registry, _container) = common::start_registry().await;
+    let namespaces = ["example-a", "example-b", "example-c", "example-d"];
+
+    // copy the transitive-local fixtures from wasm-pkg-core into a temp dir
+    let temp_dir = tempfile::tempdir().expect("Failed to create tempdir");
+    let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("wasm-pkg-core")
+        .join("tests")
+        .join("fixtures")
+        .join("transitive-local");
+    let fixture_root = temp_dir.path().join("transitive-local");
+    copy_dir(&src_root, &fixture_root).await.unwrap();
+
+    let mut mapped = config.clone();
+    for ns in namespaces {
+        mapped = common::map_namespace(&mapped, ns, &registry);
+    }
+    let config_path = temp_dir.path().join("config.toml");
+    mapped.to_file(&config_path).await.expect("write config");
+
+    // pass all fixture dirs to a single `wkg publish` invocation
+    // TODO use glob suchas in `wasm_pkgs_core::resolver::tests::transitive_local_paths`
+    let dirs = namespaces.map(|name| fixture_root.join(name).join("wit"));
+    let mut publish = tokio::process::Command::new(env!("CARGO_BIN_EXE_wkg"));
+    publish
+        .current_dir(temp_dir.path())
+        .env("WKG_CACHE_DIR", temp_dir.path().join("cache"))
+        .env("WKG_CONFIG_FILE", &config_path)
+        .arg("publish");
+    for dir in &dirs {
+        publish.arg(dir);
+    }
+    let status = publish.status().await.expect("spawn wkg publish");
+    assert!(status.success(), "wkg publish should succeed");
+
+    let client = wasm_pkg_client::Client::new(mapped);
+
+    let expected_version = "0.1.0".parse::<Version>().unwrap();
+    for name in [
+        "example-a:foo",
+        "example-b:bar",
+        "example-c:baz",
+        "example-d:foo",
+    ] {
+        let pkg = name.parse().unwrap();
+        let versions = client
+            .list_all_versions(&pkg)
+            .await
+            .unwrap_or_else(|e| panic!("list versions for {name}: {e:#}"));
+        std::assert_matches!(
+            &versions[..],
+            [VersionInfo { version, .. }] if version == &expected_version,
+            "{name} should have exactly one published version",
+        );
+    }
 }
 
 #[tokio::test]

@@ -135,8 +135,10 @@ pub async fn load_fixture(fixture: &str) -> Fixture {
     }
 }
 
-#[allow(dead_code)]
-async fn copy_dir(source: impl AsRef<Path>, destination: impl AsRef<Path>) -> anyhow::Result<()> {
+pub async fn copy_dir(
+    source: impl AsRef<Path>,
+    destination: impl AsRef<Path>,
+) -> anyhow::Result<()> {
     tokio::fs::create_dir_all(&destination).await?;
     let mut entries = tokio::fs::read_dir(source).await?;
     while let Some(entry) = entries.next_entry().await? {
