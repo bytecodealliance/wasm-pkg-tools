@@ -1,5 +1,3 @@
-
-
 use crate::{PackageRef, PublishingSource, Version};
 
 #[async_trait::async_trait]
