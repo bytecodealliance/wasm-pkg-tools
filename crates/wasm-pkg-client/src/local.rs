@@ -33,8 +33,17 @@ pub struct LocalConfig {
     pub root: PathBuf,
 }
 
+impl LocalConfig {
+    pub fn temp_dir() -> Result<(Self, TempDir), Error> {
+        let handle = TempDir::new()?;
+        let root = handle.path().to_owned();
+        tracing::debug!(registry_dir=%root.display(), "created temporary directory");
+        Ok((Self { root }, handle))
+    }
+}
+
 #[derive(Clone)]
-pub struct LocalBackend {
+struct LocalBackend {
     pub(crate) root: PathBuf,
 }
 
@@ -61,13 +70,6 @@ impl LocalBackend {
 
     fn version_path(&self, package: &PackageRef, version: &Version) -> PathBuf {
         self.package_dir(package).join(format!("{version}.wasm"))
-    }
-
-    pub fn temp_dir() -> Result<(Self, TempDir), Error> {
-        let handle = TempDir::new()?;
-        let root = handle.path().to_owned();
-        tracing::debug!(registry_dir=%root.display(), "created temporary directory");
-        Ok((Self { root }, handle))
     }
 }
 

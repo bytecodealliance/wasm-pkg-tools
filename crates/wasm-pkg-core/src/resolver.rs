@@ -871,38 +871,9 @@ impl PublishPlan {
     }
 
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a PackageSpec> + 'a {
-        self.dependents.nodes_iter().map(|id| {
-            let dep = &self.dependents[id];
-            if !tracing::enabled!(Level::DEBUG) {
-                return dep;
-            }
-
-            // initial dependency graph visualization
-            let mut neighbors = self
-                .dependents
-                .neighbors_directed(id, Direction::Outgoing)
-                .peekable();
-
-            if neighbors.peek().is_none() {
-                // tracing::debug!("{dep} has no dependents");
-                println!("[{dep} has no dependents]");
-            } else {
-                println!("[{dep}]");
-            }
-
-            while let Some(id) = neighbors.next() {
-                let pkg = &self.dependents[id];
-                let separator = if neighbors.peek().is_some() {
-                    "├─"
-                } else {
-                    "╰─"
-                };
-
-                println!("{separator}(DependencyOf)─▶ {pkg}");
-            }
-
-            dep
-        })
+        self.dependents
+            .nodes_iter()
+            .map(|id| &(self.dependents[id]))
     }
 
     pub fn is_empty(&self) -> bool {
@@ -946,6 +917,38 @@ impl PublishPlan {
             // NOTE: nodes without edges will return None here
             self.dependents.remove_node(id);
         }
+    }
+}
+
+impl std::fmt::Display for PublishPlan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for id in self.dependents.nodes_iter() {
+            let dep = &self.dependents[id];
+            // initial dependency graph visualization
+            let mut neighbors = self
+                .dependents
+                .neighbors_directed(id, Direction::Outgoing)
+                .peekable();
+
+            if neighbors.peek().is_none() {
+                // tracing::debug!("{dep} has no dependents");
+                writeln!(f, "[{dep} has no dependents]")?;
+            } else {
+                writeln!(f, "[{dep}]")?;
+            }
+
+            while let Some(id) = neighbors.next() {
+                let pkg = &self.dependents[id];
+                let separator = if neighbors.peek().is_some() {
+                    "├─"
+                } else {
+                    "╰─"
+                };
+
+                writeln!(f, "{separator}(DependencyOf)─▶ {pkg}")?;
+            }
+        }
+        Ok(())
     }
 }
 

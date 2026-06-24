@@ -1,14 +1,19 @@
-use std::{io::Seek, path::PathBuf};
+use std::{
+    io::{Cursor, Seek},
+    path::PathBuf,
+    pin::Pin,
+};
 
 use anyhow::{ensure, Context};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::level_filters::LevelFilter;
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     local::LocalConfig,
-    Client, PackagePublisher, PublishOpts,
+    source_from_slice, Client, PackageLoader, PackagePublisher, PublishOpts, PublishingSource,
+    ReaderSeeker,
 };
 use wasm_pkg_common::{
     self,
@@ -253,27 +258,14 @@ struct PublishArgs {
 
 impl PublishArgs {
     pub async fn run(self) -> anyhow::Result<()> {
-        let package = match self.package {
-            Some(_) if self.paths.len() > 2 => {
-                anyhow::bail!("`--package` is currently unsupported when providing more than one path argument");
-            }
-            Some(PackageSpec {
-                package,
-                version: Some(v),
-            }) => Some((package, v)),
-            Some(PackageSpec { version: None, .. }) => {
-                anyhow::bail!("version is required when manually overriding the package ID");
-            }
-            None => None,
-        };
-
+        let opts = self.opts()?;
         let path = match &self.paths[..] {
             [path] => path,
             paths => {
                 let mut overlay_config = self.common.load_config().await?;
                 let cache = self.common.load_cache().await?;
 
-                let (overlay, tmp_dir) = wasm_pkg_client::local::LocalBackend::temp_dir()?;
+                let (backend, tmp_dir) = LocalConfig::temp_dir()?;
                 let reg_config = RegistryConfig::default().with_default_backend(
                     "local",
                     LocalConfig {
@@ -290,12 +282,14 @@ impl PublishArgs {
                     .merge(reg_config);
 
                 let plan = PublishPlan::from_paths(paths)?;
+                println!("{plan}");
 
                 // TODO(mkatychev): Add support for `PackageLoader::get_release` to handle
                 // querying on a per package, namespace, and registry level
                 // to handle cargo style overlays.
                 // see this reference of `cargo::core::Dependency` usage for local overlays in Cargo:
                 // https://github.com/rust-lang/cargo/blob/d6900d00af2644ea1c0068c5694d9dbe11a3ab39/src/cargo/sources/overlay.rs#L47
+                // this is still needed for `wit::build_wit_dir`
                 for spec in plan.iter() {
                     overlay_config.set_package_registry_override(
                         spec.package.clone(),
@@ -304,37 +298,54 @@ impl PublishArgs {
                 }
                 let client = CachingClient::new(Some(Client::new(overlay_config)), cache);
 
-                let mut lock_file = LockFile::load(true).await?;
+                let mut lock_file = LockFile::load(false).await?;
+                // these are packages that have been successfully pushed to our "tmp_local_publish"
+                let mut validated_packages = Vec::new();
                 for spec in plan.iter() {
                     let path = plan.get_path(&spec.package).unwrap();
-                    let (publish_path, _tmp) = if path.is_dir() {
+                    let data = if path.is_dir() {
                         let _prev_lock_ref = (lock_file.version, lock_file.packages.clone());
-                        let (pkg_ref, _, bytes) =
+                        let (_pkg_ref, _version, bytes) =
                             wit::build_wit_dir(&path, client.clone(), &mut lock_file).await?;
-                        let tmp = temp_wit_file(&pkg_ref, &bytes).await?;
-
-                        (tmp.path().to_path_buf(), Some(tmp))
+                        bytes
                     } else {
-                        (path.to_owned(), None)
+                        let mut file = tokio::fs::OpenOptions::new().read(true).open(path).await?;
+                        let mut buf = Vec::new();
+                        file.read(&mut buf).await?;
+                        buf
                     };
 
-                    let data = tokio::fs::OpenOptions::new()
-                        .read(true)
-                        .open(publish_path)
+                    let source = Box::pin(Cursor::new(data.clone()));
+                    client
+                        .client()?
+                        .publish_release_data(
+                            source,
+                            PublishOpts {
+                                package: None,
+                                registry: Some(local_registry.clone()),
+                                // we want to publish to "tmp_local_publish" regardless of flags passed in
+                                dry_run: false,
+                            },
+                        )
                         .await?;
 
-                    overlay
-                        .publish(
-                            &spec.package,
-                            spec.version.as_ref().unwrap(),
-                            Box::pin(data),
-                            false,
-                        )
-                        .await
-                        .unwrap();
+                    validated_packages.push(data);
+                }
+
+                let client = self.common.get_client().await?;
+                for data in validated_packages {
+                    let source = Box::pin(Cursor::new(data));
+                    let (package, version) = client
+                        .client()?
+                        .publish_release_data(source, opts.clone())
+                        .await?;
+                    if self.dry_run {
+                        println!("Aborting publish due to dry run: {}@{}", package, version);
+                    } else {
+                        println!("Published {}@{}", package, version);
+                    }
                 }
                 return Ok(());
-                // todo!();
             }
         };
 
@@ -371,14 +382,7 @@ impl PublishArgs {
 
         let (package, version) = client
             .client()?
-            .publish_release_file(
-                &publish_path,
-                PublishOpts {
-                    package,
-                    registry: self.registry_args.registry,
-                    dry_run: self.dry_run,
-                },
-            )
+            .publish_release_file(&publish_path, opts)
             .await?;
         if self.dry_run {
             println!("Aborting publish due to dry run: {}@{}", package, version);
@@ -386,6 +390,27 @@ impl PublishArgs {
             println!("Published {}@{}", package, version);
         }
         Ok(())
+    }
+
+    fn opts(&self) -> anyhow::Result<PublishOpts> {
+        let package = match self.package.clone() {
+            Some(_) if self.paths.len() > 2 => {
+                anyhow::bail!("`--package` is currently unsupported when providing more than one path argument");
+            }
+            Some(PackageSpec {
+                package,
+                version: Some(v),
+            }) => Some((package, v)),
+            Some(PackageSpec { version: None, .. }) => {
+                anyhow::bail!("version is required when manually overriding the package ID");
+            }
+            None => None,
+        };
+        Ok(PublishOpts {
+            package,
+            registry: self.registry_args.registry.clone(),
+            dry_run: self.dry_run,
+        })
     }
 }
 

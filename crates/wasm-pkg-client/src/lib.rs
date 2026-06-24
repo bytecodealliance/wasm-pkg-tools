@@ -41,7 +41,6 @@ use std::{collections::HashMap, pin::Pin};
 use anyhow::anyhow;
 use bytes::Bytes;
 use futures_util::Stream;
-pub use publisher::PackagePublisher;
 use tokio::io::AsyncSeekExt;
 use tokio::sync::RwLock;
 use tokio_util::io::SyncIoBridge;
@@ -57,7 +56,8 @@ pub use wasm_pkg_common::{
 use wit_component::DecodedWasm;
 
 use crate::metadata::RegistryMetadataExt;
-use crate::{loader::PackageLoader, local::LocalBackend, oci::OciBackend, warg::WargBackend};
+pub use crate::{loader::PackageLoader, local::LocalBackend, publisher::PackagePublisher};
+use crate::{oci::OciBackend, warg::WargBackend};
 
 pub use release::{Release, VersionInfo};
 
@@ -67,8 +67,14 @@ pub type ContentStream = Pin<Box<dyn Stream<Item = Result<Bytes, Error>> + Send 
 /// An alias for a PublishingSource (generally a file)
 pub type PublishingSource = Pin<Box<dyn ReaderSeeker + Send + Sync + 'static>>;
 
+// Convenience method to convert a byte array into a [`PublishingSource`]
+pub fn source_from_slice<'a>(data: &'a [u8]) -> Pin<Box<dyn ReaderSeeker + Send + Sync + 'a>> {
+    Box::pin(std::io::Cursor::new(data))
+}
+
 /// A supertrait combining tokio's AsyncRead and AsyncSeek.
 pub trait ReaderSeeker: tokio::io::AsyncRead + tokio::io::AsyncSeek {}
+
 impl<T> ReaderSeeker for T where T: tokio::io::AsyncRead + tokio::io::AsyncSeek {}
 
 trait LoaderPublisher: PackageLoader + PackagePublisher {}
@@ -147,20 +153,6 @@ impl Client {
         source.stream_content(package, release).await
     }
 
-    pub async fn publish_release_files(
-        &self,
-        files: &[impl AsRef<Path>],
-        additional_options: PublishOpts,
-    ) -> Result<(PackageRef, Version), Error> {
-        let data = tokio::fs::OpenOptions::new()
-            .read(true)
-            .open(files[0].as_ref())
-            .await?;
-
-        self.publish_release_data(Box::pin(data), additional_options)
-            .await
-    }
-
     /// Publishes the given file as a package release. The package name and version will be read
     /// from the component if not given as part of `additional_options`. Returns the package name
     /// and version of the published release.
@@ -229,6 +221,7 @@ impl Client {
     ) -> Result<Arc<InnerClient>, Error> {
         let is_override = registry_override.is_some();
         let registry = self.resolve_registry(package, registry_override)?;
+        tracing::debug!(?registry, "resolved registry");
 
         if let Some(source) = self.sources.read().await.get(&registry) {
             return Ok(source.clone());
