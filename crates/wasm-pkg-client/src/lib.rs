@@ -101,8 +101,6 @@ pub struct PublishOpts {
 pub struct Client {
     config: Arc<Config>,
     sources: Arc<RwLock<RegistrySources>>,
-    /// Mapping of sources to local registries that will be overlaid on them.
-    overlays: RegistrySources,
 }
 
 impl Client {
@@ -111,7 +109,6 @@ impl Client {
         Self {
             config: Arc::new(config),
             sources: Default::default(),
-            overlays: Default::default(),
         }
     }
 

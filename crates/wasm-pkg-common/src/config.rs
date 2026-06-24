@@ -7,7 +7,11 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    label::Label, metadata::RegistryMetadata, package::PackageRef, registry::Registry, Error,
+    label::Label,
+    metadata::{RegistryMetadata, LOCAL_PROTOCOL},
+    package::PackageRef,
+    registry::Registry,
+    Error,
 };
 
 mod toml;
@@ -296,7 +300,7 @@ impl RegistryConfig {
         backend_config: T,
     ) -> Result<Self, Error> {
         self.default_backend = Some(default_backend.to_string());
-        self.set_backend_config("local", backend_config)?;
+        self.set_backend_config(LOCAL_PROTOCOL, backend_config)?;
         Ok(self)
     }
 

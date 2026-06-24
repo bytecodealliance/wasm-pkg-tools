@@ -4,11 +4,10 @@ use std::sync::Arc;
 use wasm_pkg_common::{
     digest::ContentDigest,
     package::{PackageRef, Version},
-    registry::Registry,
     Error,
 };
 
-use crate::{Client, ContentStream, InnerClient, Release, VersionInfo};
+use crate::{Client, ContentStream, Release, VersionInfo};
 
 mod file;
 

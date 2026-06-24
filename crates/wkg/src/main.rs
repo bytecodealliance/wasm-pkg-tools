@@ -1,7 +1,6 @@
 use std::{
     io::{Cursor, Seek},
     path::PathBuf,
-    pin::Pin,
 };
 
 use anyhow::{ensure, Context};
@@ -12,12 +11,12 @@ use tracing::level_filters::LevelFilter;
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     local::LocalConfig,
-    source_from_slice, Client, PackageLoader, PackagePublisher, PublishOpts, PublishingSource,
-    ReaderSeeker,
+    Client, PackageLoader, PublishOpts,
 };
 use wasm_pkg_common::{
     self,
     config::{Config, RegistryConfig, RegistryMapping},
+    metadata::LOCAL_PROTOCOL,
     package::PackageSpec,
     registry::Registry,
 };
@@ -267,7 +266,7 @@ impl PublishArgs {
 
                 let (local_config, _tmp_dir_handle) = LocalConfig::temp_dir()?;
                 let reg_config =
-                    RegistryConfig::default().with_default_backend("local", local_config)?;
+                    RegistryConfig::default().with_default_backend(LOCAL_PROTOCOL, local_config)?;
                 // Route every package in the plan to the local overlay registry
                 // backed by `reg_config`, so the client used in `build_wit_dir`
                 // resolves these packages against the local overlay instead of

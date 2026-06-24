@@ -13,13 +13,11 @@ use anyhow::{bail, Context, Result};
 use futures_util::TryStreamExt;
 use indexmap::{IndexMap, IndexSet};
 use petgraph::{
-    acyclic::Acyclic,
-    graph::{DiGraph, NodeIndex},
+    graph::NodeIndex,
     Direction,
 };
 use semver::{Comparator, Op, Version, VersionReq};
 use tokio::io::{AsyncRead, AsyncReadExt};
-use tracing::Level;
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     Client, Config, ContentDigest, Error as WasmPkgError, PackageRef, Release, VersionInfo,
@@ -977,12 +975,12 @@ pub fn package_list<'a>(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    
     use std::path::PathBuf;
 
     use super::*;
     use glob::glob;
-    use wasm_pkg_client::PackageRef;
+    
 
     fn transitive_local_paths() -> Vec<PathBuf> {
         let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

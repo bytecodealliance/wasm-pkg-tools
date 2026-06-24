@@ -17,6 +17,7 @@ use tokio_util::io::ReaderStream;
 use wasm_pkg_common::{
     config::RegistryConfig,
     digest::ContentDigest,
+    metadata::LOCAL_PROTOCOL,
     package::{PackageRef, Version},
     Error,
 };
@@ -55,7 +56,7 @@ fn registry_path_context(err: io::Error, path: &Path) -> Error {
 impl LocalBackend {
     pub fn new(registry_config: RegistryConfig) -> Result<Self, Error> {
         let config = registry_config
-            .backend_config::<LocalConfig>("local")?
+            .backend_config::<LocalConfig>(LOCAL_PROTOCOL)?
             .ok_or_else(|| {
                 Error::InvalidConfig(anyhow!("'local' backend requires configuration"))
             })?;
