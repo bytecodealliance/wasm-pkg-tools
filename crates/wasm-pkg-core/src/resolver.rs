@@ -884,7 +884,7 @@ impl PublishPlan {
     /// Returns the set of packages that are ready for publishing (i.e. have no outstanding dependencies).
     ///
     /// These will not be returned in future calls.
-    pub fn take_ready(&mut self) -> BTreeSet<PackageSpec> {
+    pub fn take_ready(&self) -> BTreeSet<PackageSpec> {
         self.dependents
             .nodes_iter()
             // there are no dependents on `self.dendents[id]`
@@ -901,6 +901,11 @@ impl PublishPlan {
     /// Return the path associated with a local package.
     pub fn get_path(&self, pkg: &PackageRef) -> Option<&Path> {
         self.indices.get(pkg).map(|(_, p)| p.as_ref())
+    }
+
+    /// Return the [`NodeIndex`] associated with a local package.
+    pub fn get_node_index(&self, pkg: &PackageRef) -> Option<NodeIndex> {
+        self.indices.get(pkg).map(|(id, _)| *id)
     }
 
     /// Packages confirmed to be available in the registry, potentially allowing additional

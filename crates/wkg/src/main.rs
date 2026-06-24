@@ -1,9 +1,10 @@
 use std::{
+    collections::HashMap,
     io::{Cursor, Seek},
     path::PathBuf,
 };
 
-use anyhow::{ensure, Context};
+use anyhow::{anyhow, ensure, Context};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -129,8 +130,7 @@ impl ConfigArgs {
         let path = if let Some(path) = self.common.config {
             path
         } else {
-            Config::global_config_path()
-                .ok_or(anyhow::anyhow!("global config path not available"))?
+            Config::global_config_path().ok_or(anyhow!("global config path not available"))?
         };
 
         // Check if the parent directory exists, if not create it
@@ -152,7 +152,7 @@ impl ConfigArgs {
         }
 
         if self.edit {
-            let editor = std::env::var("EDITOR").or(Err(anyhow::anyhow!(
+            let editor = std::env::var("EDITOR").or(Err(anyhow!(
                 "failed to read `$EDITOR` environment variable"
             )))?;
 
@@ -175,7 +175,7 @@ impl ConfigArgs {
         let mut config = match tokio::fs::read_to_string(&path).await {
             Ok(contents) => Config::from_toml(&contents)?,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Config::default(),
-            Err(err) => return Err(anyhow::anyhow!("error reading config file: {0}", err)),
+            Err(err) => return Err(anyhow!("error reading config file: {0}", err)),
         };
 
         if let Some(default) = self.default_registry {
@@ -276,7 +276,7 @@ impl PublishArgs {
                     .get_or_insert_registry_config_mut(&local_registry)
                     .merge(reg_config);
 
-                let plan = PublishPlan::from_paths(paths)?;
+                let mut plan = PublishPlan::from_paths(paths)?;
                 println!("{plan}");
 
                 // TODO(mkatychev): Add support for `PackageLoader::get_release` to handle
@@ -295,7 +295,7 @@ impl PublishArgs {
 
                 let mut lock_file = LockFile::load(false).await?;
                 // these are packages that have been successfully pushed to our "tmp_local_publish"
-                let mut validated_packages = Vec::new();
+                let mut validated_packages = HashMap::new();
                 for spec in plan.iter() {
                     let path = plan.get_path(&spec.package).unwrap();
                     let data = if path.is_dir() {
@@ -324,21 +324,31 @@ impl PublishArgs {
                         )
                         .await?;
 
-                    validated_packages.push(data);
+                    let id = plan
+                        .get_node_index(&spec.package)
+                        .expect("missing node index");
+                    validated_packages.insert(id, data);
                 }
 
                 let client = self.common.get_client().await?;
-                for data in validated_packages {
-                    let source = Box::pin(Cursor::new(data));
-                    let (package, version) = client
-                        .client()?
-                        .publish_release_data(source, opts.clone())
-                        .await?;
-                    if self.dry_run {
-                        println!("Aborting publish due to dry run: {}@{}", package, version);
-                    } else {
-                        println!("Published {}@{}", package, version);
+                while !plan.is_empty() {
+                    let ready_for_publish = plan.take_ready();
+                    for spec in &ready_for_publish {
+                        let id = plan
+                            .get_node_index(&spec.package)
+                            .expect("missing node index");
+                        let source = Box::pin(Cursor::new(validated_packages[&id].clone()));
+                        let (package, version) = client
+                            .client()?
+                            .publish_release_data(source, opts.clone())
+                            .await?;
+                        if self.dry_run {
+                            println!("Aborting publish due to dry run: {}@{}", package, version);
+                        } else {
+                            println!("Published {}@{}", package, version);
+                        }
                     }
+                    plan.mark_confirmed(ready_for_publish);
                 }
                 return Ok(());
             }
@@ -357,7 +367,7 @@ impl PublishArgs {
             // There is no way to check if we are in a git repository unlike `cargo publish --allow-dirty` so
             // check against previous values.
             if lock_file != prev_lock_ref && !self.dry_run {
-                return Err(anyhow::anyhow!(
+                return Err(anyhow!(
                     "wkg.lock would be updated during publish, aborting"
                 ))
                 .with_context(|| {
