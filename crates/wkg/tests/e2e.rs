@@ -112,8 +112,13 @@ async fn publish_multiple_transitive_local_packages() {
     mapped.to_file(&config_path).await.expect("write config");
 
     // pass all fixture dirs to a single `wkg publish` invocation
+    let mut dirs: Vec<PathBuf> = namespaces
+        .iter()
+        .map(|name| fixture_root.join(name).join("wit"))
+        .collect();
     // TODO use glob suchas in `wasm_pkgs_core::resolver::tests::transitive_local_paths`
-    let dirs = namespaces.map(|name| fixture_root.join(name).join("wit"));
+    dirs.push(fixture_root.join("example-c/wit/nested"));
+
     let mut publish = tokio::process::Command::new(env!("CARGO_BIN_EXE_wkg"));
     publish
         .current_dir(temp_dir.path())
@@ -133,6 +138,7 @@ async fn publish_multiple_transitive_local_packages() {
         "example-a:foo",
         "example-b:bar",
         "example-c:baz",
+        "example-c:nested",
         "example-d:foo",
     ] {
         let pkg = name.parse().unwrap();

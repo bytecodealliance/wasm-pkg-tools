@@ -120,7 +120,9 @@ pub async fn build_wit_dir(
 ) -> anyhow::Result<(PackageRef, Option<Version>, Vec<u8>)> {
     check_dir(&dir).await?;
     let wkg_config = wasm_pkg_core::config::Config::load().await?;
-    let result = wit::build_package(&wkg_config, dir, lock_file, client).await?;
+    let result = wit::build_package(&wkg_config, dir.as_ref(), lock_file, client)
+        .await
+        .with_context(|| format!("failed to build WIT directory `{}`", dir.as_ref().display()))?;
     Ok(result)
 }
 
