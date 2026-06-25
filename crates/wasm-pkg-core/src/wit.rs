@@ -70,7 +70,7 @@ pub async fn build_package(
         .await
         .map_err(|e| {
             if config.has_override(wit_dir.as_ref()) {
-                e.context(format!("hint: override present for WIT directory"))
+                e.context("hint: override present for WIT directory".to_string())
             } else {
                 e
             }

@@ -12,12 +12,7 @@ use std::{
 use anyhow::{bail, Context, Result};
 use futures_util::TryStreamExt;
 use indexmap::{IndexMap, IndexSet};
-use petgraph::{
-    acyclic::Acyclic,
-    graph::NodeIndex,
-    stable_graph::StableDiGraph,
-    Direction,
-};
+use petgraph::{acyclic::Acyclic, graph::NodeIndex, stable_graph::StableDiGraph, Direction};
 use semver::{Comparator, Op, Version, VersionReq};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use wasm_pkg_client::{

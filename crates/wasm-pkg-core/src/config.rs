@@ -64,10 +64,8 @@ impl Config {
         let path = path.as_ref().canonicalize().ok();
         self.overrides
             .iter()
-            .map(|map| map.iter())
-            .flatten()
-            .filter(|(_, o)| o.path.as_ref().map(|p| p.canonicalize().ok()).flatten() == path)
-            .next()
+            .flat_map(|map| map.iter())
+            .find(|(_, o)| o.path.as_ref().and_then(|p| p.canonicalize().ok()) == path)
             .is_some()
     }
 }
