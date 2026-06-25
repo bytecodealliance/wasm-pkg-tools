@@ -5,6 +5,7 @@
 use std::{
     io,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use anyhow::anyhow;
@@ -32,16 +33,24 @@ use crate::{
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LocalConfig {
     pub root: PathBuf,
+    // NOTE: set by [`Self::temp_dir`] so callers don't need to hold a separate
+    // `TempDir` handle.
+    #[serde(skip)]
+    #[doc(hidden)]
+    _temp_handle: Arc<Option<TempDir>>,
 }
 
 impl LocalConfig {
-    /// Creates a [`Self`] using a generated temporary directory. Upon dropping the [`TempDir`] handle,
-    /// the temporary directory will be deleted.
-    pub fn temp_dir() -> Result<(Self, TempDir), Error> {
+    /// Creates a [`Self`] with a new temporary directory.
+    /// The returned config owns the directory and removes the config upon drop.
+    pub fn temp_dir() -> Result<Self, Error> {
         let handle = TempDir::new()?;
-        let root = handle.path().to_owned();
-        tracing::debug!(registry_dir=%root.display(), "created temporary directory");
-        Ok((Self { root }, handle))
+        let root = handle.path().to_path_buf();
+        tracing::debug!(registry_dir = %root.display(), "created temporary directory");
+        Ok(Self {
+            root,
+            _temp_handle: Arc::new(Some(handle)),
+        })
     }
 }
 
