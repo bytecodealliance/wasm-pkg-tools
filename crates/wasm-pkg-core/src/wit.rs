@@ -207,18 +207,25 @@ pub fn get_local_dependencies(
         // TODO handle version matching for dependencies
         for (dep, _version) in deps {
             if let Some(&(dep, _)) = indices.get(&dep) {
-                let (pkg, _) = indices[&spec.package];
+                let pkg = &spec.package;
+                let (id, _) = indices[pkg];
                 // // pkg <=DependsOn= dep
                 graph
-                    .try_update_edge(pkg, dep, Direction::Incoming)
-                    .map_err(|e| match e {
-                        petgraph::acyclic::AcyclicEdgeError::Cycle(cycle) => {
-                            anyhow::anyhow!("cyclical dependency detected")
-                                .context(format!("package {}", graph[cycle.node_id()]))
-                                .context(format!("package {}", graph[pkg]))
+                    .try_update_edge(id, dep, Direction::Incoming)
+                    .map_err(|e| {
+                        match e {
+                            petgraph::acyclic::AcyclicEdgeError::Cycle(cycle) => {
+                                anyhow::anyhow!("cyclical dependency detected")
+                                    .context(format!("other package: {}", graph[cycle.node_id()]))
+                            }
+                            petgraph::acyclic::AcyclicEdgeError::SelfLoop => {
+                                anyhow::anyhow!("Package is declaring self as a dependency.")
+                            }
+                            petgraph::acyclic::AcyclicEdgeError::InvalidEdge => anyhow::anyhow!(
+                                "Could not successfully add the edge to the underlying graph."
+                            ),
                         }
-                        petgraph::acyclic::AcyclicEdgeError::SelfLoop => todo!(),
-                        petgraph::acyclic::AcyclicEdgeError::InvalidEdge => todo!(),
+                        .context(format!("package: {pkg}"))
                     })?;
             }
         }
