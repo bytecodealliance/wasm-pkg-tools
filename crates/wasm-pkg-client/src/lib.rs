@@ -39,7 +39,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{collections::HashMap, pin::Pin};
 
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use bytes::Bytes;
 use futures_util::Stream;
 use tokio::io::AsyncSeekExt;

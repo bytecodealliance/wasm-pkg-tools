@@ -14,7 +14,8 @@ use futures_util::TryStreamExt;
 use indexmap::{IndexMap, IndexSet};
 use petgraph::{
     acyclic::Acyclic,
-    graph::{DiGraph, NodeIndex},
+    graph::NodeIndex,
+    stable_graph::StableDiGraph,
     Direction,
 };
 use semver::{Comparator, Op, Version, VersionReq};
@@ -845,7 +846,7 @@ fn visit<'a>(
 }
 
 /// Graph of publishable packages with the [`petgraph::Direction`] edges describing the dependency direction.
-pub(crate) type DependencyGraph<N> = Acyclic<DiGraph<N, petgraph::Direction>>;
+pub(crate) type DependencyGraph<N> = Acyclic<StableDiGraph<N, petgraph::Direction>>;
 
 /// Mapping of [`PackageRef`]s to the respective index inside the dependency graph.
 pub type LocalPackageIndex = HashMap<PackageRef, (NodeIndex, PathBuf)>;
@@ -910,6 +911,7 @@ impl PublishPlan {
     ///
     /// These will not be returned in future calls.
     pub fn take_ready(&self) -> BTreeSet<PackageSpec> {
+        // dbg!(&self.dependents);
         self.dependents
             .nodes_iter()
             // there are no dependents on `self.dependents[id]`

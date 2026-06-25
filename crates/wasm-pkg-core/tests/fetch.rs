@@ -90,6 +90,7 @@ async fn test_transitive_local(#[values(OutputType::Wasm, OutputType::Wit)] outp
     // [overrides]
     // "example-b:bar" = { "path" = "../example-b/wit" }
     // "example-c:baz" = { "path" = "../example-c/wit" }
+    // "example-c:nested" = { "path" = "../example-c/wit/nested" }
     // ```
     let config = Config {
         overrides: Some(HashMap::from([
@@ -107,18 +108,22 @@ async fn test_transitive_local(#[values(OutputType::Wasm, OutputType::Wit)] outp
                     version: None,
                 },
             ),
+            (
+                "example-c:nested".to_string(),
+                Override {
+                    path: Some(fixture_path.join("example-c").join("wit/nested")),
+                    version: None,
+                },
+            ),
         ])),
         ..Default::default()
     };
     let (_temp_cache, client) = common::get_client().await.unwrap();
 
-    assert!(
-        // If overrides didn't properly resolve, this will fail
-        wit::fetch_dependencies(&config, project_path.join("wit"), &mut lock, client, output)
-            .await
-            .is_ok(),
-        "Should be able to fetch the dependencies"
-    );
+    // If overrides didn't properly resolve, this will fail
+    wit::fetch_dependencies(&config, project_path.join("wit"), &mut lock, client, output)
+        .await
+        .unwrap_or_else(|e| panic!("Should be able to fetch the dependencies: {e:#}"));
 
     // Ensure that the deps directory contains the correct dependencies
     let mut deps_dir = tokio::fs::read_dir(project_path.join("wit").join("deps"))
@@ -128,9 +133,10 @@ async fn test_transitive_local(#[values(OutputType::Wasm, OutputType::Wit)] outp
     while let Ok(Some(entry)) = deps_dir.next_entry().await {
         deps.push(entry.file_name().to_string_lossy().to_string());
     }
-    assert_eq!(deps.len(), 2);
+    assert_eq!(deps.len(), 3);
     assert!(deps.contains(&"example-b-bar-0.1.0".to_string()));
     assert!(deps.contains(&"example-c-baz-0.1.0".to_string()));
+    assert!(deps.contains(&"example-c-nested-0.1.0".to_string()));
 
     // All dependencies are local, so the lock file should be empty
     assert_eq!(

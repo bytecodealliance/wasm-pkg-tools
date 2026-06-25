@@ -66,11 +66,7 @@ impl Config {
             .iter()
             .map(|map| map.iter())
             .flatten()
-            .filter(|(_, o)| {
-                dbg!(o.path.as_deref());
-                dbg!(path.as_ref());
-                o.path.as_ref().map(|p| p.canonicalize().ok()).flatten() == path
-            })
+            .filter(|(_, o)| o.path.as_ref().map(|p| p.canonicalize().ok()).flatten() == path)
             .next()
             .is_some()
     }
