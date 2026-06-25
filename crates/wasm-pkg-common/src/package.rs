@@ -87,7 +87,7 @@ pub struct PackageSpec {
 
 impl PartialEq<str> for PackageSpec {
     fn eq(&self, other: &str) -> bool {
-        format!("{self}") == other
+        self.to_string() == other
     }
 }
 
