@@ -335,7 +335,7 @@ impl PublishArgs {
 
                 let client = self.common.get_client().await?;
                 // 2. Publish our packages in "waves" to the actual registries ensuring all
-                //    possible dependency free pacakges are published in the same group
+                //    possible dependency free packages are published in the same group
                 while !plan.is_empty() {
                     let ready_for_publish = plan.take_ready();
                     for spec in &ready_for_publish {

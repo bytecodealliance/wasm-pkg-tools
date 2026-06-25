@@ -887,7 +887,7 @@ impl PublishPlan {
     pub fn take_ready(&self) -> BTreeSet<PackageSpec> {
         self.dependents
             .nodes_iter()
-            // there are no dependents on `self.dendents[id]`
+            // there are no dependents on `self.dependents[id]`
             .filter(|id| {
                 self.dependents
                     .neighbors_directed(*id, Direction::Incoming)
