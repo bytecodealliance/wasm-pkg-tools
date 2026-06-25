@@ -61,12 +61,20 @@ pub async fn build_package(
 ) -> Result<(PackageRef, Option<Version>, Vec<u8>)> {
     let dependencies = resolve_dependencies(config, &wit_dir, Some(lock_file), client)
         .await
-        .with_context(|| format!("wit_dir: {}", wit_dir.as_ref().display()))
         .context("Unable to resolve dependencies")?;
 
     lock_file.update_dependencies(&dependencies);
 
-    let (resolve, pkg_id) = dependencies.generate_resolve(wit_dir).await?;
+    let (resolve, pkg_id) = dependencies
+        .generate_resolve(wit_dir.as_ref())
+        .await
+        .map_err(|e| {
+            if config.has_override(wit_dir.as_ref()) {
+                e.context(format!("hint: override present for WIT directory"))
+            } else {
+                e
+            }
+        })?;
     let bytes = wit_component::encode(&resolve, pkg_id)?;
 
     let pkg = &resolve.packages[pkg_id];

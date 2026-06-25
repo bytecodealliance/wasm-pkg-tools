@@ -58,6 +58,22 @@ impl Config {
             .await
             .context("unable to write config to path")
     }
+
+    /// Returns a matching override name and value for the input path
+    pub(crate) fn has_override(&self, path: impl AsRef<Path>) -> bool {
+        let path = path.as_ref().canonicalize().ok();
+        self.overrides
+            .iter()
+            .map(|map| map.iter())
+            .flatten()
+            .filter(|(_, o)| {
+                dbg!(o.path.as_deref());
+                dbg!(path.as_ref());
+                o.path.as_ref().map(|p| p.canonicalize().ok()).flatten() == path
+            })
+            .next()
+            .is_some()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]

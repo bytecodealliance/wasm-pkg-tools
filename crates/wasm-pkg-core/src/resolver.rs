@@ -863,7 +863,25 @@ impl PublishPlan {
     /// Generate [`Self`] from a list of WIT package paths (files or directories).
     pub fn from_paths(paths: &[impl AsRef<Path>]) -> Result<Self> {
         let (graph, indices) = get_local_dependencies(paths)?;
+        {
+            // collection of local packages that have no version
+            let missing_version = graph
+                .nodes_iter()
+                .map(|f| graph[f].clone())
+                .filter(|pkg| pkg.version.is_none())
+                .collect::<Vec<_>>();
+            if !missing_version.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "Unable to publish packages without a version specified"
+                )
+                .context(format!(
+                    "packages: {}",
+                    package_list(missing_version.iter(), None)
+                )));
+            }
+        }
         let mut dependents = graph.into_inner();
+
         dependents.reverse();
         // graph was already found to be acyclic
         let dependents = DependencyGraph::try_from(dependents).unwrap();
@@ -994,12 +1012,17 @@ mod tests {
     use glob::glob;
 
     fn transitive_local_paths() -> Vec<PathBuf> {
-        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/transitive-local/*/wit/");
-        glob(fixtures.to_str().unwrap())
+        let fixtures_root =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/transitive-local");
+        // pass all fixture dirs to a single `wkg publish` invocation
+        let mut paths: Vec<PathBuf> = glob(fixtures_root.join("**/*.wit").to_str().unwrap())
             .unwrap()
             .map(|p| p.expect("glob path error"))
-            .collect()
+            .map(|p| p.parent().unwrap().to_path_buf())
+            .collect();
+        paths.sort();
+        paths.dedup();
+        paths
     }
 
     #[test]
@@ -1008,7 +1031,7 @@ mod tests {
         let plan = PublishPlan::from_paths(&paths).unwrap();
         assert_eq!(
             plan.iter().count(),
-            4,
+            5,
             "unexpected package count\npackages found: {}",
             package_list(plan.iter(), None)
         );
@@ -1021,7 +1044,14 @@ mod tests {
         let mut ready_for_publish = plan.take_ready();
         assert_eq!(
             ready_for_publish.iter().collect::<Vec<_>>(),
-            ["example-c:baz@0.1.0", "example-d:foo@0.1.0"],
+            ["example-c:nested@0.1.0", "example-d:foo@0.1.0",],
+        );
+        plan.mark_confirmed(ready_for_publish);
+
+        ready_for_publish = plan.take_ready();
+        assert_eq!(
+            ready_for_publish.iter().collect::<Vec<_>>(),
+            ["example-c:baz@0.1.0"],
         );
         plan.mark_confirmed(ready_for_publish);
 

@@ -39,7 +39,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{collections::HashMap, pin::Pin};
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use bytes::Bytes;
 use futures_util::Stream;
 use tokio::io::AsyncSeekExt;
@@ -353,8 +353,9 @@ fn resolve_package(
         })?;
 
     let version = version.ok_or_else(|| {
-        crate::Error::InvalidComponent(anyhow::anyhow!(
-            "component package version not found in the Wasm binary\n\
+        crate::Error::InvalidComponent(
+            anyhow::anyhow!(
+                "component package version not found in the Wasm binary\n\
             \n\
             The Wasm file was built without a version in the WIT `package` statement.\n\
             Add a version to the `package` statement in your .wit file, e.g.:\n\
@@ -364,7 +365,9 @@ fn resolve_package(
             Alternatively, specify the package and version explicitly with the --package flag:\n\
             \n\
             \twkg publish <file> --package <namespace>:<name>@<version>"
-        ))
+            )
+            .context(format!("package: {package}")),
+        )
     })?;
     Ok((data.into_inner(), package, version))
 }
