@@ -12,14 +12,18 @@ use std::{
 use anyhow::{bail, Context, Result};
 use futures_util::TryStreamExt;
 use indexmap::{IndexMap, IndexSet};
-use petgraph::{graph::NodeIndex, Direction};
+use petgraph::{
+    acyclic::Acyclic,
+    graph::{DiGraph, NodeIndex},
+    Direction,
+};
 use semver::{Comparator, Op, Version, VersionReq};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     Client, Config, ContentDigest, Error as WasmPkgError, PackageRef, Release, VersionInfo,
 };
-use wasm_pkg_common::{package::PackageSpec, registry::DependencyGraph};
+use wasm_pkg_common::package::PackageSpec;
 use wit_component::DecodedWasm;
 use wit_parser::{PackageId, PackageName, Resolve, UnresolvedPackageGroup, WorldId};
 
@@ -839,6 +843,9 @@ fn visit<'a>(
 
     Ok(())
 }
+
+/// Graph of publishable packages with the [`petgraph::Direction`] edges describing the dependency direction.
+pub(crate) type DependencyGraph<N> = Acyclic<DiGraph<N, petgraph::Direction>>;
 
 /// Mapping of [`PackageRef`]s to the respective index inside the dependency graph.
 pub type LocalPackageIndex = HashMap<PackageRef, (NodeIndex, PathBuf)>;

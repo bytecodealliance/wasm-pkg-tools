@@ -100,11 +100,7 @@ async fn publish_multiple_transitive_local_packages() {
     // copy the transitive-local fixtures from wasm-pkg-core into a temp dir
     let temp_dir = tempfile::tempdir().expect("Failed to create tempdir");
     let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("wasm-pkg-core")
-        .join("tests")
-        .join("fixtures")
-        .join("transitive-local");
+        .join("../wasm-pkg-core/tests/fixtures/transitive-local");
     let fixture_root = temp_dir.path().join("transitive-local");
     copy_dir(&src_root, &fixture_root).await.unwrap();
 

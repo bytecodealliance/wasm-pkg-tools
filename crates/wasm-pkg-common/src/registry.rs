@@ -1,5 +1,4 @@
 use http::uri::Authority;
-use petgraph::{acyclic::Acyclic, graph::DiGraph};
 use serde::{Deserialize, Serialize};
 
 use crate::Error;
@@ -56,6 +55,3 @@ impl TryFrom<String> for Registry {
         Ok(Self(value.try_into()?))
     }
 }
-
-/// Graph of publishable packages with the [`petgraph::Direction`] edges describing the dependency direction.
-pub type DependencyGraph<N> = Acyclic<DiGraph<N, petgraph::Direction>>;

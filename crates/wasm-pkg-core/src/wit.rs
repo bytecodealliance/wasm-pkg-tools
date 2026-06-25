@@ -14,7 +14,7 @@ use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     PackageRef,
 };
-use wasm_pkg_common::{package::PackageSpec, registry::DependencyGraph};
+use wasm_pkg_common::package::PackageSpec;
 use wit_component::WitPrinter;
 use wit_parser::{PackageId, PackageName, Resolve};
 
@@ -22,8 +22,9 @@ use crate::{
     config::Config,
     lock::LockFile,
     resolver::{
-        DecodedDependency, Dependency, DependencyResolution, DependencyResolutionMap,
-        DependencyResolver, LocalPackageIndex, LocalResolution, RegistryPackage,
+        DecodedDependency, Dependency, DependencyGraph, DependencyResolution,
+        DependencyResolutionMap, DependencyResolver, LocalPackageIndex, LocalResolution,
+        RegistryPackage,
     },
 };
 
