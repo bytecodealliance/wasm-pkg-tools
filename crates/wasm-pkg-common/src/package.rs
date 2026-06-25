@@ -85,18 +85,6 @@ pub struct PackageSpec {
     pub version: Option<Version>,
 }
 
-impl PackageSpec {
-    // Returns a copy of the associated package reference.
-    pub fn package(&self) -> PackageRef {
-        self.package.clone()
-    }
-
-    // Returns a copy of the attached semver [`Version`] object if it exists.
-    pub fn version(&self) -> Option<Version> {
-        self.version.clone()
-    }
-}
-
 impl PartialEq<str> for PackageSpec {
     fn eq(&self, other: &str) -> bool {
         format!("{self}") == other

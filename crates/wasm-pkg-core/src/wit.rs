@@ -197,7 +197,7 @@ pub fn get_local_dependencies(
     for ((spec, path), _) in &pkg_trees {
         let id = graph.add_node(spec.clone());
         if indices
-            .insert(spec.package(), (id, path.as_ref().to_owned()))
+            .insert(spec.package.clone(), (id, path.as_ref().to_owned()))
             .is_some()
         {
             anyhow::bail!("duplicate references to package detected: {spec}");
