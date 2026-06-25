@@ -257,7 +257,7 @@ struct PublishArgs {
 
 impl PublishArgs {
     pub async fn run(self) -> anyhow::Result<()> {
-        let opts = self.opts()?;
+        let publish_opts = self.publish_opts()?;
         let path = match &self.paths[..] {
             [path] => path,
             paths => {
@@ -345,7 +345,7 @@ impl PublishArgs {
                         let source = Box::pin(Cursor::new(validated_packages[&id].clone()));
                         let (package, version) = client
                             .client()?
-                            .publish_release_data(source, opts.clone())
+                            .publish_release_data(source, publish_opts.clone())
                             .await?;
                         if self.dry_run {
                             println!("Aborting publish due to dry run: {}@{}", package, version);
@@ -392,7 +392,7 @@ impl PublishArgs {
 
         let (package, version) = client
             .client()?
-            .publish_release_file(&publish_path, opts)
+            .publish_release_file(&publish_path, publish_opts)
             .await?;
         if self.dry_run {
             println!("Aborting publish due to dry run: {}@{}", package, version);
