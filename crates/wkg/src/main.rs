@@ -402,7 +402,7 @@ impl PublishArgs {
         Ok(())
     }
 
-    fn opts(&self) -> anyhow::Result<PublishOpts> {
+    fn publish_opts(&self) -> anyhow::Result<PublishOpts> {
         let package = match self.package.clone() {
             Some(_) if self.paths.len() > 2 => {
                 anyhow::bail!("`--package` is currently unsupported when providing more than one path argument");
