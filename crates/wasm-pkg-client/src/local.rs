@@ -33,8 +33,7 @@ use crate::{
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LocalConfig {
     pub root: PathBuf,
-    // NOTE: set by [`Self::temp_dir`] so callers don't need to hold a separate
-    // `TempDir` handle.
+    // NOTE: set by [`Self::temp_dir`] to avoid holding onto a separate `TempDir` handle.
     #[serde(skip)]
     #[doc(hidden)]
     _temp_handle: Arc<Option<TempDir>>,
