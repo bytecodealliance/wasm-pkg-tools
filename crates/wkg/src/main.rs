@@ -378,7 +378,7 @@ impl PublishArgs {
                 .with_context(|| {
                     format!(
                         "Run `wkg wit build {}` before attempting to publish",
-                        path.to_string_lossy()
+                        path.display()
                     )
                 });
             }
