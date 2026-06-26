@@ -1,13 +1,13 @@
 use std::{io::Seek, path::PathBuf};
 
-use anyhow::{Context, ensure};
+use anyhow::{ensure, Context};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
 use tokio::io::AsyncWriteExt;
 use tracing::level_filters::LevelFilter;
 use wasm_pkg_client::{
-    Client, PublishOpts,
     caching::{CachingClient, FileCache},
+    Client, PublishOpts,
 };
 use wasm_pkg_common::{
     self,
