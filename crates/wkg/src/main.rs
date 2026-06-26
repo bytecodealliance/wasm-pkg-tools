@@ -1,13 +1,13 @@
 use std::{io::Seek, path::PathBuf};
 
-use anyhow::{ensure, Context};
+use anyhow::{Context, ensure};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
 use tokio::io::AsyncWriteExt;
 use tracing::level_filters::LevelFilter;
 use wasm_pkg_client::{
-    caching::{CachingClient, FileCache},
     Client, PublishOpts,
+    caching::{CachingClient, FileCache},
 };
 use wasm_pkg_common::{
     self,
@@ -358,28 +358,34 @@ impl GetArgs {
         tracing::debug!(?release, "Fetched release details");
 
         let output_trailing_slash = self.output.as_os_str().to_string_lossy().ends_with('/');
-        let parent_dir = if output_trailing_slash {
-            let parent_dir = self.output.as_path();
-            if !tokio::fs::try_exists(parent_dir).await? {
-                tokio::fs::create_dir_all(parent_dir).await
-                    .context("Failed to create output dir")?
+        let parent_dir_path = if output_trailing_slash {
+            // TODO(fix): TOCTOU on directory, requires platform open dir flags
+            let parent_dir_path = self.output.as_path();
+            if !tokio::fs::try_exists(parent_dir_path).await? {
+                tokio::fs::create_dir_all(parent_dir_path)
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "failed to create output dir @ [{}]",
+                            parent_dir_path.display()
+                        )
+                    })?;
             }
-            parent_dir
+            parent_dir_path
         } else {
             self.output
                 .parent()
-                .context("Failed to resolve output parent dir")?
+                .context("Failed to resolve non-trailing-slash output parent dir")?
         };
 
-        if !parent_dir.exists() {
-            anyhow::bail!(
-                "output directory {:?} does not exist; create it first or choose a different path",
-                parent_dir
-            );
-        }
+        ensure!(
+            parent_dir_path.exists(),
+            "output directory {:?} does not exist; create it first or choose a different path",
+            parent_dir_path
+        );
 
         let (tmp_file, tmp_path) =
-            tempfile::NamedTempFile::with_prefix_in(".wkg-get", parent_dir)?.into_parts();
+            tempfile::NamedTempFile::with_prefix_in(".wkg-get", parent_dir_path)?.into_parts();
         tracing::debug!(?tmp_path, "Created temporary file");
 
         let mut content_stream = client.get_content(&package, &release).await?;
