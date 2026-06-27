@@ -192,7 +192,7 @@ pub fn get_packages(
 ///
 /// The function will return an error if there are duplicate references to the same package or if
 /// there are cyclical dependencies between packages.
-pub fn get_local_dependencies(
+pub(crate) fn get_local_dependencies(
     paths: &[impl AsRef<Path>],
 ) -> Result<(DependencyGraph<PackageSpec>, LocalPackageIndex)> {
     let pkg_trees = paths

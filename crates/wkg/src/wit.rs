@@ -106,7 +106,7 @@ impl BuildArgs {
         tokio::fs::write(&output_path, bytes).await?;
         // Now write out the lock file since everything else succeeded
         lock_file.write().await?;
-        println!("WIT package written to {}", output_path.display());
+        eprintln!("WIT package written to {}", output_path.display());
         Ok(())
     }
 }

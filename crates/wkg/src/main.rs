@@ -184,14 +184,14 @@ impl ConfigArgs {
 
             // write config file
             config.to_file(&path).await?;
-            println!("Updated config file: {path}", path = path.display());
+            eprintln!("Updated config file: {path}", path = path.display());
         }
 
         // print config
         if let Some(registry) = config.default_registry() {
-            println!("Default registry: {}", registry);
+            eprintln!("Default registry: {}", registry);
         } else {
-            println!("Default registry is not set");
+            eprintln!("Default registry is not set");
         }
 
         Ok(())
@@ -277,7 +277,7 @@ impl PublishArgs {
                     .merge(reg_config);
 
                 let mut plan = PublishPlan::from_paths(paths)?;
-                println!("{plan}");
+                eprintln!("{plan}");
 
                 // TODO(mkatychev): Add support for `PackageLoader::get_release` to handle
                 // querying on a per package, namespace, and registry level
@@ -348,9 +348,9 @@ impl PublishArgs {
                             .publish_release_data(source, publish_opts.clone())
                             .await?;
                         if self.dry_run {
-                            println!("Aborting publish due to dry run: {}@{}", package, version);
+                            eprintln!("Aborting publish due to dry run: {}@{}", package, version);
                         } else {
-                            println!("Published {}@{}", package, version);
+                            eprintln!("Published {}@{}", package, version);
                         }
                     }
                     plan.mark_confirmed(ready_for_publish);
@@ -395,9 +395,9 @@ impl PublishArgs {
             .publish_release_file(&publish_path, publish_opts)
             .await?;
         if self.dry_run {
-            println!("Aborting publish due to dry run: {}@{}", package, version);
+            eprintln!("Aborting publish due to dry run: {}@{}", package, version);
         } else {
-            println!("Published {}@{}", package, version);
+            eprintln!("Published {}@{}", package, version);
         }
         Ok(())
     }
@@ -449,7 +449,7 @@ impl GetArgs {
         let version = match version {
             Some(ver) => ver,
             None => {
-                println!("No version specified; fetching version list...");
+                eprintln!("No version specified; fetching version list...");
                 let versions = client.list_all_versions(&package).await?;
                 tracing::trace!(?versions, "Fetched version list");
                 versions
@@ -460,7 +460,7 @@ impl GetArgs {
             }
         };
 
-        println!("Getting {package}@{version}...");
+        eprintln!("Getting {package}@{version}...");
         let release = client
             .get_release(&package, &version)
             .await
@@ -501,7 +501,7 @@ impl GetArgs {
                 "wasm" => Format::Wasm,
                 "wit" => Format::Wit,
                 _ => {
-                    println!(
+                    eprintln!(
                         "Couldn't infer output format from file name {:?}",
                         self.output.file_name().unwrap_or_default()
                     );
@@ -528,7 +528,7 @@ impl GetArgs {
                     if format == Format::Wit {
                         return Err(err);
                     }
-                    println!("Failed to detect package content type: {err:#}");
+                    eprintln!("Failed to detect package content type: {err:#}");
                     None
                 }
             }
@@ -574,7 +574,7 @@ impl GetArgs {
                     .persist(&output_path)
                     .with_context(|| format!("Failed to persist WASM to {output_path:?}"))?
             }
-            println!("Wrote '{}'", output_path.display());
+            eprintln!("Wrote '{}'", output_path.display());
         }
         Ok(())
     }
