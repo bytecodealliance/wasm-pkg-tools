@@ -87,7 +87,8 @@ pub struct PackageSpec {
 
 impl PartialEq<str> for PackageSpec {
     fn eq(&self, other: &str) -> bool {
-        self.to_string() == other
+        // clippy --fix will create a recursive callsite here if `self.to_string()` is used instead
+        format!("{self}") == other
     }
 }
 
