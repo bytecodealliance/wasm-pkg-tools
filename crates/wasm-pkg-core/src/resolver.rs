@@ -841,7 +841,7 @@ fn visit<'a>(
 }
 
 /// Graph of publishable packages with the [`petgraph::Direction`] edges describing the dependency direction.
-pub(crate) type DependencyGraph<N> = Acyclic<StableDiGraph<N, petgraph::Direction>>;
+pub type DependencyGraph<N> = Acyclic<StableDiGraph<N, petgraph::Direction>>;
 
 /// Mapping of [`PackageRef`]s to the respective index inside the dependency graph.
 pub type LocalPackageIndex = HashMap<PackageRef, (NodeIndex, PathBuf)>;
@@ -906,7 +906,6 @@ impl PublishPlan {
     ///
     /// These will not be returned in future calls.
     pub fn take_ready(&self) -> BTreeSet<PackageSpec> {
-        // dbg!(&self.dependents);
         self.dependents
             .nodes_iter()
             // there are no dependents on `self.dependents[id]`
@@ -982,7 +981,7 @@ impl std::fmt::Display for PublishPlan {
 /// e.g. "foo:a@0.1.0, bar:b@0.2.0, and baz:c@0.3.0".
 ///
 /// Note: the final separator (e.g. "and" in the previous example) can be chosen.
-pub fn package_list<'a>(
+fn package_list<'a>(
     pkgs: impl IntoIterator<Item = &'a PackageSpec>,
     final_sep: Option<&str>,
 ) -> String {

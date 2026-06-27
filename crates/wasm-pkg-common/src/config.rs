@@ -54,14 +54,6 @@ impl RegistryMapping {
             RegistryMapping::Custom(custom) => &custom.registry,
         }
     }
-
-    /// Returns the inner [`RegistryMetadata`] if `Self` holds a [`CustomConfig`].
-    pub fn metadata(&self) -> Option<&RegistryMetadata> {
-        if let Self::Custom(config) = self {
-            return Some(&config.metadata);
-        }
-        None
-    }
 }
 
 /// Custom registry configuration
@@ -215,7 +207,7 @@ impl Config {
         self.fallback_namespace_registries.get(namespace)
     }
 
-    pub fn resolve_mapping(&self, package: &PackageRef) -> Option<&RegistryMapping> {
+    fn resolve_mapping(&self, package: &PackageRef) -> Option<&RegistryMapping> {
         let namespace = package.namespace();
         // look in `self.package_registry_overrides`
         // then in `self.namespace_registries`
