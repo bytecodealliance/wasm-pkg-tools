@@ -36,7 +36,7 @@ pub struct LocalConfig {
     // NOTE: set by [`Self::temp_dir`] to avoid holding onto a separate `TempDir` handle.
     #[serde(skip)]
     #[doc(hidden)]
-    _temp_handle: Arc<Option<TempDir>>,
+    _temp_handle: Option<Arc<TempDir>>,
 }
 
 impl LocalConfig {
@@ -48,7 +48,7 @@ impl LocalConfig {
         tracing::debug!(registry_dir = %root.display(), "created temporary directory");
         Ok(Self {
             root,
-            _temp_handle: Arc::new(Some(handle)),
+            _temp_handle: Some(Arc::new(handle)),
         })
     }
 }
