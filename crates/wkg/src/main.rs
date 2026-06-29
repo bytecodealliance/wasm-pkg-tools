@@ -337,12 +337,19 @@ impl PublishArgs {
                 // 2. Publish our packages in "waves" to the actual registries ensuring all
                 //    possible dependency free packages are published in the same group
                 while !plan.is_empty() {
+                    // `ready_for_publish` is guaranteed to be nonempty IF `plan.is_empty() == false
+                    //
+                    // A `DependencyGraph` (`petgraph::Acyclic`) should always hold valid edges.
+                    // Any insertions to the `DependencyGraph` that would produce invalid edges should
+                    // result in an error when calling `try_update_edge` inside `wasm_pkg_core::wit::get_local_dependencies`
                     let ready_for_publish = plan.take_ready();
                     for spec in &ready_for_publish {
                         let id = plan
                             .get_node_index(&spec.package)
                             .expect("missing node index");
                         let source = Box::pin(Cursor::new(validated_packages[&id].clone()));
+                        // we do not have guarantees that the underlying `PackagePublisher::publish`
+                        // will terminate
                         let (package, version) = client
                             .client()?
                             .publish_release_data(source, publish_opts.clone())
