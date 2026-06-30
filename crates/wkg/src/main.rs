@@ -35,6 +35,9 @@ use crate::wit::temp_wit_file;
 #[derive(Parser, Debug)]
 #[command(version)]
 struct Cli {
+    #[command(flatten)]
+    color: colorchoice_clap::Color,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -612,6 +615,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let cli = Cli::parse();
+    cli.color.write_global();
 
     match cli.command {
         Commands::Config(args) => args.run().await,
@@ -622,7 +626,10 @@ async fn main() -> anyhow::Result<()> {
         Commands::Fetch(args) => args.run().await,
         Commands::Update(args) => args.run().await,
         Commands::Wit(args) => {
-            eprintln!("warning: `wkg wit <command>` is deprecated; use `wkg <command>` instead");
+            let yellow = anstyle::AnsiColor::Yellow.on_default();
+            anstream::eprintln!(
+                "{yellow}warning: `wkg wit <command>` is deprecated; use `wkg <command>` instead{yellow:#}"
+            );
             args.run().await
         }
     }

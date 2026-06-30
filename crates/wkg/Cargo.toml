@@ -14,8 +14,11 @@ default = ["docker-tests"]
 docker-tests = []
 
 [dependencies]
+anstream = "0.6"
+anstyle = "1.0"
 anyhow = { workspace = true }
 clap = { version = "4.5", features = ["derive", "wrap_help", "env"] }
+colorchoice-clap = "1.0"
 docker_credential = { workspace = true }
 futures-util = { workspace = true, features = ["io"] }
 oci-client = { workspace = true }
