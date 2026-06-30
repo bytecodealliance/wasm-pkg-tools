@@ -23,7 +23,7 @@ impl PackageRef {
     }
 
     /// Returns the namespace of the package.
-    pub fn namespace(&self) -> &Label {
+    pub const fn namespace(&self) -> &Label {
         &self.namespace
     }
 
@@ -68,12 +68,28 @@ impl FromStr for PackageRef {
         s.to_string().try_into()
     }
 }
+impl std::fmt::Display for PackageSpec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(version) = &self.version {
+            write!(f, "{}@{}", self.package, version)
+        } else {
+            write!(f, "{}", self.package)
+        }
+    }
+}
 
 /// A package spec combines a [`PackageRef`] with an optional version.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub struct PackageSpec {
     pub package: PackageRef,
     pub version: Option<Version>,
+}
+
+impl PartialEq<str> for PackageSpec {
+    fn eq(&self, other: &str) -> bool {
+        // clippy --fix will create a recursive callsite here if `self.to_string()` is used instead
+        format!("{self}") == other
+    }
 }
 
 impl FromStr for PackageSpec {

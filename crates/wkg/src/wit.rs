@@ -106,7 +106,7 @@ impl BuildArgs {
         tokio::fs::write(&output_path, bytes).await?;
         // Now write out the lock file since everything else succeeded
         lock_file.write().await?;
-        println!("WIT package written to {}", output_path.display());
+        eprintln!("WIT package written to {}", output_path.display());
         Ok(())
     }
 }
@@ -120,7 +120,9 @@ pub async fn build_wit_dir(
 ) -> anyhow::Result<(PackageRef, Option<Version>, Vec<u8>)> {
     check_dir(&dir).await?;
     let wkg_config = wasm_pkg_core::config::Config::load().await?;
-    let result = wit::build_package(&wkg_config, dir, lock_file, client).await?;
+    let result = wit::build_package(&wkg_config, dir.as_ref(), lock_file, client)
+        .await
+        .with_context(|| format!("failed to build WIT directory `{}`", dir.as_ref().display()))?;
     Ok(result)
 }
 

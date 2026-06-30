@@ -1,0 +1,7 @@
+package example-c:nested@0.1.0;
+
+interface nested {
+  record meta {
+    label: string,
+  }
+}

@@ -7,7 +7,11 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    label::Label, metadata::RegistryMetadata, package::PackageRef, registry::Registry, Error,
+    label::Label,
+    metadata::{RegistryMetadata, LOCAL_PROTOCOL},
+    package::PackageRef,
+    registry::Registry,
+    Error,
 };
 
 mod toml;
@@ -194,20 +198,22 @@ impl Config {
     /// - Hard-coded fallbacks for certain well-known namespaces
     pub fn resolve_registry(&self, package: &PackageRef) -> Option<&Registry> {
         let namespace = package.namespace();
-        // look in `self.package_registry_overrides `
-        // then in `self.namespace_registries`
-        if let Some(reg) = self
-            .package_registry_overrides
-            .get(package)
-            .or_else(|| self.namespace_registries.get(namespace))
-            .map(|pkg| pkg.registry())
-        {
+        if let Some(reg) = self.resolve_mapping(package).map(|ns| ns.registry()) {
             return Some(reg);
         } else if let Some(reg) = self.default_registry.as_ref() {
             return Some(reg);
         }
 
         self.fallback_namespace_registries.get(namespace)
+    }
+
+    fn resolve_mapping(&self, package: &PackageRef) -> Option<&RegistryMapping> {
+        let namespace = package.namespace();
+        // look in `self.package_registry_overrides`
+        // then in `self.namespace_registries`
+        self.package_registry_overrides
+            .get(package)
+            .or_else(|| self.namespace_registries.get(namespace))
     }
 
     /// Returns the default registry.
@@ -278,6 +284,17 @@ pub struct RegistryConfig {
 }
 
 impl RegistryConfig {
+    // Created a [`Self`] a default local backend associated with the provided `backend_name` label.
+    pub fn with_default_backend<T: Serialize>(
+        mut self,
+        backend_name: &str,
+        backend_config: T,
+    ) -> Result<Self, Error> {
+        self.default_backend = Some(backend_name.to_string());
+        self.set_backend_config(LOCAL_PROTOCOL, backend_config)?;
+        Ok(self)
+    }
+
     /// Merges the given other config into this one.
     pub fn merge(&mut self, other: Self) {
         let Self {
@@ -302,13 +319,10 @@ impl RegistryConfig {
     pub fn default_backend(&self) -> Option<&str> {
         match self.default_backend.as_deref() {
             Some(ty) => Some(ty),
-            None => {
-                if self.backend_configs.len() == 1 {
-                    self.backend_configs.keys().next().map(|ty| ty.as_str())
-                } else {
-                    None
-                }
+            _ if self.backend_configs.len() == 1 => {
+                self.backend_configs.keys().next().map(|ty| ty.as_str())
             }
+            None => None,
         }
     }
 

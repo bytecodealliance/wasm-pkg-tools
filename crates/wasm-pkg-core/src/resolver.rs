@@ -2,7 +2,7 @@
 // NOTE(thomastaylor312): This is copied and adapted from the `cargo-component` crate: https://github.com/bytecodealliance/cargo-component/blob/f0be1c7d9917aa97e9102e69e3b838dae38d624b/crates/core/src/registry.rs
 
 use std::{
-    collections::{hash_map, HashMap, HashSet},
+    collections::{hash_map, BTreeSet, HashMap, HashSet},
     fmt::Debug,
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
@@ -12,16 +12,21 @@ use std::{
 use anyhow::{bail, Context, Result};
 use futures_util::TryStreamExt;
 use indexmap::{IndexMap, IndexSet};
+use petgraph::{acyclic::Acyclic, graph::NodeIndex, stable_graph::StableDiGraph, Direction};
 use semver::{Comparator, Op, Version, VersionReq};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     Client, Config, ContentDigest, Error as WasmPkgError, PackageRef, Release, VersionInfo,
 };
+use wasm_pkg_common::package::PackageSpec;
 use wit_component::DecodedWasm;
 use wit_parser::{PackageId, PackageName, Resolve, UnresolvedPackageGroup, WorldId};
 
-use crate::{lock::LockFile, wit::get_packages};
+use crate::{
+    lock::LockFile,
+    wit::{get_local_dependencies, get_packages},
+};
 
 /// The name of the default registry.
 pub const DEFAULT_REGISTRY_NAME: &str = "default";
@@ -833,4 +838,233 @@ fn visit<'a>(
     assert!(order.insert(dep.package_name().clone()));
 
     Ok(())
+}
+
+/// Graph of publishable packages with the [`petgraph::Direction`] edges describing the dependency direction.
+pub type DependencyGraph<N> = Acyclic<StableDiGraph<N, petgraph::Direction>>;
+
+/// Mapping of [`PackageRef`]s to the respective index inside the dependency graph.
+pub type LocalPackageIndex = HashMap<PackageRef, (NodeIndex, PathBuf)>;
+
+/// State for tracking dependencies during upload.
+pub struct PublishPlan {
+    /// Graph of publishable packages where the edges are `(dependency -DependencyOf->) dependent)`
+    dependents: DependencyGraph<PackageSpec>,
+    // TODO look at using cargo's `InternedString` type for `PackageRef`:
+    // https://docs.rs/cargo/latest/cargo/util/interning/struct.InternedString.html
+    indices: LocalPackageIndex,
+}
+
+impl PublishPlan {
+    /// Generate [`Self`] from a list of WIT package paths (files or directories).
+    pub fn from_paths(paths: &[impl AsRef<Path>]) -> Result<Self> {
+        let (graph, indices) = get_local_dependencies(paths)?;
+        {
+            // collection of local packages that have no version
+            let missing_version = graph
+                .nodes_iter()
+                .map(|f| graph[f].clone())
+                .filter(|pkg| pkg.version.is_none())
+                .collect::<Vec<_>>();
+            if !missing_version.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "Unable to publish packages without a version specified"
+                )
+                .context(format!(
+                    "packages: {}",
+                    package_list(missing_version.iter(), None)
+                )));
+            }
+        }
+        let mut dependents = graph.into_inner();
+
+        dependents.reverse();
+        // graph was already found to be acyclic
+        let dependents = DependencyGraph::try_from(dependents).unwrap();
+
+        Ok(Self {
+            dependents,
+            indices,
+        })
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a PackageSpec> + 'a {
+        self.dependents
+            .nodes_iter()
+            .map(|id| &(self.dependents[id]))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.indices.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.indices.len()
+    }
+
+    /// Returns the set of packages that are ready for publishing (i.e. have no outstanding dependencies).
+    ///
+    /// These will not be returned in future calls.
+    pub fn take_ready(&self) -> BTreeSet<PackageSpec> {
+        self.dependents
+            .nodes_iter()
+            // there are no dependents on `self.dependents[id]`
+            .filter(|id| {
+                self.dependents
+                    .neighbors_directed(*id, Direction::Incoming)
+                    .count()
+                    == 0
+            })
+            .map(|id| self.dependents[id].clone())
+            .collect()
+    }
+
+    /// Return the path associated with a local package.
+    pub fn get_path(&self, pkg: &PackageRef) -> Option<&Path> {
+        self.indices.get(pkg).map(|(_, p)| p.as_ref())
+    }
+
+    /// Return the [`NodeIndex`] associated with a local package.
+    pub fn get_node_index(&self, pkg: &PackageRef) -> Option<NodeIndex> {
+        self.indices.get(pkg).map(|(id, _)| *id)
+    }
+
+    /// Packages confirmed to be available in the registry, potentially allowing additional
+    /// packages to be "ready".
+    pub fn mark_confirmed(&mut self, published: impl IntoIterator<Item = PackageSpec>) {
+        for spec in published {
+            let (id, _) = self
+                .indices
+                .remove(&spec.package)
+                .expect("PackageSpec has no associated index");
+            // NOTE: nodes without edges will return None here
+            self.dependents.remove_node(id);
+        }
+    }
+}
+
+impl std::fmt::Display for PublishPlan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // TODO(mkatychev): handle with anstyle and anstream, passing in `anstream::AutoStream` for colour choice
+        for id in self.dependents.nodes_iter() {
+            let dep = &self.dependents[id];
+            // initial dependency graph visualization
+            let mut neighbors = self
+                .dependents
+                .neighbors_directed(id, Direction::Outgoing)
+                .peekable();
+
+            if neighbors.peek().is_none() {
+                // tracing::debug!("{dep} has no dependents");
+                writeln!(f, "[{dep} has no dependents]")?;
+            } else {
+                writeln!(f, "[{dep}]")?;
+            }
+
+            while let Some(id) = neighbors.next() {
+                let pkg = &self.dependents[id];
+                let separator = if neighbors.peek().is_some() {
+                    "├─"
+                } else {
+                    "╰─"
+                };
+
+                writeln!(f, "{separator}─▶ {pkg}")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Format a collection of packages as a list
+///
+/// e.g. "foo:a@0.1.0, bar:b@0.2.0, and baz:c@0.3.0".
+///
+/// Note: the final separator (e.g. "and" in the previous example) can be chosen.
+fn package_list<'a>(
+    pkgs: impl IntoIterator<Item = &'a PackageSpec>,
+    final_sep: Option<&str>,
+) -> String {
+    let final_sep = final_sep.unwrap_or("and");
+    let mut names: Vec<_> = pkgs.into_iter().map(|pkg| pkg.to_string()).collect();
+    names.sort();
+
+    match &names[..] {
+        [] => String::new(),
+        [a] => a.clone(),
+        [a, b] => format!("{a} {final_sep} {b}"),
+        [names @ .., last] => {
+            format!("{}, {final_sep} {last}", names.join(", "))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use std::path::PathBuf;
+
+    use super::*;
+    use glob::glob;
+
+    fn transitive_local_paths() -> Vec<PathBuf> {
+        let fixtures_root =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/transitive-local");
+        // pass all fixture dirs to a single `wkg publish` invocation
+        let mut paths: Vec<PathBuf> = glob(fixtures_root.join("**/*.wit").to_str().unwrap())
+            .unwrap()
+            .map(|p| p.expect("glob path error"))
+            .map(|p| p.parent().unwrap().to_path_buf())
+            .collect();
+        paths.sort();
+        paths.dedup();
+        paths
+    }
+
+    #[test]
+    fn publish_plan_iter() {
+        let paths = transitive_local_paths();
+        let plan = PublishPlan::from_paths(&paths).unwrap();
+        assert_eq!(
+            plan.iter().count(),
+            5,
+            "unexpected package count\npackages found: {}",
+            package_list(plan.iter(), None)
+        );
+    }
+
+    #[test]
+    fn publish_plan_chunks() {
+        let paths = transitive_local_paths();
+        let mut plan = PublishPlan::from_paths(&paths).unwrap();
+        let mut ready_for_publish = plan.take_ready();
+        assert_eq!(
+            ready_for_publish.iter().collect::<Vec<_>>(),
+            ["example-c:nested@0.1.0", "example-d:foo@0.1.0",],
+        );
+        plan.mark_confirmed(ready_for_publish);
+
+        ready_for_publish = plan.take_ready();
+        assert_eq!(
+            ready_for_publish.iter().collect::<Vec<_>>(),
+            ["example-c:baz@0.1.0"],
+        );
+        plan.mark_confirmed(ready_for_publish);
+
+        ready_for_publish = plan.take_ready();
+        assert_eq!(
+            ready_for_publish.iter().collect::<Vec<_>>(),
+            ["example-b:bar@0.1.0"],
+        );
+        plan.mark_confirmed(ready_for_publish);
+
+        ready_for_publish = plan.take_ready();
+        assert_eq!(
+            ready_for_publish.iter().collect::<Vec<_>>(),
+            ["example-a:foo@0.1.0"],
+        );
+        plan.mark_confirmed(ready_for_publish);
+
+        assert!(plan.is_empty());
+    }
 }

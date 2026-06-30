@@ -1,12 +1,14 @@
 package example-c:baz@0.1.0;
 
 interface baz {
+  use example-c:nested/nested@0.1.0.{meta};
+
   record requestresponse {
     baz: list<u8>,
+    meta: meta,
   }
 }
 
 world handler {
-  // No dependencies to import
   export baz;
 }

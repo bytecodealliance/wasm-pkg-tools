@@ -36,8 +36,12 @@ pub struct RegistryMetadata {
     warg_url: Option<String>,
 }
 
-const OCI_PROTOCOL: &str = "oci";
-const WARG_PROTOCOL: &str = "warg";
+/// OCI registry try
+pub const OCI_PROTOCOL: &str = "oci";
+/// Warg registry key
+pub const WARG_PROTOCOL: &str = "warg";
+/// Local filesystem key
+pub const LOCAL_PROTOCOL: &str = "local";
 
 impl RegistryMetadata {
     /// Returns the registry's preferred protocol.

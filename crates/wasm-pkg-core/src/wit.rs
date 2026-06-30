@@ -1,14 +1,20 @@
 //! Functions for building WIT packages and fetching their dependencies.
 
-use std::{collections::HashSet, path::Path, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+    str::FromStr,
+};
 
 use anyhow::{Context, Result};
+use petgraph::{data::Build, Direction};
 use semver::{Version, VersionReq};
 use wasm_metadata::{AddMetadata, AddMetadataField};
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
     PackageRef,
 };
+use wasm_pkg_common::package::PackageSpec;
 use wit_component::WitPrinter;
 use wit_parser::{PackageId, PackageName, Resolve};
 
@@ -16,8 +22,9 @@ use crate::{
     config::Config,
     lock::LockFile,
     resolver::{
-        DecodedDependency, Dependency, DependencyResolution, DependencyResolutionMap,
-        DependencyResolver, LocalResolution, RegistryPackage,
+        DecodedDependency, Dependency, DependencyGraph, DependencyResolution,
+        DependencyResolutionMap, DependencyResolver, LocalPackageIndex, LocalResolution,
+        RegistryPackage,
     },
 };
 
@@ -54,12 +61,20 @@ pub async fn build_package(
 ) -> Result<(PackageRef, Option<Version>, Vec<u8>)> {
     let dependencies = resolve_dependencies(config, &wit_dir, Some(lock_file), client)
         .await
-        .with_context(|| format!("wit_dir: {}", wit_dir.as_ref().display()))
         .context("Unable to resolve dependencies")?;
 
     lock_file.update_dependencies(&dependencies);
 
-    let (resolve, pkg_id) = dependencies.generate_resolve(wit_dir).await?;
+    let (resolve, pkg_id) = dependencies
+        .generate_resolve(wit_dir.as_ref())
+        .await
+        .map_err(|e| {
+            if config.has_override(wit_dir.as_ref()) {
+                e.context("hint: override present for WIT directory".to_string())
+            } else {
+                e
+            }
+        })?;
     let bytes = wit_component::encode(&resolve, pkg_id)?;
 
     let pkg = &resolve.packages[pkg_id];
@@ -134,11 +149,11 @@ pub async fn fetch_dependencies(
 /// for resolving dependencies.
 pub fn get_packages(
     path: impl AsRef<Path>,
-) -> Result<(PackageRef, HashSet<(PackageRef, VersionReq)>)> {
+) -> Result<(PackageSpec, HashSet<(PackageRef, VersionReq)>)> {
     let group =
         wit_parser::UnresolvedPackageGroup::parse_path(path).context("Couldn't parse package")?;
 
-    let name = PackageRef::new(
+    let package = PackageRef::new(
         group
             .main
             .name
@@ -152,6 +167,10 @@ pub fn get_packages(
             .parse()
             .context("Invalid name found in package")?,
     );
+    let package = PackageSpec {
+        package,
+        version: group.main.name.version.clone(),
+    };
 
     // Get all package refs from the main package and then from any nested packages
     let packages: HashSet<(PackageRef, VersionReq)> =
@@ -164,7 +183,62 @@ pub fn get_packages(
             )
             .collect();
 
-    Ok((name, packages))
+    Ok((package, packages))
+}
+
+/// Build an acyclic [`DependencyGraph`] for the provided WIT package paths alongside a [`LocalPackageIndex`].
+///
+/// # Errors
+///
+/// The function will return an error if there are duplicate references to the same package or if
+/// there are cyclical dependencies between packages.
+pub(crate) fn get_local_dependencies(
+    paths: &[impl AsRef<Path>],
+) -> Result<(DependencyGraph<PackageSpec>, LocalPackageIndex)> {
+    let pkg_trees = paths
+        .iter()
+        .map(|path| get_packages(path).map(|(pkg, deps)| ((pkg, path), deps)))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut graph = DependencyGraph::new();
+    let mut indices = HashMap::new();
+    // establish all nodes
+    for ((spec, path), _) in &pkg_trees {
+        let id = graph.add_node(spec.clone());
+        if indices
+            .insert(spec.package.clone(), (id, path.as_ref().to_owned()))
+            .is_some()
+        {
+            anyhow::bail!("duplicate references to package detected: {spec}");
+        }
+    }
+    for ((spec, _), deps) in pkg_trees {
+        // TODO handle version matching for dependencies
+        for (dep, _version) in deps {
+            if let Some(&(dep, _)) = indices.get(&dep) {
+                let pkg = &spec.package;
+                let (id, _) = indices[pkg];
+                // // pkg <=DependsOn= dep
+                graph
+                    .try_update_edge(id, dep, Direction::Incoming)
+                    .map_err(|e| {
+                        match e {
+                            petgraph::acyclic::AcyclicEdgeError::Cycle(cycle) => {
+                                anyhow::anyhow!("cyclical dependency detected")
+                                    .context(format!("other package: {}", graph[cycle.node_id()]))
+                            }
+                            petgraph::acyclic::AcyclicEdgeError::SelfLoop => {
+                                anyhow::anyhow!("Package is declaring self as a dependency.")
+                            }
+                            petgraph::acyclic::AcyclicEdgeError::InvalidEdge => anyhow::anyhow!(
+                                "Could not successfully add the edge to the underlying graph."
+                            ),
+                        }
+                        .context(format!("package: {pkg}"))
+                    })?;
+            }
+        }
+    }
+    Ok((graph, indices))
 }
 
 /// Builds a list of resolved dependencies loaded from the component or path containing the WIT.
@@ -211,7 +285,7 @@ pub async fn resolve_dependencies(
                 .with_context(|| format!("unable to add dependency {dep}"))?;
         }
     }
-    let (_name, packages) = get_packages(path)?;
+    let (_spec, packages) = get_packages(path)?;
     resolver.add_packages(packages).await?;
     resolver.resolve().await
 }

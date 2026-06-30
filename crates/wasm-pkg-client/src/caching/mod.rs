@@ -45,18 +45,10 @@ pub trait Cache {
 
 /// A client that caches response data using the given cache implementation. Can be used without an
 /// underlying client to be used as a read-only cache.
+#[derive(Clone)]
 pub struct CachingClient<T> {
     client: Option<Client>,
     cache: Arc<T>,
-}
-
-impl<T: Cache> Clone for CachingClient<T> {
-    fn clone(&self) -> Self {
-        Self {
-            client: self.client.clone(),
-            cache: self.cache.clone(),
-        }
-    }
 }
 
 impl<T: Cache> CachingClient<T> {

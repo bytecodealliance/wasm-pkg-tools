@@ -1,21 +1,27 @@
-use std::{io::Seek, path::PathBuf};
+use std::{
+    collections::HashMap,
+    io::{Cursor, Seek},
+    path::PathBuf,
+};
 
-use anyhow::{ensure, Context};
+use anyhow::{anyhow, ensure, Context};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::level_filters::LevelFilter;
 use wasm_pkg_client::{
     caching::{CachingClient, FileCache},
+    local::LocalConfig,
     Client, PublishOpts,
 };
 use wasm_pkg_common::{
     self,
-    config::{Config, RegistryMapping},
+    config::{Config, RegistryConfig, RegistryMapping},
+    metadata::LOCAL_PROTOCOL,
     package::PackageSpec,
     registry::Registry,
 };
-use wasm_pkg_core::lock::LockFile;
+use wasm_pkg_core::{lock::LockFile, resolver::PublishPlan};
 use wit_component::DecodedWasm;
 
 mod oci;
@@ -40,7 +46,7 @@ struct RegistryArgs {
     registry: Option<Registry>,
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Default)]
 struct Common {
     /// The path to the configuration file.
     #[arg(long = "config", value_name = "CONFIG", env = "WKG_CONFIG_FILE")]
@@ -124,8 +130,7 @@ impl ConfigArgs {
         let path = if let Some(path) = self.common.config {
             path
         } else {
-            Config::global_config_path()
-                .ok_or(anyhow::anyhow!("global config path not available"))?
+            Config::global_config_path().ok_or(anyhow!("global config path not available"))?
         };
 
         // Check if the parent directory exists, if not create it
@@ -147,7 +152,7 @@ impl ConfigArgs {
         }
 
         if self.edit {
-            let editor = std::env::var("EDITOR").or(Err(anyhow::anyhow!(
+            let editor = std::env::var("EDITOR").or(Err(anyhow!(
                 "failed to read `$EDITOR` environment variable"
             )))?;
 
@@ -170,7 +175,7 @@ impl ConfigArgs {
         let mut config = match tokio::fs::read_to_string(&path).await {
             Ok(contents) => Config::from_toml(&contents)?,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Config::default(),
-            Err(err) => return Err(anyhow::anyhow!("error reading config file: {0}", err)),
+            Err(err) => return Err(anyhow!("error reading config file: {0}", err)),
         };
 
         if let Some(default) = self.default_registry {
@@ -179,14 +184,14 @@ impl ConfigArgs {
 
             // write config file
             config.to_file(&path).await?;
-            println!("Updated config file: {path}", path = path.display());
+            eprintln!("Updated config file: {path}", path = path.display());
         }
 
         // print config
         if let Some(registry) = config.default_registry() {
-            println!("Default registry: {}", registry);
+            eprintln!("Default registry: {}", registry);
         } else {
-            println!("Default registry is not set");
+            eprintln!("Default registry is not set");
         }
 
         Ok(())
@@ -230,9 +235,9 @@ struct GetArgs {
 
 #[derive(Args, Debug)]
 struct PublishArgs {
-    /// The file or directory to publish.
+    /// The files and directories to publish.
     /// If a directory is provided, the package is built to a tempfile before publishing.
-    path: PathBuf,
+    paths: Vec<PathBuf>,
 
     #[command(flatten)]
     registry_args: RegistryArgs,
@@ -252,9 +257,163 @@ struct PublishArgs {
 
 impl PublishArgs {
     pub async fn run(self) -> anyhow::Result<()> {
+        let publish_opts = self.publish_opts()?;
+        let path = match &self.paths[..] {
+            [path] => path,
+            paths => {
+                let mut overlay_config = self.common.load_config().await?;
+                let cache = self.common.load_cache().await?;
+
+                let local_config = LocalConfig::temp_dir()?;
+                let reg_config = RegistryConfig::default()
+                    .with_default_backend(LOCAL_PROTOCOL, &local_config)?;
+                // Route every package in the plan to the local overlay registry
+                // backed by `reg_config`, so the client used in `build_wit_dir`
+                // resolves these packages against the local overlay instead of
+                // an upstream remote.
+                let local_registry: Registry = "tmp_local_publish".parse()?;
+                overlay_config
+                    .get_or_insert_registry_config_mut(&local_registry)
+                    .merge(reg_config);
+
+                let mut plan = PublishPlan::from_paths(paths)?;
+                eprintln!("{plan}");
+
+                // TODO(mkatychev): Add support for `PackageLoader::get_release` to handle
+                // querying on a per package, namespace, and registry level
+                // to handle cargo style overlays.
+                // see this reference of `cargo::core::Dependency` usage for local overlays in Cargo:
+                // https://github.com/rust-lang/cargo/blob/d6900d00af2644ea1c0068c5694d9dbe11a3ab39/src/cargo/sources/overlay.rs#L47
+                // this is still needed for `wit::build_wit_dir`
+                for spec in plan.iter() {
+                    overlay_config.set_package_registry_override(
+                        spec.package.clone(),
+                        RegistryMapping::Registry(local_registry.clone()),
+                    );
+                }
+                let client = CachingClient::new(Some(Client::new(overlay_config)), cache);
+
+                let mut lock_file = LockFile::load(false).await?;
+                // these are packages that have been successfully pushed to our "tmp_local_publish"
+                let mut validated_packages = HashMap::new();
+
+                // 1. Publish our packages to "tmp_local_publish" ensuring all dependencies are
+                //    resolved by the local backend
+                for spec in plan.iter() {
+                    let path = plan.get_path(&spec.package).unwrap();
+                    let data = if path.is_dir() {
+                        let _prev_lock_ref = (lock_file.version, lock_file.packages.clone());
+                        let (_pkg_ref, _version, bytes) =
+                            wit::build_wit_dir(&path, client.clone(), &mut lock_file).await?;
+                        bytes
+                    } else {
+                        let mut file = tokio::fs::OpenOptions::new().read(true).open(path).await?;
+                        let mut buf = Vec::new();
+                        file.read_exact(&mut buf).await?;
+                        buf
+                    };
+
+                    let source = Box::pin(Cursor::new(data.clone()));
+                    client
+                        .client()?
+                        .publish_release_data(
+                            source,
+                            PublishOpts {
+                                package: None,
+                                registry: Some(local_registry.clone()),
+                                // we want to publish to "tmp_local_publish" regardless of flags passed in
+                                dry_run: false,
+                            },
+                        )
+                        .await?;
+
+                    let id = plan
+                        .get_node_index(&spec.package)
+                        .expect("missing node index");
+                    validated_packages.insert(id, data);
+                }
+
+                let client = self.common.get_client().await?;
+                // 2. Publish our packages in "waves" to the actual registries ensuring all
+                //    possible dependency free packages are published in the same group
+                while !plan.is_empty() {
+                    // `ready_for_publish` is guaranteed to be nonempty IF `plan.is_empty() == false
+                    //
+                    // A `DependencyGraph` (`petgraph::Acyclic`) should always hold valid edges.
+                    // Any insertions to the `DependencyGraph` that would produce invalid edges should
+                    // result in an error when calling `try_update_edge` inside `wasm_pkg_core::wit::get_local_dependencies`
+                    let ready_for_publish = plan.take_ready();
+                    for spec in &ready_for_publish {
+                        let id = plan
+                            .get_node_index(&spec.package)
+                            .expect("missing node index");
+                        let source = Box::pin(Cursor::new(validated_packages[&id].clone()));
+                        // we do not have guarantees that the underlying `PackagePublisher::publish`
+                        // will terminate
+                        let (package, version) = client
+                            .client()?
+                            .publish_release_data(source, publish_opts.clone())
+                            .await?;
+                        if self.dry_run {
+                            eprintln!("Aborting publish due to dry run: {}@{}", package, version);
+                        } else {
+                            eprintln!("Published {}@{}", package, version);
+                        }
+                    }
+                    plan.mark_confirmed(ready_for_publish);
+                }
+                return Ok(());
+            }
+        };
+
         let client = self.common.get_client().await?;
 
-        let package = match self.package {
+        // If the input is a directory, build a WIT package from it into a temp
+        // file first. _tmp is held until the publish completes so the file
+        // isn't deleted out from under us.
+        let (publish_path, _tmp) = if path.is_dir() {
+            let mut lock_file = LockFile::load(true).await?;
+            let prev_lock_ref = (lock_file.version, lock_file.packages.clone());
+            let (pkg_ref, _, bytes) =
+                wit::build_wit_dir(&path.clone(), client.clone(), &mut lock_file).await?;
+            // There is no way to check if we are in a git repository unlike `cargo publish --allow-dirty` so
+            // check against previous values.
+            if lock_file != prev_lock_ref && !self.dry_run {
+                return Err(anyhow!(
+                    "wkg.lock would be updated during publish, aborting"
+                ))
+                .with_context(|| {
+                    format!(
+                        "Run `wkg wit build {}` before attempting to publish",
+                        path.display()
+                    )
+                });
+            }
+
+            let tmp = temp_wit_file(&pkg_ref, &bytes).await?;
+
+            (tmp.path().to_path_buf(), Some(tmp))
+        } else {
+            (path.clone(), None)
+        };
+
+        let (package, version) = client
+            .client()?
+            .publish_release_file(&publish_path, publish_opts)
+            .await?;
+        if self.dry_run {
+            eprintln!("Aborting publish due to dry run: {}@{}", package, version);
+        } else {
+            eprintln!("Published {}@{}", package, version);
+        }
+        Ok(())
+    }
+
+    fn publish_opts(&self) -> anyhow::Result<PublishOpts> {
+        let package = match self.package.clone() {
+            Some(_) if self.paths.len() > 2 => {
+                anyhow::bail!("`--package` is currently unsupported when providing more than one path argument");
+            }
             Some(PackageSpec {
                 package,
                 version: Some(v),
@@ -264,53 +423,11 @@ impl PublishArgs {
             }
             None => None,
         };
-
-        // If the input is a directory, build a WIT package from it into a temp
-        // file first. _tmp is held until the publish completes so the file
-        // isn't deleted out from under us.
-        let (publish_path, _tmp) = if self.path.is_dir() {
-            let mut lock_file = LockFile::load(true).await?;
-            let prev_lock_ref = (lock_file.version, lock_file.packages.clone());
-            let (pkg_ref, _, bytes) =
-                wit::build_wit_dir(&self.path, client.clone(), &mut lock_file).await?;
-            // There is no way to check if we are in a git repository unlike `cargo publish --allow-dirty` so
-            // check against previous values.
-            if lock_file != prev_lock_ref && !self.dry_run {
-                return Err(anyhow::anyhow!(
-                    "wkg.lock would be updated during publish, aborting"
-                ))
-                .with_context(|| {
-                    format!(
-                        "Run `wkg wit build {}` before attempting to publish",
-                        self.path.to_string_lossy()
-                    )
-                });
-            }
-
-            let tmp = temp_wit_file(&pkg_ref, &bytes).await?;
-
-            (tmp.path().to_path_buf(), Some(tmp))
-        } else {
-            (self.path.clone(), None)
-        };
-
-        let (package, version) = client
-            .client()?
-            .publish_release_file(
-                &publish_path,
-                PublishOpts {
-                    package,
-                    registry: self.registry_args.registry,
-                    dry_run: self.dry_run,
-                },
-            )
-            .await?;
-        if self.dry_run {
-            println!("Aborting publish due to dry run: {}@{}", package, version);
-        } else {
-            println!("Published {}@{}", package, version);
-        }
-        Ok(())
+        Ok(PublishOpts {
+            package,
+            registry: self.registry_args.registry.clone(),
+            dry_run: self.dry_run,
+        })
     }
 }
 
@@ -339,7 +456,7 @@ impl GetArgs {
         let version = match version {
             Some(ver) => ver,
             None => {
-                println!("No version specified; fetching version list...");
+                eprintln!("No version specified; fetching version list...");
                 let versions = client.list_all_versions(&package).await?;
                 tracing::trace!(?versions, "Fetched version list");
                 versions
@@ -350,7 +467,7 @@ impl GetArgs {
             }
         };
 
-        println!("Getting {package}@{version}...");
+        eprintln!("Getting {package}@{version}...");
         let release = client
             .get_release(&package, &version)
             .await
@@ -402,7 +519,7 @@ impl GetArgs {
                 "wasm" => Format::Wasm,
                 "wit" => Format::Wit,
                 _ => {
-                    println!(
+                    eprintln!(
                         "Couldn't infer output format from file name {:?}",
                         self.output.file_name().unwrap_or_default()
                     );
@@ -429,7 +546,7 @@ impl GetArgs {
                     if format == Format::Wit {
                         return Err(err);
                     }
-                    println!("Failed to detect package content type: {err:#}");
+                    eprintln!("Failed to detect package content type: {err:#}");
                     None
                 }
             }
@@ -475,7 +592,7 @@ impl GetArgs {
                     .persist(&output_path)
                     .with_context(|| format!("Failed to persist WASM to {output_path:?}"))?
             }
-            println!("Wrote '{}'", output_path.display());
+            eprintln!("Wrote '{}'", output_path.display());
         }
         Ok(())
     }

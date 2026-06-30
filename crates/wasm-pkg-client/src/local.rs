@@ -5,17 +5,20 @@
 use std::{
     io,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use anyhow::anyhow;
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tempfile::TempDir;
 use tokio_util::io::ReaderStream;
 use wasm_pkg_common::{
     config::RegistryConfig,
     digest::ContentDigest,
+    metadata::LOCAL_PROTOCOL,
     package::{PackageRef, Version},
     Error,
 };
@@ -27,13 +30,32 @@ use crate::{
     ContentStream, PublishingSource,
 };
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LocalConfig {
     pub root: PathBuf,
+    // NOTE: set by [`Self::temp_dir`] to avoid holding onto a separate `TempDir` handle.
+    #[serde(skip)]
+    #[doc(hidden)]
+    _temp_handle: Option<Arc<TempDir>>,
 }
 
+impl LocalConfig {
+    /// Creates a [`Self`] with a new temporary directory.
+    /// The returned config owns the directory and removes the config upon drop.
+    pub fn temp_dir() -> Result<Self, Error> {
+        let handle = TempDir::new()?;
+        let root = handle.path().to_path_buf();
+        tracing::debug!(registry_dir = %root.display(), "created temporary directory");
+        Ok(Self {
+            root,
+            _temp_handle: Some(Arc::new(handle)),
+        })
+    }
+}
+
+#[derive(Clone)]
 pub(crate) struct LocalBackend {
-    root: PathBuf,
+    pub(crate) root: PathBuf,
 }
 
 fn registry_path_context(err: io::Error, path: &Path) -> Error {
@@ -44,7 +66,7 @@ fn registry_path_context(err: io::Error, path: &Path) -> Error {
 impl LocalBackend {
     pub fn new(registry_config: RegistryConfig) -> Result<Self, Error> {
         let config = registry_config
-            .backend_config::<LocalConfig>("local")?
+            .backend_config::<LocalConfig>(LOCAL_PROTOCOL)?
             .ok_or_else(|| {
                 Error::InvalidConfig(anyhow!("'local' backend requires configuration"))
             })?;
