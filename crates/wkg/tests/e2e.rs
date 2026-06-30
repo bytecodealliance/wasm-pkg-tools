@@ -8,6 +8,7 @@ mod common;
 #[tokio::test]
 async fn build_and_publish_with_metadata() {
     use oci_client::{client::ClientConfig, manifest::OciManifest, Reference};
+    use wasm_pkg_core::manifest::{Manifest, MANIFEST_FILE_NAME};
 
     let (config, registry, _container) = common::start_registry().await;
 
@@ -47,18 +48,17 @@ async fn build_and_publish_with_metadata() {
     let manifest = if let OciManifest::Image(m) = manifest {
         m
     } else {
-        panic!("Manifest should be an image manifest");
+        panic!("OciManifest should be an image manifest");
     };
 
     let annotations = manifest
         .annotations
-        .expect("Manifest should have annotations");
+        .expect("OciManifest should have annotations");
 
-    let wkg_toml =
-        wasm_pkg_core::config::Config::load_from_path(fixture.fixture_path.join("wkg.toml"))
-            .await
-            .expect("Should be able to load wkg.toml");
-    let meta = wkg_toml.metadata.expect("Should have metadata");
+    let manifest = Manifest::load_from_path(fixture.fixture_path.join(MANIFEST_FILE_NAME))
+        .await
+        .expect("Should be able to load wkg manifest");
+    let meta = manifest.metadata.expect("Should have metadata");
 
     assert_eq!(
         annotations
