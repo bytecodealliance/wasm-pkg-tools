@@ -28,6 +28,11 @@ use wit_component::DecodedWasm;
 mod oci;
 mod wit;
 
+use oci::OciCommands;
+use wit::{BuildArgs, FetchArgs, UpdateArgs, WitCommands};
+
+use crate::wit::temp_wit_file;
+
 #[macro_export]
 macro_rules! warnln {
     ($($arg:tt)*) => {{
@@ -39,7 +44,7 @@ macro_rules! warnln {
 #[macro_export]
 macro_rules! statusln {
     ($label:expr, $($arg:tt)*) => {{
-        let style = ::anstyle::AnsiColor::Green.on_default() | ::anstyle::Effects::BOLD;
+        let style = ::anstyle::AnsiColor::Cyan.on_default() | ::anstyle::Effects::BOLD;
         ::anstream::eprintln!(
             "{style}{:>12}{style:#} {}",
             $label,
@@ -48,10 +53,13 @@ macro_rules! statusln {
     }};
 }
 
-use oci::OciCommands;
-use wit::{BuildArgs, FetchArgs, UpdateArgs, WitCommands};
-
-use crate::wit::temp_wit_file;
+#[macro_export]
+macro_rules! helpln {
+    ($($arg:tt)*) => {{
+        let style = ::anstyle::AnsiColor::Magenta.on_default() | ::anstyle::Effects::BOLD;
+        ::anstream::eprintln!("{style}{:>7}{style:#}: {}", "help", format_args!($($arg)*));
+    }};
+}
 
 #[derive(Parser, Debug)]
 #[command(version)]
@@ -648,7 +656,8 @@ async fn main() -> anyhow::Result<()> {
         Commands::Fetch(args) => args.run().await,
         Commands::Update(args) => args.run().await,
         Commands::Wit(args) => {
-            warnln!("`wkg wit <command>` is deprecated; use `wkg <command>` instead");
+            warnln!("`wkg wit <command>` is deprecated");
+            helpln!("use `wkg <command>` instead");
             args.run().await
         }
     }
