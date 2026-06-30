@@ -4,6 +4,7 @@ use std::{
     path::PathBuf,
 };
 
+use anstream::eprintln;
 use anyhow::{anyhow, ensure, Context};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
@@ -26,6 +27,26 @@ use wit_component::DecodedWasm;
 
 mod oci;
 mod wit;
+
+#[macro_export]
+macro_rules! warnln {
+    ($($arg:tt)*) => {{
+        let style = ::anstyle::AnsiColor::Yellow.on_default() | ::anstyle::Effects::BOLD;
+        ::anstream::eprintln!("{style}warning{style:#}: {}", format_args!($($arg)*));
+    }};
+}
+
+#[macro_export]
+macro_rules! statusln {
+    ($label:expr, $($arg:tt)*) => {{
+        let style = ::anstyle::AnsiColor::Green.on_default() | ::anstyle::Effects::BOLD;
+        ::anstream::eprintln!(
+            "{style}{:>12}{style:#} {}",
+            $label,
+            format_args!($($arg)*),
+        );
+    }};
+}
 
 use oci::OciCommands;
 use wit::{BuildArgs, FetchArgs, UpdateArgs, WitCommands};
@@ -197,7 +218,7 @@ impl ConfigArgs {
         if let Some(registry) = config.default_registry() {
             eprintln!("Default registry: {}", registry);
         } else {
-            eprintln!("Default registry is not set");
+            warnln!("Default registry is not set");
         }
 
         Ok(())
@@ -361,7 +382,7 @@ impl PublishArgs {
                             .publish_release_data(source, publish_opts.clone())
                             .await?;
                         if self.dry_run {
-                            eprintln!("Aborting publish due to dry run: {}@{}", package, version);
+                            warnln!("Aborting publish due to dry run: {}@{}", package, version);
                         } else {
                             eprintln!("Published {}@{}", package, version);
                         }
@@ -462,7 +483,8 @@ impl GetArgs {
         let version = match version {
             Some(ver) => ver,
             None => {
-                eprintln!("No version specified; fetching version list...");
+                warnln!("no version specified; fetching version list...");
+                statusln!("Fetching", "version list");
                 let versions = client.list_all_versions(&package).await?;
                 tracing::trace!(?versions, "Fetched version list");
                 versions
@@ -473,7 +495,7 @@ impl GetArgs {
             }
         };
 
-        eprintln!("Getting {package}@{version}...");
+        statusln!("Fetching", "{package}@{version}...");
         let release = client
             .get_release(&package, &version)
             .await
@@ -525,8 +547,8 @@ impl GetArgs {
                 "wasm" => Format::Wasm,
                 "wit" => Format::Wit,
                 _ => {
-                    eprintln!(
-                        "Couldn't infer output format from file name {:?}",
+                    warnln!(
+                        "couldn't infer output format from file name {:?}",
                         self.output.file_name().unwrap_or_default()
                     );
                     Format::Auto
@@ -548,11 +570,11 @@ impl GetArgs {
                 }
                 Ok(_) => None,
                 Err(err) => {
-                    tracing::debug!(?err, "failed to decode WIT package");
+                    warnln!("unable to decode WIT package");
                     if format == Format::Wit {
                         return Err(err);
                     }
-                    eprintln!("Failed to detect package content type: {err:#}");
+                    eprintln!("failed to detect package content type: {err:#}");
                     None
                 }
             }
@@ -626,10 +648,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Fetch(args) => args.run().await,
         Commands::Update(args) => args.run().await,
         Commands::Wit(args) => {
-            let yellow = anstyle::AnsiColor::Yellow.on_default();
-            anstream::eprintln!(
-                "{yellow}warning: `wkg wit <command>` is deprecated; use `wkg <command>` instead{yellow:#}"
-            );
+            warnln!("`wkg wit <command>` is deprecated; use `wkg <command>` instead");
             args.run().await
         }
     }
