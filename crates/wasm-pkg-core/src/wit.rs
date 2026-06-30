@@ -19,7 +19,7 @@ use wit_component::WitPrinter;
 use wit_parser::{PackageId, PackageName, Resolve};
 
 use crate::{
-    config::Config,
+    config::Manifest,
     lock::LockFile,
     resolver::{
         DecodedDependency, Dependency, DependencyGraph, DependencyResolution,
@@ -54,7 +54,7 @@ impl FromStr for OutputType {
 /// Builds a WIT package given the configuration and directory to parse. Will update the given lock
 /// file with the resolved dependencies but will not write it to disk.
 pub async fn build_package(
-    config: &Config,
+    config: &Manifest,
     wit_dir: impl AsRef<Path>,
     lock_file: &mut LockFile,
     client: CachingClient<FileCache>,
@@ -130,7 +130,7 @@ pub async fn build_package(
 ///
 /// This is mostly a convenience wrapper around [`resolve_dependencies`] and [`populate_dependencies`].
 pub async fn fetch_dependencies(
-    config: &Config,
+    config: &Manifest,
     wit_dir: impl AsRef<Path>,
     lock_file: &mut LockFile,
     client: CachingClient<FileCache>,
@@ -246,7 +246,7 @@ pub(crate) fn get_local_dependencies(
 /// dependency map. This map can then be used in various other functions for fetching the
 /// dependencies and/or building a final resolved package.
 pub async fn resolve_dependencies(
-    config: &Config,
+    config: &Manifest,
     path: impl AsRef<Path>,
     lock_file: Option<&LockFile>,
     client: CachingClient<FileCache>,

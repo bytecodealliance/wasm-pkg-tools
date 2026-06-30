@@ -55,7 +55,7 @@ async fn build_and_publish_with_metadata() {
         .expect("Manifest should have annotations");
 
     let wkg_toml =
-        wasm_pkg_core::config::Config::load_from_path(fixture.fixture_path.join("wkg.toml"))
+        wasm_pkg_core::config::Manifest::load_from_path(fixture.fixture_path.join("wkg.toml"))
             .await
             .expect("Should be able to load wkg.toml");
     let meta = wkg_toml.metadata.expect("Should have metadata");

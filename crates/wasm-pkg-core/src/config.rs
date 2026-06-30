@@ -17,7 +17,7 @@ pub const CONFIG_FILE_NAME: &str = "wkg.toml";
 /// overriding and annotating wasm packages.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct Config {
+pub struct Manifest {
     /// Overrides for various packages
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub overrides: Option<HashMap<String, Override>>,
@@ -27,14 +27,14 @@ pub struct Config {
     pub metadata: Option<Metadata>,
 }
 
-impl Config {
+impl Manifest {
     /// Loads a configuration file from the given path.
-    pub async fn load_from_path(path: impl AsRef<Path>) -> Result<Config> {
+    pub async fn load_from_path(path: impl AsRef<Path>) -> Result<Manifest> {
         tracing::info!(path = %path.as_ref().display(), "loading wkg config file");
         let contents = tokio::fs::read_to_string(path)
             .await
             .context("unable to load config from file")?;
-        let config: Config = toml::from_str(&contents).context("unable to parse config file")?;
+        let config: Manifest = toml::from_str(&contents).context("unable to parse config file")?;
         Ok(config)
     }
 
@@ -42,10 +42,10 @@ impl Config {
     /// crate should use this function. Right now it just checks for a `wkg.toml` file in the current
     /// directory, but we could add more resolution logic in the future. If the file is not found, a
     /// default empty config is returned.
-    pub async fn load() -> Result<Config> {
+    pub async fn load() -> Result<Manifest> {
         let config_path = PathBuf::from(CONFIG_FILE_NAME);
         if !tokio::fs::try_exists(&config_path).await? {
-            return Ok(Config::default());
+            return Ok(Manifest::default());
         }
         Self::load_from_path(config_path).await
     }
@@ -115,7 +115,7 @@ mod tests {
     async fn test_roundtrip() {
         let tempdir = tempfile::tempdir().unwrap();
         let config_path = tempdir.path().join(CONFIG_FILE_NAME);
-        let config = Config {
+        let config = Manifest {
             overrides: Some(HashMap::from([(
                 "foo:bar".to_string(),
                 Override {
@@ -137,7 +137,7 @@ mod tests {
             .write(&config_path)
             .await
             .expect("unable to write config");
-        let loaded_config = Config::load_from_path(config_path)
+        let loaded_config = Manifest::load_from_path(config_path)
             .await
             .expect("unable to load config");
         assert_eq!(

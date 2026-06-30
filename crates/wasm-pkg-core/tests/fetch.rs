@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::Path};
 use rstest::rstest;
 use tokio::process::Command;
 use wasm_pkg_core::{
-    config::{Config, Override},
+    config::{Manifest, Override},
     lock::LockFile,
     wit::{self, OutputType},
 };
@@ -27,7 +27,7 @@ async fn test_fetch(
     let (_temp_cache, client) = common::get_client().await.unwrap();
 
     wit::fetch_dependencies(
-        &Config::default(),
+        &Manifest::default(),
         fixture_path.join("wit"),
         &mut lock,
         client,
@@ -55,7 +55,7 @@ async fn test_nested_local(#[values(OutputType::Wasm, OutputType::Wit)] output: 
     let mut lock = LockFile::new_with_path([], &lock_file)
         .await
         .expect("Should be able to create a new lock file");
-    let mut config = Config::default();
+    let mut config = Manifest::default();
     let overrides = config.overrides.get_or_insert(HashMap::default());
     overrides.insert(
         "my:local".to_string(),
@@ -92,7 +92,7 @@ async fn test_transitive_local(#[values(OutputType::Wasm, OutputType::Wit)] outp
     // "example-c:baz" = { "path" = "../example-c/wit" }
     // "example-c:nested" = { "path" = "../example-c/wit/nested" }
     // ```
-    let config = Config {
+    let config = Manifest {
         overrides: Some(HashMap::from([
             (
                 "example-b:bar".to_string(),
