@@ -16,19 +16,8 @@ use crate::Common;
 /// Commands for interacting with wit
 #[derive(Debug, Subcommand)]
 pub enum WitCommands {
-    /// Build a WIT package from a directory. By default, this will fetch all dependencies needed
-    /// and encode them in the WIT package. This will generate a lock file that can be used to fetch
-    /// the dependencies in the future.
     Build(BuildArgs),
-    /// Fetch dependencies for a component. This will read the package containing the world(s) you
-    /// have defined in the given wit directory (`wit` by default). It will then fetch the
-    /// dependencies and write them to the `deps` directory along with a lock file. If no lock file
-    /// exists, it will fetch all dependencies. If a lock file exists, it will fetch any
-    /// dependencies that are not in the lock file and update the lock file. To update the lock
-    /// file, use the `update` command.
     Fetch(FetchArgs),
-    /// Update the lock file with the latest dependencies. This will update all dependencies and
-    /// generate a new lock file.
     Update(UpdateArgs),
 }
 
@@ -42,6 +31,9 @@ impl WitCommands {
     }
 }
 
+/// Build a WIT package from a directory. By default, this will fetch all dependencies needed
+/// and encode them in the WIT package. This will generate a lock file that can be used to fetch
+/// the dependencies in the future.
 #[derive(Debug, Args)]
 pub struct BuildArgs {
     /// The directory containing the WIT files to build.
@@ -57,6 +49,12 @@ pub struct BuildArgs {
     pub common: Common,
 }
 
+/// Fetch dependencies for a component. This will read the package containing the world(s) you
+/// have defined in the given wit directory (`wit` by default). It will then fetch the
+/// dependencies and write them to the `deps` directory along with a lock file. If no lock file
+/// exists, it will fetch all dependencies. If a lock file exists, it will fetch any
+/// dependencies that are not in the lock file and update the lock file. To update the lock
+/// file, use the `update` command.
 #[derive(Debug, Args)]
 pub struct FetchArgs {
     /// The directory containing the WIT files to fetch dependencies for.
@@ -72,6 +70,8 @@ pub struct FetchArgs {
     pub common: Common,
 }
 
+/// Update the lock file with the latest dependencies. This will update all dependencies and
+/// generate a new lock file.
 #[derive(Debug, Args)]
 pub struct UpdateArgs {
     /// The directory containing the WIT files to update dependencies for.

@@ -28,7 +28,7 @@ mod oci;
 mod wit;
 
 use oci::OciCommands;
-use wit::WitCommands;
+use wit::{BuildArgs, FetchArgs, UpdateArgs, WitCommands};
 
 use crate::wit::temp_wit_file;
 
@@ -105,6 +105,9 @@ enum Commands {
     /// Commands for interacting with OCI registries
     #[clap(subcommand)]
     Oci(OciCommands),
+    Build(BuildArgs),
+    Fetch(FetchArgs),
+    Update(UpdateArgs),
     /// Commands for interacting with WIT files and dependencies
     #[clap(subcommand)]
     Wit(WitCommands),
@@ -615,6 +618,12 @@ async fn main() -> anyhow::Result<()> {
         Commands::Get(args) => args.run().await,
         Commands::Publish(args) => args.run().await,
         Commands::Oci(args) => args.run().await,
-        Commands::Wit(args) => args.run().await,
+        Commands::Build(args) => args.run().await,
+        Commands::Fetch(args) => args.run().await,
+        Commands::Update(args) => args.run().await,
+        Commands::Wit(args) => {
+            eprintln!("warning: `wkg wit <command>` is deprecated; use `wkg <command>` instead");
+            args.run().await
+        }
     }
 }
