@@ -2,7 +2,7 @@
 //! other downstream CLI tools that may need to leverage some of the same functionality provided by
 //! `wkg`.
 
-pub mod config;
 pub mod lock;
+pub mod manifest;
 pub mod resolver;
 pub mod wit;

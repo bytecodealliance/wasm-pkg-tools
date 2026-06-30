@@ -10,10 +10,10 @@ use semver::VersionReq;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 
-/// The default name of the configuration file.
-pub const CONFIG_FILE_NAME: &str = "wkg.toml";
+/// The default name of the manifest file.
+pub const MANIFEST_FILE_NAME: &str = "wkg.toml";
 
-/// The structure for a wkg.toml configuration file. This file is entirely optional and is used for
+/// The structure for a wkg.toml manifest file. This file is entirely optional and is used for
 /// overriding and annotating wasm packages.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -28,35 +28,36 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    /// Loads a configuration file from the given path.
+    /// Loads a manifest file from the given path.
     pub async fn load_from_path(path: impl AsRef<Path>) -> Result<Manifest> {
-        tracing::info!(path = %path.as_ref().display(), "loading wkg config file");
+        tracing::info!(path = %path.as_ref().display(), "loading wkg manifest file");
         let contents = tokio::fs::read_to_string(path)
             .await
-            .context("unable to load config from file")?;
-        let config: Manifest = toml::from_str(&contents).context("unable to parse config file")?;
-        Ok(config)
+            .context("unable to load manifest from file")?;
+        let manifest: Manifest =
+            toml::from_str(&contents).context("unable to parse manifest file")?;
+        Ok(manifest)
     }
 
-    /// Attempts to load the configuration from the current directory. Most of the time, users of this
+    /// Attempts to load the manifest from the current directory. Most of the time, users of this
     /// crate should use this function. Right now it just checks for a `wkg.toml` file in the current
     /// directory, but we could add more resolution logic in the future. If the file is not found, a
-    /// default empty config is returned.
+    /// default empty manifest is returned.
     pub async fn load() -> Result<Manifest> {
-        let config_path = PathBuf::from(CONFIG_FILE_NAME);
-        if !tokio::fs::try_exists(&config_path).await? {
+        let manifest_path = PathBuf::from(MANIFEST_FILE_NAME);
+        if !tokio::fs::try_exists(&manifest_path).await? {
             return Ok(Manifest::default());
         }
-        Self::load_from_path(config_path).await
+        Self::load_from_path(manifest_path).await
     }
 
-    /// Serializes and writes the configuration to the given path.
+    /// Serializes and writes the manifest to the given path.
     pub async fn write(&self, path: impl AsRef<Path>) -> Result<()> {
         let contents = toml::to_string_pretty(self)?;
         let mut file = tokio::fs::File::create(path).await?;
         file.write_all(contents.as_bytes())
             .await
-            .context("unable to write config to path")
+            .context("unable to write manifest to path")
     }
 
     /// Returns a matching override name and value for the input path
@@ -114,8 +115,8 @@ mod tests {
     #[tokio::test]
     async fn test_roundtrip() {
         let tempdir = tempfile::tempdir().unwrap();
-        let config_path = tempdir.path().join(CONFIG_FILE_NAME);
-        let config = Manifest {
+        let manifest_path = tempdir.path().join(MANIFEST_FILE_NAME);
+        let manifest = Manifest {
             overrides: Some(HashMap::from([(
                 "foo:bar".to_string(),
                 Override {
@@ -133,16 +134,16 @@ mod tests {
             }),
         };
 
-        config
-            .write(&config_path)
+        manifest
+            .write(&manifest_path)
             .await
-            .expect("unable to write config");
-        let loaded_config = Manifest::load_from_path(config_path)
+            .expect("unable to write manifest");
+        let loaded_manifest = Manifest::load_from_path(manifest_path)
             .await
-            .expect("unable to load config");
+            .expect("unable to load manifest");
         assert_eq!(
-            config, loaded_config,
-            "config loaded from file does not match original config"
+            manifest, loaded_manifest,
+            "manifest loaded from file does not match original manifest"
         );
     }
 }

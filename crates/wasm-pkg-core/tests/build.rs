@@ -1,4 +1,4 @@
-use wasm_pkg_core::{config::Manifest, lock::LockFile};
+use wasm_pkg_core::{lock::LockFile, manifest::Manifest};
 use wit_component::DecodedWasm;
 use wit_parser::Stability;
 

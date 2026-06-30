@@ -19,8 +19,8 @@ use wit_component::WitPrinter;
 use wit_parser::{PackageId, PackageName, Resolve};
 
 use crate::{
-    config::Manifest,
     lock::LockFile,
+    manifest::Manifest,
     resolver::{
         DecodedDependency, Dependency, DependencyGraph, DependencyResolution,
         DependencyResolutionMap, DependencyResolver, LocalPackageIndex, LocalResolution,
@@ -51,15 +51,15 @@ impl FromStr for OutputType {
     }
 }
 
-/// Builds a WIT package given the configuration and directory to parse. Will update the given lock
+/// Builds a WIT package given the manifest and directory to parse. Will update the given lock
 /// file with the resolved dependencies but will not write it to disk.
 pub async fn build_package(
-    config: &Manifest,
+    manifest: &Manifest,
     wit_dir: impl AsRef<Path>,
     lock_file: &mut LockFile,
     client: CachingClient<FileCache>,
 ) -> Result<(PackageRef, Option<Version>, Vec<u8>)> {
-    let dependencies = resolve_dependencies(config, &wit_dir, Some(lock_file), client)
+    let dependencies = resolve_dependencies(manifest, &wit_dir, Some(lock_file), client)
         .await
         .context("Unable to resolve dependencies")?;
 
@@ -69,7 +69,7 @@ pub async fn build_package(
         .generate_resolve(wit_dir.as_ref())
         .await
         .map_err(|e| {
-            if config.has_override(wit_dir.as_ref()) {
+            if manifest.has_override(wit_dir.as_ref()) {
                 e.context("hint: override present for WIT directory".to_string())
             } else {
                 e
@@ -98,7 +98,7 @@ pub async fn build_package(
 
     let processed_by_version = option_env!("WIT_VERSION_INFO").unwrap_or(env!("CARGO_PKG_VERSION"));
 
-    let metadata = config.metadata.clone().unwrap_or_default();
+    let metadata = manifest.metadata.clone().unwrap_or_default();
     let add_metadata = {
         /// MetadataField::Set iff the given Option is Some
         fn set<T: std::fmt::Debug + Clone>(opt: Option<T>) -> AddMetadataField<T> {
@@ -130,14 +130,14 @@ pub async fn build_package(
 ///
 /// This is mostly a convenience wrapper around [`resolve_dependencies`] and [`populate_dependencies`].
 pub async fn fetch_dependencies(
-    config: &Manifest,
+    manifest: &Manifest,
     wit_dir: impl AsRef<Path>,
     lock_file: &mut LockFile,
     client: CachingClient<FileCache>,
     output: OutputType,
 ) -> Result<()> {
     // Don't pass lock file if update is true
-    let dependencies = resolve_dependencies(config, &wit_dir, Some(lock_file), client).await?;
+    let dependencies = resolve_dependencies(manifest, &wit_dir, Some(lock_file), client).await?;
     lock_file.update_dependencies(&dependencies);
     populate_dependencies(wit_dir, &dependencies, output).await
 }
@@ -242,19 +242,19 @@ pub(crate) fn get_local_dependencies(
 }
 
 /// Builds a list of resolved dependencies loaded from the component or path containing the WIT.
-/// This will configure the resolver, override any dependencies from configuration and resolve the
+/// This will configure the resolver, override any dependencies from manifest and resolve the
 /// dependency map. This map can then be used in various other functions for fetching the
 /// dependencies and/or building a final resolved package.
 pub async fn resolve_dependencies(
-    config: &Manifest,
+    manifest: &Manifest,
     path: impl AsRef<Path>,
     lock_file: Option<&LockFile>,
     client: CachingClient<FileCache>,
 ) -> Result<DependencyResolutionMap> {
     let mut resolver = DependencyResolver::new_with_client(client, lock_file)?;
-    // add deps from config first in case they're local deps and then add deps from the directory
-    if let Some(overrides) = config.overrides.as_ref() {
-        tracing::debug!("detected config overrides");
+    // add deps from manifest first in case they're local deps and then add deps from the directory
+    if let Some(overrides) = manifest.overrides.as_ref() {
+        tracing::debug!("detected manifest overrides");
         for (pkg, ovr) in overrides.iter() {
             let pkg: PackageRef = pkg.parse().context("Unable to parse as a package ref")?;
             let dep = match (ovr.path.as_ref(), ovr.version.as_ref()) {
