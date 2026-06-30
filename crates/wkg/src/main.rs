@@ -312,7 +312,7 @@ impl PublishArgs {
                     .merge(reg_config);
 
                 let mut plan = PublishPlan::from_paths(paths)?;
-                eprintln!("{plan}");
+                anstream::eprintln!("{plan:#}");
 
                 // TODO(mkatychev): Add support for `PackageLoader::get_release` to handle
                 // querying on a per package, namespace, and registry level

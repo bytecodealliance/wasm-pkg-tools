@@ -945,7 +945,7 @@ impl PublishPlan {
 
 impl std::fmt::Display for PublishPlan {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // TODO(mkatychev): handle with anstyle and anstream, passing in `anstream::AutoStream` for colour choice
+        let alt = f.alternate();
         for id in self.dependents.nodes_iter() {
             let dep = &self.dependents[id];
             // initial dependency graph visualization
@@ -955,8 +955,13 @@ impl std::fmt::Display for PublishPlan {
                 .peekable();
 
             if neighbors.peek().is_none() {
-                // tracing::debug!("{dep} has no dependents");
-                writeln!(f, "[{dep} has no dependents]")?;
+                if alt {
+                    writeln!(f, "[{dep:#} has no dependents]")?;
+                } else {
+                    writeln!(f, "[{dep} has no dependents]")?;
+                }
+            } else if alt {
+                writeln!(f, "[{dep:#}]")?;
             } else {
                 writeln!(f, "[{dep}]")?;
             }
@@ -969,7 +974,11 @@ impl std::fmt::Display for PublishPlan {
                     "╰─"
                 };
 
-                writeln!(f, "{separator}─▶ {pkg}")?;
+                if alt {
+                    writeln!(f, "{separator}─▶ {pkg:#}")?;
+                } else {
+                    writeln!(f, "{separator}─▶ {pkg}")?;
+                }
             }
         }
         Ok(())

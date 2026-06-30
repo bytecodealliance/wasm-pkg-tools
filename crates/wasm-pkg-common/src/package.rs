@@ -1,10 +1,15 @@
 use std::str::FromStr;
 
+use anstyle::{Ansi256Color, AnsiColor, Style};
 use serde::{Deserialize, Serialize};
 
 use crate::{label::Label, Error};
 
 pub use semver::Version;
+
+const LABEL: Style = AnsiColor::BrightBlue.on_default().bold();
+const VERSION: Style = AnsiColor::BrightRed.on_default();
+const SEP: Style = Ansi256Color(249).on_default();
 
 /// A package reference, consisting of kebab-case namespace and name.
 ///
@@ -35,7 +40,15 @@ impl PackageRef {
 
 impl std::fmt::Display for PackageRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.namespace, self.name)
+        if f.alternate() {
+            write!(
+                f,
+                "{LABEL}{}{LABEL:#}{SEP}:{SEP:#}{LABEL}{}{LABEL:#}",
+                self.namespace, self.name,
+            )
+        } else {
+            write!(f, "{}:{}", self.namespace, self.name)
+        }
     }
 }
 
@@ -70,10 +83,15 @@ impl FromStr for PackageRef {
 }
 impl std::fmt::Display for PackageSpec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(version) = &self.version {
-            write!(f, "{}@{}", self.package, version)
-        } else {
-            write!(f, "{}", self.package)
+        match (&self.version, f.alternate()) {
+            (Some(version), true) => write!(
+                f,
+                "{:#}{SEP}@{SEP:#}{VERSION}{version}{VERSION:#}",
+                self.package,
+            ),
+            (Some(version), false) => write!(f, "{}@{version}", self.package),
+            (None, true) => write!(f, "{:#}", self.package),
+            (None, false) => write!(f, "{}", self.package),
         }
     }
 }

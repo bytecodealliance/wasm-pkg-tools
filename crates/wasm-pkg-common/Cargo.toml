@@ -18,6 +18,7 @@ registry-config = [
 oci_extras = []
 
 [dependencies]
+anstyle = "1.0"
 anyhow = { workspace = true }
 bytes = { workspace = true }
 etcetera = { workspace = true, optional = true }
