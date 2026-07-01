@@ -945,23 +945,15 @@ impl PublishPlan {
 
 impl std::fmt::Display for PublishPlan {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let alt = f.alternate();
         for id in self.dependents.nodes_iter() {
             let dep = &self.dependents[id];
-            // initial dependency graph visualization
             let mut neighbors = self
                 .dependents
                 .neighbors_directed(id, Direction::Outgoing)
                 .peekable();
 
             if neighbors.peek().is_none() {
-                if alt {
-                    writeln!(f, "[{dep:#} has no dependents]")?;
-                } else {
-                    writeln!(f, "[{dep} has no dependents]")?;
-                }
-            } else if alt {
-                writeln!(f, "[{dep:#}]")?;
+                writeln!(f, "[{dep} has no dependents]")?;
             } else {
                 writeln!(f, "[{dep}]")?;
             }
@@ -974,11 +966,7 @@ impl std::fmt::Display for PublishPlan {
                     "╰─"
                 };
 
-                if alt {
-                    writeln!(f, "{separator}─▶ {pkg:#}")?;
-                } else {
-                    writeln!(f, "{separator}─▶ {pkg}")?;
-                }
+                writeln!(f, "{separator}─▶ {pkg}")?;
             }
         }
         Ok(())

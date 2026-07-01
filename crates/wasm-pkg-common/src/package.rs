@@ -1,15 +1,24 @@
 use std::str::FromStr;
 
-use anstyle::{Ansi256Color, AnsiColor, Style};
 use serde::{Deserialize, Serialize};
 
 use crate::{label::Label, Error};
 
 pub use semver::Version;
 
-const LABEL: Style = AnsiColor::BrightBlue.on_default().bold();
-const VERSION: Style = AnsiColor::BrightRed.on_default();
-const SEP: Style = Ansi256Color(249).on_default();
+#[cfg(feature = "anstyle")]
+mod ansi {
+    use anstyle::{Ansi256Color, AnsiColor, Style};
+
+    pub const LABEL: Style = AnsiColor::BrightBlue.on_default().bold();
+    pub const VERSION: Style = AnsiColor::BrightRed.on_default();
+    pub const SEP: Style = Ansi256Color(249).on_default();
+
+    pub fn is_terminal() -> bool {
+        use std::io::IsTerminal;
+        std::io::stderr().is_terminal()
+    }
+}
 
 /// A package reference, consisting of kebab-case namespace and name.
 ///
@@ -40,15 +49,16 @@ impl PackageRef {
 
 impl std::fmt::Display for PackageRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if f.alternate() {
-            write!(
+        #[cfg(feature = "anstyle")]
+        if ansi::is_terminal() {
+            use ansi::{LABEL, SEP};
+            return write!(
                 f,
                 "{LABEL}{}{LABEL:#}{SEP}:{SEP:#}{LABEL}{}{LABEL:#}",
                 self.namespace, self.name,
-            )
-        } else {
-            write!(f, "{}:{}", self.namespace, self.name)
+            );
         }
+        write!(f, "{}:{}", self.namespace, self.name)
     }
 }
 
@@ -83,15 +93,21 @@ impl FromStr for PackageRef {
 }
 impl std::fmt::Display for PackageSpec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match (&self.version, f.alternate()) {
-            (Some(version), true) => write!(
-                f,
-                "{:#}{SEP}@{SEP:#}{VERSION}{version}{VERSION:#}",
-                self.package,
-            ),
-            (Some(version), false) => write!(f, "{}@{version}", self.package),
-            (None, true) => write!(f, "{:#}", self.package),
-            (None, false) => write!(f, "{}", self.package),
+        #[cfg(feature = "anstyle")]
+        if ansi::is_terminal() {
+            use ansi::{SEP, VERSION};
+            return match &self.version {
+                Some(version) => write!(
+                    f,
+                    "{}{SEP}@{SEP:#}{VERSION}{version}{VERSION:#}",
+                    self.package,
+                ),
+                None => write!(f, "{}", self.package),
+            };
+        }
+        match &self.version {
+            Some(version) => write!(f, "{}@{version}", self.package),
+            None => write!(f, "{}", self.package),
         }
     }
 }
