@@ -345,7 +345,7 @@ pub struct DependencyResolver<'a> {
 }
 
 impl<'a> DependencyResolver<'a> {
-    /// Creates a new dependency resolver. If `config` is `None`, then the resolver will be set to
+    /// Creates a new dependency resolver. If [`Config`] is `None`, then the resolver will be set to
     /// offline mode and a lock file must be given as well. Anything that will require network
     /// access will fail in offline mode.
     pub fn new(

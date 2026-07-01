@@ -9,6 +9,7 @@ use wasm_pkg_client::caching::{CachingClient, FileCache};
 use wasm_pkg_common::package::{PackageRef, Version};
 use wasm_pkg_core::{
     lock::LockFile,
+    manifest::Manifest,
     wit::{self, OutputType},
 };
 
@@ -120,8 +121,8 @@ pub async fn build_wit_dir(
     lock_file: &mut LockFile,
 ) -> anyhow::Result<(PackageRef, Option<Version>, Vec<u8>)> {
     check_dir(&dir).await?;
-    let wkg_config = wasm_pkg_core::config::Config::load().await?;
-    let result = wit::build_package(&wkg_config, dir.as_ref(), lock_file, client)
+    let manifest = Manifest::load().await?;
+    let result = wit::build_package(&manifest, dir.as_ref(), lock_file, client)
         .await
         .with_context(|| format!("failed to build WIT directory `{}`", dir.as_ref().display()))?;
     Ok(result)
@@ -151,10 +152,10 @@ impl FetchArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         check_dir(&self.dir).await?;
         let client = self.common.get_client().await?;
-        let wkg_config = wasm_pkg_core::config::Config::load().await?;
+        let manifest = Manifest::load().await?;
         let mut lock_file = LockFile::load(false).await?;
         wit::fetch_dependencies(
-            &wkg_config,
+            &manifest,
             self.dir,
             &mut lock_file,
             client,
@@ -171,12 +172,12 @@ impl UpdateArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         check_dir(&self.dir).await?;
         let client = self.common.get_client().await?;
-        let wkg_config = wasm_pkg_core::config::Config::load().await?;
+        let manifest = Manifest::load().await?;
         let mut lock_file = LockFile::load(false).await?;
         // Clear the lock file since we're updating it
         lock_file.packages.clear();
         wit::fetch_dependencies(
-            &wkg_config,
+            &manifest,
             self.dir,
             &mut lock_file,
             client,

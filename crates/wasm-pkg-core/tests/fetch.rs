@@ -3,8 +3,8 @@ use std::{collections::HashMap, path::Path};
 use rstest::rstest;
 use tokio::process::Command;
 use wasm_pkg_core::{
-    config::{Config, Override},
     lock::LockFile,
+    manifest::{Manifest, Override},
     wit::{self, OutputType},
 };
 
@@ -27,7 +27,7 @@ async fn test_fetch(
     let (_temp_cache, client) = common::get_client().await.unwrap();
 
     wit::fetch_dependencies(
-        &Config::default(),
+        &Manifest::default(),
         fixture_path.join("wit"),
         &mut lock,
         client,
@@ -55,8 +55,8 @@ async fn test_nested_local(#[values(OutputType::Wasm, OutputType::Wit)] output: 
     let mut lock = LockFile::new_with_path([], &lock_file)
         .await
         .expect("Should be able to create a new lock file");
-    let mut config = Config::default();
-    let overrides = config.overrides.get_or_insert(HashMap::default());
+    let mut manifest = Manifest::default();
+    let overrides = manifest.overrides.get_or_insert(HashMap::default());
     overrides.insert(
         "my:local".to_string(),
         Override {
@@ -66,9 +66,15 @@ async fn test_nested_local(#[values(OutputType::Wasm, OutputType::Wit)] output: 
     );
     let (_temp_cache, client) = common::get_client().await.unwrap();
 
-    wit::fetch_dependencies(&config, project_path.join("wit"), &mut lock, client, output)
-        .await
-        .expect("Should be able to fetch the dependencies");
+    wit::fetch_dependencies(
+        &manifest,
+        project_path.join("wit"),
+        &mut lock,
+        client,
+        output,
+    )
+    .await
+    .expect("Should be able to fetch the dependencies");
 
     assert_eq!(
         lock.packages.len(),
@@ -92,7 +98,7 @@ async fn test_transitive_local(#[values(OutputType::Wasm, OutputType::Wit)] outp
     // "example-c:baz" = { "path" = "../example-c/wit" }
     // "example-c:nested" = { "path" = "../example-c/wit/nested" }
     // ```
-    let config = Config {
+    let manifest = Manifest {
         overrides: Some(HashMap::from([
             (
                 "example-b:bar".to_string(),
@@ -121,9 +127,15 @@ async fn test_transitive_local(#[values(OutputType::Wasm, OutputType::Wit)] outp
     let (_temp_cache, client) = common::get_client().await.unwrap();
 
     // If overrides didn't properly resolve, this will fail
-    wit::fetch_dependencies(&config, project_path.join("wit"), &mut lock, client, output)
-        .await
-        .unwrap_or_else(|e| panic!("Should be able to fetch the dependencies: {e:#}"));
+    wit::fetch_dependencies(
+        &manifest,
+        project_path.join("wit"),
+        &mut lock,
+        client,
+        output,
+    )
+    .await
+    .unwrap_or_else(|e| panic!("Should be able to fetch the dependencies: {e:#}"));
 
     // Ensure that the deps directory contains the correct dependencies
     let mut deps_dir = tokio::fs::read_dir(project_path.join("wit").join("deps"))
