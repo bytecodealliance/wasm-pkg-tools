@@ -7,14 +7,14 @@ use crate::{label::Label, Error};
 pub use semver::Version;
 
 #[cfg(feature = "anstyle")]
-mod ansi {
+pub(crate) mod ansi {
     use anstyle::{Ansi256Color, AnsiColor, Style};
 
-    pub const LABEL: Style = AnsiColor::BrightBlue.on_default().bold();
-    pub const VERSION: Style = AnsiColor::BrightRed.on_default();
-    pub const SEP: Style = Ansi256Color(249).on_default();
+    pub(crate) const LABEL: Style = AnsiColor::BrightBlue.on_default().bold();
+    pub(crate) const VERSION: Style = AnsiColor::BrightRed.on_default();
+    pub(crate) const SEP: Style = Ansi256Color(249).on_default();
 
-    pub fn is_terminal() -> bool {
+    pub(crate) fn is_terminal() -> bool {
         use std::io::IsTerminal;
         std::io::stderr().is_terminal()
     }
