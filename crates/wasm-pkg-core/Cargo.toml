@@ -13,7 +13,7 @@ anstyle = ["wasm-pkg-common/anstyle"]
 [dependencies]
 anyhow = { workspace = true }
 futures-util = { workspace = true }
-indexmap = "2.5"
+indexmap = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
@@ -45,5 +45,5 @@ features = [
 [dev-dependencies]
 tempfile = { workspace = true }
 sha2 = { workspace = true }
-rstest = "0.23"
-glob = "0.3.3"
+rstest = { workspace = true }
+glob = { workspace = true }
