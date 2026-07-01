@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Error, label::Label};
 
-pub use semver::Version;
+pub use semver::{Version, VersionReq};
 
 /// A package reference, consisting of kebab-case namespace and name.
 ///

@@ -146,10 +146,12 @@ async fn publish_multiple_transitive_local_packages() {
             .list_all_versions(&pkg)
             .await
             .unwrap_or_else(|e| panic!("list versions for {name}: {e:#}"));
-        std::assert_matches!(
-            &versions[..],
-            [VersionInfo { version, .. }] if version == &expected_version,
-            "{name} should have exactly one published version",
+        assert!(
+            matches!(
+                &versions[..],
+                [VersionInfo { version, .. }] if version == &expected_version,
+            ),
+            "{name} should have exactly one published version, got {versions:?}",
         );
     }
 }

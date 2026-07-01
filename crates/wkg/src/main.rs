@@ -286,6 +286,10 @@ struct PublishArgs {
     #[arg(long)]
     dry_run: bool,
 
+    /// Disable semver compatibility checks.
+    #[arg(long)]
+    skip_semver_check: bool,
+
     #[command(flatten)]
     common: Common,
 }
@@ -358,6 +362,7 @@ impl PublishArgs {
                                 registry: Some(local_registry.clone()),
                                 // we want to publish to "tmp_local_publish" regardless of flags passed in
                                 dry_run: false,
+                                skip_semver_check: true,
                             },
                         )
                         .await?;
@@ -464,6 +469,7 @@ impl PublishArgs {
             package,
             registry: self.registry_args.registry.clone(),
             dry_run: self.dry_run,
+            skip_semver_check: self.skip_semver_check,
         })
     }
 }

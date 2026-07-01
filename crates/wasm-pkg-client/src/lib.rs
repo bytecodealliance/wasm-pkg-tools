@@ -27,6 +27,7 @@
 //! ```
 
 pub mod caching;
+mod decoded_component;
 mod loader;
 pub mod local;
 pub mod metadata;
@@ -35,27 +36,24 @@ mod publisher;
 mod release;
 pub mod warg;
 
-use std::path::Path;
-use std::sync::Arc;
-use std::{collections::HashMap, pin::Pin};
+use std::{cmp::Ordering, collections::HashMap, path::Path, pin::Pin, sync::Arc};
 
 use anyhow::anyhow;
 use bytes::Bytes;
+use decoded_component::DecodedComponent;
 use futures_util::Stream;
-use tokio::io::AsyncSeekExt;
 use tokio::sync::RwLock;
-use tokio_util::io::SyncIoBridge;
 use wasm_pkg_common::metadata::{LOCAL_PROTOCOL, OCI_PROTOCOL, WARG_PROTOCOL};
 pub use wasm_pkg_common::{
     Error,
     config::{Config, CustomConfig, RegistryMapping},
     digest::ContentDigest,
     metadata::RegistryMetadata,
-    package::{PackageRef, Version},
+    package::{PackageRef, Version, VersionReq},
     registry::Registry,
 };
-use wit_component::DecodedWasm;
 
+use crate::loader::VersionSort;
 use crate::local::LocalBackend;
 use crate::metadata::RegistryMetadataExt;
 pub use crate::{loader::PackageLoader, publisher::PackagePublisher};
@@ -91,6 +89,8 @@ pub struct PublishOpts {
     /// If true, resolve the package, version, and registry but do not call the
     /// backend to publish.
     pub dry_run: bool,
+    /// Disable semver compatibility verification.
+    pub skip_semver_check: bool,
 }
 
 /// A read-only registry client.
@@ -169,24 +169,67 @@ impl Client {
         data: PublishingSource,
         additional_options: PublishOpts,
     ) -> Result<(PackageRef, Version), Error> {
-        let (data, package, version) = if let Some((p, v)) = additional_options.package {
-            (data, p, v)
-        } else {
-            let data = SyncIoBridge::new(data);
-            let (mut data, p, v) = tokio::task::spawn_blocking(|| resolve_package(data))
-                .await
-                .map_err(|e| {
-                    crate::Error::IoError(std::io::Error::other(format!(
-                        "Error when performing blocking IO: {e:?}"
-                    )))
-                })??;
-            // We must rewind the reader because we read to the end to parse the component.
-            data.rewind().await?;
-            (data, p, v)
-        };
-        let source = self
-            .resolve_source(&package, additional_options.registry)
-            .await?;
+        // handle opts
+        let registry = additional_options.registry;
+        let semver_check: bool = additional_options.skip_semver_check;
+        let pkg_authority = additional_options.package;
+
+        // construct verifiable publishing source
+        let (data, candidate) =
+            DecodedComponent::from_publishing_source_with_package(data, pkg_authority).await?;
+
+        let (package, version) = (
+            candidate.package().to_owned(),
+            candidate.version().to_owned(),
+        );
+        let source = self.resolve_source(&package, registry).await?;
+
+        // execute pre-flight checks
+        if !semver_check {
+            // fetch nearest neighbors of interest, sorted in descending order
+            let mut neighbors: [Option<VersionInfo>; 2] = [None, None];
+            for version_info in
+                fetch_semver_series(source.as_ref().as_ref(), &package, &version).await?
+            {
+                match version.cmp(&version_info.version) {
+                    Ordering::Equal => return Err(Error::VersionAlreadyExists(version.to_owned())),
+                    Ordering::Greater => {
+                        // incoming version is greater than neighbor
+                        neighbors[0] = Some(version_info);
+                        break;
+                    }
+                    Ordering::Less => {
+                        // incoming version is lesser than neighbor
+                        neighbors[1] = Some(version_info);
+                    }
+                }
+            }
+
+            // queue up load/decode futures
+            let prepare_neighbor_ops: Vec<_> = neighbors
+                .into_iter()
+                .flatten()
+                .map(|v| fetch_and_resolve_package(&**source, &package, v.version))
+                .collect();
+
+            // execute load/decode ops, collect results.
+            let mut semver_series: Vec<decoded_component::DecodedComponent> =
+                futures_util::future::join_all(prepare_neighbor_ops)
+                    .await
+                    .into_iter()
+                    .collect::<Result<_, _>>()?;
+
+            // verify candidate is in compliance with its semver neighbors
+            if !semver_series.is_empty() {
+                semver_series.push(candidate);
+
+                semver_series.sort_by(|a, b| a.version().cmp(b.version()));
+                for window in semver_series.windows(2) {
+                    let [prev, next] = window else { unreachable!() };
+                    prev.semver_check(next)?;
+                }
+            }
+        }
 
         source
             .publish(&package, &version, data, additional_options.dry_run)
@@ -310,64 +353,41 @@ impl Client {
     }
 }
 
-/// Resolves the package name and version from the given source. This takes a wrapped publishing
-/// source to it can do a blocking read with wit_component. It returns back the underlying
-/// PublishingSource but should be rewound to the beginning of the source
-fn resolve_package(
-    mut data: SyncIoBridge<PublishingSource>,
-) -> Result<(PublishingSource, PackageRef, Version), Error> {
-    let (resolve, package_id) =
-        match wit_component::decode_reader(&mut data).map_err(crate::Error::InvalidComponent)? {
-            DecodedWasm::Component(resolve, world_id) => {
-                let package_id = resolve
-                    .worlds
-                    .iter()
-                    .find_map(|(id, w)| if id == world_id { w.package } else { None })
-                    .ok_or_else(|| {
-                        crate::Error::InvalidComponent(anyhow::anyhow!(
-                            "component world or package not found"
-                        ))
-                    })?;
-                (resolve, package_id)
-            }
-            DecodedWasm::WitPackage(resolve, package_id) => (resolve, package_id),
-        };
-    let (package, version) = resolve
-        .package_names
-        .into_iter()
-        .find_map(|(pkg, id)| {
-            // SAFETY: We just parsed this from wit and should be able to unwrap. If it
-            // isn't a valid identifier, something else is majorly wrong
-            (id == package_id).then(|| {
-                (
-                    PackageRef::new(
-                        pkg.namespace.try_into().unwrap(),
-                        pkg.name.try_into().unwrap(),
-                    ),
-                    pkg.version,
-                )
-            })
-        })
-        .ok_or_else(|| {
-            crate::Error::InvalidComponent(anyhow::anyhow!("component package not found"))
-        })?;
+// Fetch every prior release in the same semver compatibility series as
+// `version`, sorted in descending order.
+//
+//   X.y.z (X >= 1) -> X.*       (minors are additive within a major)
+//   0.Y.z (Y >= 1) -> 0.Y.*     (in 0.x, minor bumps are breaking)
+//   0.0.Z          -> 0.0.Z     (every patch is its own series)
+async fn fetch_semver_series(
+    source: &(dyn LoaderPublisher + Sync),
+    package: &PackageRef,
+    version: &Version,
+) -> Result<Vec<VersionInfo>, Error> {
+    let mask = if version.major > 0 {
+        format!("{}.*", version.major)
+    } else if version.minor > 0 {
+        format!("0.{}.*", version.minor)
+    } else {
+        version.to_string()
+    };
+    let req = VersionReq::parse(&mask)
+        .map_err(|e| Error::InvalidConfig(anyhow!("invalid version mask: {e}")))?;
 
-    let version = version.ok_or_else(|| {
-        crate::Error::InvalidComponent(
-            anyhow::anyhow!(
-                "component package version not found in the Wasm binary\n\
-            \n\
-            The Wasm file was built without a version in the WIT `package` statement.\n\
-            Add a version to the `package` statement in your .wit file, e.g.:\n\
-            \n\
-            \tpackage example:my-package@1.0.0;\n\
-            \n\
-            Alternatively, specify the package and version explicitly with the --package flag:\n\
-            \n\
-            \twkg publish <file> --package <namespace>:<name>@<version>"
-            )
-            .context(format!("package: {package}")),
-        )
-    })?;
-    Ok((data.into_inner(), package, version))
+    source
+        .list_matching_versions(package, req, VersionSort::Descending)
+        .await
+}
+
+async fn fetch_and_resolve_package(
+    source: &(dyn LoaderPublisher + Sync),
+    package: &PackageRef,
+    version: Version,
+) -> Result<decoded_component::DecodedComponent, Error> {
+    let stream = source
+        .stream_content(package, &source.get_release(package, &version).await?)
+        .await
+        .map_err(std::io::Error::other)?;
+
+    DecodedComponent::from_content_stream(stream, package.clone(), version).await
 }
