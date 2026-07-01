@@ -7,6 +7,9 @@ version.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+anstyle = ["wasm-pkg-common/anstyle"]
+
 [dependencies]
 anyhow = { workspace = true }
 futures-util = { workspace = true }

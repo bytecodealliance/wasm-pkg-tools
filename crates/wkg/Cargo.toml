@@ -30,7 +30,7 @@ tracing-subscriber = { workspace = true, features = ["ansi"] }
 wasm-pkg-common = { workspace = true, features = ["anstyle"] }
 wasm-pkg-client = { workspace = true }
 wit-component = { workspace = true }
-wasm-pkg-core = { workspace = true }
+wasm-pkg-core = { workspace = true, features = ["anstyle"] }
 
 [dev-dependencies]
 base64 = { workspace = true }
