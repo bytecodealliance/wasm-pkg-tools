@@ -10,7 +10,9 @@ mod publisher;
 
 use docker_credential::{CredentialRetrievalError, DockerCredential};
 use oci_client::{
-    Reference, RegistryOperation, errors::OciDistributionError, secrets::RegistryAuth,
+    Reference, RegistryOperation,
+    errors::{OciDistributionError, OciError, OciErrorCode},
+    secrets::RegistryAuth,
 };
 use secrecy::ExposeSecret;
 use serde::Deserialize;
@@ -154,6 +156,22 @@ pub(crate) fn oci_registry_error(err: OciDistributionError) -> Error {
     match err {
         // Technically this could be a missing version too, but there really isn't a way to find out
         OciDistributionError::ImageManifestNotFoundError(_) => Error::PackageNotFound,
+        // `list_tags` against a repository that doesn't yet exist surfaces
+        // as a `NameUnknown` envelope rather than a 404 manifest error. Only
+        // Cast when NameUnknown is the *sole* error in the envelope.
+        // Bundled errors (e.g. `[NameUnknown, Unauthorized]`) are preserved as a
+        // generic `RegistryError`.
+        OciDistributionError::RegistryError { ref envelope, .. }
+            if matches!(
+                envelope.errors.as_slice(),
+                [OciError {
+                    code: OciErrorCode::NameUnknown,
+                    ..
+                }],
+            ) =>
+        {
+            Error::PackageNotFound
+        }
         _ => Error::RegistryError(err.into()),
     }
 }

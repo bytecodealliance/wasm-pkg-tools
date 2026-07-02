@@ -1,5 +1,5 @@
 use futures_util::TryStreamExt;
-use wasm_pkg_client::{Client, Config};
+use wasm_pkg_client::{Client, Config, PublishOpts};
 
 const FIXTURE_WASM: &str = "./tests/testdata/binary_wit.wasm";
 
@@ -56,6 +56,54 @@ async fn publish_and_fetch_smoke_test() {
         .await
         .expect("Failed to read fixture");
     assert_eq!(content, expected_content);
+}
+
+// Exercises the publish-time semver gate against a real OCI registry. The
+// override package name guarantees the namespace is empty on the registry, so
+// `list_matching_versions` must swallow the OCI `NameUnknown` response into an
+// empty history for the publish to succeed.
+#[cfg(feature = "docker-tests")]
+#[tokio::test]
+async fn publish_with_semver_check_succeeds_for_new_package() {
+    use testcontainers::{
+        core::{IntoContainerPort, WaitFor},
+        runners::AsyncRunner,
+        GenericImage, ImageExt,
+    };
+
+    let _container = GenericImage::new("registry", "2")
+        .with_wait_for(WaitFor::message_on_stderr("listening on [::]:5000"))
+        .with_mapped_port(5002, 5000.tcp())
+        .start()
+        .await
+        .expect("Failed to start test container");
+
+    let config = Config::from_toml(
+        r#"
+        default_registry = "localhost:5002"
+
+        [registry."localhost:5002"]
+        type = "oci"
+        [registry."localhost:5002".oci]
+        protocol = "http"
+    "#,
+    )
+    .unwrap();
+    let client = Client::new(config);
+
+    let package = "example:fresh-series".parse().unwrap();
+    let version = "1.0.0".parse().unwrap();
+
+    client
+        .publish_release_file(
+            FIXTURE_WASM,
+            PublishOpts {
+                package: Some((package, version)),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("publish should succeed for a brand-new package (NameUnknown swallowed)");
 }
 
 #[cfg(feature = "docker-tests")]
