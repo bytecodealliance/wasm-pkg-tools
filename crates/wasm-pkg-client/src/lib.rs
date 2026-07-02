@@ -223,7 +223,7 @@ impl Client {
             if !semver_series.is_empty() {
                 semver_series.push(candidate);
 
-                semver_series.sort_by(|a, b| a.version().cmp(b.version()));
+                semver_series.sort();
                 for window in semver_series.windows(2) {
                     let [prev, next] = window else { unreachable!() };
                     prev.semver_check(next)?;

@@ -362,7 +362,7 @@ impl PublishArgs {
                                 registry: Some(local_registry.clone()),
                                 // we want to publish to "tmp_local_publish" regardless of flags passed in
                                 dry_run: false,
-                                skip_semver_check: true,
+                                skip_semver_check: publish_opts.skip_semver_check,
                             },
                         )
                         .await?;

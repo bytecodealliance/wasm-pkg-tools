@@ -38,10 +38,10 @@ pub trait PackageLoader: Send {
             .filter(|v| predicate.matches(&v.version))
             .collect();
 
-        match sort {
-            VersionSort::Ascending => matching.sort_by(|a, b| a.version.cmp(&b.version)),
-            VersionSort::Descending => matching.sort_by(|a, b| b.version.cmp(&a.version)),
-        };
+        matching.sort();
+        if matches!(sort, VersionSort::Descending) {
+            matching.reverse();
+        }
 
         Ok(matching)
     }
@@ -70,8 +70,8 @@ mod tests {
     use async_trait::async_trait;
     use rstest::rstest;
     use wasm_pkg_common::{
-        package::{PackageRef, Version, VersionReq},
         Error,
+        package::{PackageRef, Version, VersionReq},
     };
 
     #[derive(Clone, Debug)]

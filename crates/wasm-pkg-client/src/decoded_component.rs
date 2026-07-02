@@ -4,8 +4,8 @@ use std::io::Read;
 use tokio::io::AsyncSeekExt;
 use tokio_util::io::{StreamReader, SyncIoBridge};
 use wasm_pkg_common::{
-    package::{PackageRef, Version},
     Error,
+    package::{PackageRef, Version},
 };
 use wit_component::DecodedWasm;
 
@@ -105,6 +105,26 @@ impl DecodedComponent {
                 source: e,
             }
         })
+    }
+}
+
+impl PartialEq for DecodedComponent {
+    fn eq(&self, other: &Self) -> bool {
+        self.package_ref == other.package_ref && self.version == other.version
+    }
+}
+
+impl Eq for DecodedComponent {}
+
+impl PartialOrd for DecodedComponent {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for DecodedComponent {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (&self.package_ref, &self.version).cmp(&(&other.package_ref, &other.version))
     }
 }
 
