@@ -14,8 +14,11 @@ default = ["docker-tests"]
 docker-tests = []
 
 [dependencies]
+anstream = { workspace = true }
+anstyle = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive", "wrap_help", "env"] }
+colorchoice-clap = { workspace = true }
 docker_credential = { workspace = true }
 futures-util = { workspace = true, features = ["io"] }
 oci-client = { workspace = true }
@@ -24,12 +27,13 @@ tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["ansi"] }
-wasm-pkg-common = { workspace = true }
 wasm-pkg-client = { workspace = true }
-wit-component = { workspace = true }
+wasm-pkg-common = { workspace = true }
 wasm-pkg-core = { workspace = true }
+wit-component = { workspace = true }
 
 [dev-dependencies]
+anstream = { workspace = true, features = ["test"] }
 base64 = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }

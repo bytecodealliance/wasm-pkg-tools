@@ -1,6 +1,7 @@
 //! Args and commands for interacting with WIT files and dependencies
 use std::path::{Path, PathBuf};
 
+use anstream::eprintln;
 use anyhow::Context;
 use clap::{Args, Subcommand};
 use tempfile::NamedTempFile;

@@ -4,6 +4,7 @@ use std::{
     path::PathBuf,
 };
 
+use anstream::eprintln;
 use anyhow::{Context, anyhow, ensure};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
@@ -32,9 +33,40 @@ use wit::{BuildArgs, FetchArgs, UpdateArgs, WitCommands};
 
 use crate::wit::temp_wit_file;
 
+#[macro_export]
+macro_rules! warnln {
+    ($($arg:tt)*) => {{
+        let style = ::anstyle::AnsiColor::Yellow.on_default() | ::anstyle::Effects::BOLD;
+        ::anstream::eprintln!("{style}warning{style:#}: {}", format_args!($($arg)*));
+    }};
+}
+
+#[macro_export]
+macro_rules! statusln {
+    ($label:expr, $($arg:tt)*) => {{
+        let style = ::anstyle::AnsiColor::Cyan.on_default() | ::anstyle::Effects::BOLD;
+        ::anstream::eprintln!(
+            "{style}{:>12}{style:#} {}",
+            $label,
+            format_args!($($arg)*),
+        );
+    }};
+}
+
+#[macro_export]
+macro_rules! helpln {
+    ($($arg:tt)*) => {{
+        let style = ::anstyle::AnsiColor::Magenta.on_default() | ::anstyle::Effects::BOLD;
+        ::anstream::eprintln!("{style}{:>7}{style:#}: {}", "help", format_args!($($arg)*));
+    }};
+}
+
 #[derive(Parser, Debug)]
 #[command(version)]
 struct Cli {
+    #[command(flatten)]
+    color: colorchoice_clap::Color,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -194,7 +226,7 @@ impl ConfigArgs {
         if let Some(registry) = config.default_registry() {
             eprintln!("Default registry: {}", registry);
         } else {
-            eprintln!("Default registry is not set");
+            warnln!("Default registry is not set");
         }
 
         Ok(())
@@ -280,7 +312,7 @@ impl PublishArgs {
                     .merge(reg_config);
 
                 let mut plan = PublishPlan::from_paths(paths)?;
-                eprintln!("{plan}");
+                anstream::eprintln!("{plan}");
 
                 // TODO(mkatychev): Add support for `PackageLoader::get_release` to handle
                 // querying on a per package, namespace, and registry level
@@ -358,7 +390,7 @@ impl PublishArgs {
                             .publish_release_data(source, publish_opts.clone())
                             .await?;
                         if self.dry_run {
-                            eprintln!("Aborting publish due to dry run: {}@{}", package, version);
+                            warnln!("Aborting publish due to dry run: {}@{}", package, version);
                         } else {
                             eprintln!("Published {}@{}", package, version);
                         }
@@ -461,7 +493,8 @@ impl GetArgs {
         let version = match version {
             Some(ver) => ver,
             None => {
-                eprintln!("No version specified; fetching version list...");
+                warnln!("no version specified; fetching version list...");
+                statusln!("Fetching", "version list");
                 let versions = client.list_all_versions(&package).await?;
                 tracing::trace!(?versions, "Fetched version list");
                 versions
@@ -472,7 +505,7 @@ impl GetArgs {
             }
         };
 
-        eprintln!("Getting {package}@{version}...");
+        statusln!("Fetching", "{package}@{version}...");
         let release = client
             .get_release(&package, &version)
             .await
@@ -524,8 +557,8 @@ impl GetArgs {
                 "wasm" => Format::Wasm,
                 "wit" => Format::Wit,
                 _ => {
-                    eprintln!(
-                        "Couldn't infer output format from file name {:?}",
+                    warnln!(
+                        "couldn't infer output format from file name {:?}",
                         self.output.file_name().unwrap_or_default()
                     );
                     Format::Auto
@@ -547,11 +580,11 @@ impl GetArgs {
                 }
                 Ok(_) => None,
                 Err(err) => {
-                    tracing::debug!(?err, "failed to decode WIT package");
+                    warnln!("unable to decode WIT package");
                     if format == Format::Wit {
                         return Err(err);
                     }
-                    eprintln!("Failed to detect package content type: {err:#}");
+                    eprintln!("failed to detect package content type: {err:#}");
                     None
                 }
             }
@@ -614,6 +647,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let cli = Cli::parse();
+    cli.color.write_global();
 
     match cli.command {
         Commands::Config(args) => args.run().await,
@@ -624,7 +658,8 @@ async fn main() -> anyhow::Result<()> {
         Commands::Fetch(args) => args.run().await,
         Commands::Update(args) => args.run().await,
         Commands::Wit(args) => {
-            eprintln!("warning: `wkg wit <command>` is deprecated; use `wkg <command>` instead");
+            warnln!("`wkg wit <command>` is deprecated");
+            helpln!("use `wkg <command>` instead");
             args.run().await
         }
     }
