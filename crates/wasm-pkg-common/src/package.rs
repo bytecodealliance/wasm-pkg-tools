@@ -13,11 +13,6 @@ pub(crate) mod ansi {
     pub(crate) const LABEL: Style = AnsiColor::BrightBlue.on_default().bold();
     pub(crate) const VERSION: Style = AnsiColor::BrightRed.on_default();
     pub(crate) const SEP: Style = Ansi256Color(249).on_default();
-
-    pub(crate) fn is_terminal() -> bool {
-        use std::io::IsTerminal;
-        std::io::stderr().is_terminal()
-    }
 }
 
 /// A package reference, consisting of kebab-case namespace and name.
@@ -50,7 +45,7 @@ impl PackageRef {
 impl std::fmt::Display for PackageRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         #[cfg(feature = "ansi-term-output")]
-        if ansi::is_terminal() {
+        {
             use ansi::{LABEL, SEP};
             return write!(
                 f,
@@ -58,6 +53,7 @@ impl std::fmt::Display for PackageRef {
                 self.namespace, self.name,
             );
         }
+        #[cfg(not(feature = "ansi-term-output"))]
         write!(f, "{}:{}", self.namespace, self.name)
     }
 }
@@ -93,20 +89,20 @@ impl FromStr for PackageRef {
 }
 impl std::fmt::Display for PackageSpec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        #[cfg(feature = "ansi-term-output")]
-        if ansi::is_terminal() {
-            use ansi::{SEP, VERSION};
-            return match &self.version {
-                Some(version) => write!(
-                    f,
-                    "{}{SEP}@{SEP:#}{VERSION}{version}{VERSION:#}",
-                    self.package,
-                ),
-                None => write!(f, "{}", self.package),
-            };
-        }
         match &self.version {
-            Some(version) => write!(f, "{}@{version}", self.package),
+            Some(version) => {
+                #[cfg(feature = "ansi-term-output")]
+                {
+                    use ansi::{SEP, VERSION};
+                    return write!(
+                        f,
+                        "{}{SEP}@{SEP:#}{VERSION}{version}{VERSION:#}",
+                        self.package,
+                    );
+                }
+                #[cfg(not(feature = "ansi-term-output"))]
+                write!(f, "{}@{version}", self.package)
+            }
             None => write!(f, "{}", self.package),
         }
     }
