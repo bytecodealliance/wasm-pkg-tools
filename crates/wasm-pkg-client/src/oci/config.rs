@@ -1,12 +1,12 @@
 use anyhow::Context;
 use base64::{
-    engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig},
     Engine,
+    engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig},
 };
 use oci_client::client::{Certificate, CertificateEncoding, ClientConfig};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize, Serializer};
-use wasm_pkg_common::{config::RegistryConfig, Error};
+use wasm_pkg_common::{Error, config::RegistryConfig};
 
 /// Registry configuration for OCI backends.
 ///

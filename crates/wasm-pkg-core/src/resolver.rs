@@ -2,22 +2,22 @@
 // NOTE(thomastaylor312): This is copied and adapted from the `cargo-component` crate: https://github.com/bytecodealliance/cargo-component/blob/f0be1c7d9917aa97e9102e69e3b838dae38d624b/crates/core/src/registry.rs
 
 use std::{
-    collections::{hash_map, BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet, hash_map},
     fmt::Debug,
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     str::FromStr,
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use futures_util::TryStreamExt;
 use indexmap::{IndexMap, IndexSet};
-use petgraph::{acyclic::Acyclic, graph::NodeIndex, stable_graph::StableDiGraph, Direction};
+use petgraph::{Direction, acyclic::Acyclic, graph::NodeIndex, stable_graph::StableDiGraph};
 use semver::{Comparator, Op, Version, VersionReq};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use wasm_pkg_client::{
-    caching::{CachingClient, FileCache},
     Client, Config, ContentDigest, Error as WasmPkgError, PackageRef, Release, VersionInfo,
+    caching::{CachingClient, FileCache},
 };
 use wasm_pkg_common::package::PackageSpec;
 use wit_component::DecodedWasm;
@@ -580,15 +580,15 @@ impl<'a> DependencyResolver<'a> {
             let release = client
                 .get_release(&dependency.package, selected_version)
                 .await?;
-            if let Some(digest) = digest {
-                if &release.content_digest != digest {
-                    bail!(
-                        "component registry package `{name}` (v`{version}`) has digest `{content}` but the lock file specifies digest `{digest}`",
-                        name = dependency.package,
-                        version = release.version,
-                        content = release.content_digest,
-                    );
-                }
+            if let Some(digest) = digest
+                && &release.content_digest != digest
+            {
+                bail!(
+                    "component registry package `{name}` (v`{version}`) has digest `{content}` but the lock file specifies digest `{digest}`",
+                    name = dependency.package,
+                    version = release.version,
+                    content = release.content_digest,
+                );
             }
             let resolution = RegistryResolution {
                 name: name.clone(),
@@ -803,7 +803,10 @@ fn visit<'a>(
                 // the package is resolved
                 if let Some(dep) = deps.get(name) {
                     if !visiting.insert(name) {
-                        anyhow::bail!("foreign dependency `{name}` forms a dependency cycle while parsing dependency `{other}`", other = resolution.name());
+                        anyhow::bail!(
+                            "foreign dependency `{name}` forms a dependency cycle while parsing dependency `{other}`",
+                            other = resolution.name()
+                        );
                     }
 
                     visit(dep, deps, order, visiting)?;
@@ -825,7 +828,11 @@ fn visit<'a>(
 
                 if let Some(dep) = deps.get(&package.name) {
                     if !visiting.insert(&package.name) {
-                        anyhow::bail!("foreign dependency `{name}` forms a dependency cycle while parsing dependency `{other}`", name = package.name, other = resolution.name());
+                        anyhow::bail!(
+                            "foreign dependency `{name}` forms a dependency cycle while parsing dependency `{other}`",
+                            name = package.name,
+                            other = resolution.name()
+                        );
                     }
 
                     visit(dep, deps, order, visiting)?;

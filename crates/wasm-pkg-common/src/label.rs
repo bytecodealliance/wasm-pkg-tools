@@ -41,7 +41,7 @@ impl TryFrom<String> for Label {
             match chars.next() {
                 None => return Err(InvalidLabel::EmptyWord),
                 Some(ch) if !ch.is_ascii_lowercase() => {
-                    return Err(InvalidLabel::InvalidWordFirstChar)
+                    return Err(InvalidLabel::InvalidWordFirstChar);
                 }
                 _ => (),
             }

@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     io::ErrorKind,
     path::{Path, PathBuf},
 };
@@ -7,11 +7,11 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    Error,
     label::Label,
-    metadata::{RegistryMetadata, LOCAL_PROTOCOL},
+    metadata::{LOCAL_PROTOCOL, RegistryMetadata},
     package::PackageRef,
     registry::Registry,
-    Error,
 };
 
 mod toml;

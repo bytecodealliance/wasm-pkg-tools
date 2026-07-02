@@ -16,18 +16,18 @@ use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 use tokio_util::io::ReaderStream;
 use wasm_pkg_common::{
+    Error,
     config::RegistryConfig,
     digest::ContentDigest,
     metadata::LOCAL_PROTOCOL,
     package::{PackageRef, Version},
-    Error,
 };
 
 use crate::{
+    ContentStream, PublishingSource,
     loader::PackageLoader,
     publisher::PackagePublisher,
     release::{Release, VersionInfo},
-    ContentStream, PublishingSource,
 };
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

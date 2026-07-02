@@ -7,9 +7,9 @@ use etcetera::BaseStrategy;
 use futures_util::{StreamExt, TryStreamExt};
 use tokio_util::io::{ReaderStream, StreamReader};
 use wasm_pkg_common::{
+    Error,
     digest::ContentDigest,
     package::{PackageRef, Version},
-    Error,
 };
 
 use crate::{ContentStream, Release};

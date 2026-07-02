@@ -7,12 +7,12 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use petgraph::{data::Build, Direction};
+use petgraph::{Direction, data::Build};
 use semver::{Version, VersionReq};
 use wasm_metadata::{AddMetadata, AddMetadataField};
 use wasm_pkg_client::{
-    caching::{CachingClient, FileCache},
     PackageRef,
+    caching::{CachingClient, FileCache},
 };
 use wasm_pkg_common::package::PackageSpec;
 use wit_component::WitPrinter;

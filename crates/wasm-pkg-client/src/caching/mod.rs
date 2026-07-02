@@ -2,9 +2,9 @@ use std::future::Future;
 use std::sync::Arc;
 
 use wasm_pkg_common::{
+    Error,
     digest::ContentDigest,
     package::{PackageRef, Version},
-    Error,
 };
 
 use crate::{Client, ContentStream, Release, VersionInfo};

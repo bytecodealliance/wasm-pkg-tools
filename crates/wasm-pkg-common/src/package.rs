@@ -2,11 +2,11 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{label::Label, Error};
+use crate::{Error, label::Label};
 
 pub use semver::Version;
 
-#[cfg(feature = "ansi-term-output")]
+#[cfg(all(feature = "ansi-term-output", not(feature = "test")))]
 pub(crate) mod ansi {
     use anstyle::{Ansi256Color, AnsiColor, Style};
 
@@ -44,7 +44,7 @@ impl PackageRef {
 
 impl std::fmt::Display for PackageRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        #[cfg(feature = "ansi-term-output")]
+        #[cfg(all(feature = "ansi-term-output", not(feature = "test")))]
         {
             use ansi::{LABEL, SEP};
             write!(
@@ -53,7 +53,7 @@ impl std::fmt::Display for PackageRef {
                 self.namespace, self.name,
             )
         }
-        #[cfg(not(feature = "ansi-term-output"))]
+        #[cfg(not(all(feature = "ansi-term-output", not(feature = "test"))))]
         write!(f, "{}:{}", self.namespace, self.name)
     }
 }
@@ -91,7 +91,7 @@ impl std::fmt::Display for PackageSpec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.version {
             Some(version) => {
-                #[cfg(feature = "ansi-term-output")]
+                #[cfg(all(feature = "ansi-term-output", not(feature = "test")))]
                 {
                     use ansi::{SEP, VERSION};
                     write!(
@@ -100,7 +100,7 @@ impl std::fmt::Display for PackageSpec {
                         self.package,
                     )
                 }
-                #[cfg(not(feature = "ansi-term-output"))]
+                #[cfg(not(all(feature = "ansi-term-output", not(feature = "test"))))]
                 write!(f, "{}@{version}", self.package)
             }
             None => write!(f, "{}", self.package),
