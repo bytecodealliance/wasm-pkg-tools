@@ -448,7 +448,21 @@ async fn print_wit_from_resolve(
 }
 
 /// Given a package name, returns a valid directory/file name for it (thanks windows!)
+// From https://docs.microsoft.com/en-us/windows/win32/fileio/naming-a-file,
+// the following are invalid diretory/file characters:
+// -   < (less than)
+// -   \> (greater than)
+// -   : (colon)
+// -   " (double quote)
+// -   / (forward slash)
+// -   \\ (backslash)
+// -   | (vertical bar or pipe)
+// -   ? (question mark)
+// -   \* (asterisk)
+//
 fn name_from_package_name(package_name: &PackageName) -> String {
     let package_name_str = package_name.to_string();
-    package_name_str.replace([':', '@'], "-")
+    // use underscore delimiters since dashes are valid identifier characters in package names
+    // https://github.com/WebAssembly/component-model/blob/main/design/mvp/Explainer.md#import-and-export-definitions
+    package_name_str.replace(':', "_")
 }
