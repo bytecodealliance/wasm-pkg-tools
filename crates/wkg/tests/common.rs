@@ -6,12 +6,12 @@ use std::{
 
 use oci_client::client::ClientConfig;
 use testcontainers::{
+    ContainerAsync, GenericImage, ImageExt,
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
-    ContainerAsync, GenericImage, ImageExt,
 };
 use tokio::{net::TcpListener, process::Command};
-use wasm_pkg_client::{oci::OciRegistryConfig, Config, CustomConfig, Registry, RegistryMetadata};
+use wasm_pkg_client::{Config, CustomConfig, Registry, RegistryMetadata, oci::OciRegistryConfig};
 
 /// Returns an open port on localhost
 pub async fn find_open_port() -> u16 {

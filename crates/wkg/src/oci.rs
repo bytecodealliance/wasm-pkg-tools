@@ -4,9 +4,9 @@ use anyhow::Context;
 use clap::{Args, Subcommand};
 use docker_credential::DockerCredential;
 use oci_client::{
+    Reference,
     client::{ClientConfig, ClientProtocol, PushResponse},
     secrets::RegistryAuth,
-    Reference,
 };
 use oci_wasm::{WasmClient, WasmConfig};
 
@@ -225,8 +225,8 @@ fn get_client(common: Common) -> WasmClient {
 #[cfg(test)]
 mod tests {
     use crate::oci::Auth;
-    use base64::{engine::general_purpose, Engine};
-    use oci_client::{secrets::RegistryAuth, Reference};
+    use base64::{Engine, engine::general_purpose};
+    use oci_client::{Reference, secrets::RegistryAuth};
     use serde_json::json;
     use tempfile::tempdir;
 
@@ -235,7 +235,10 @@ mod tests {
         // NOTE(thomastaylor312): These have to run serially because we are setting an env var
         into_auth_should_read_docker_registry_credentials();
         into_auth_should_other_registry_credentials();
-        std::env::remove_var("DOCKER_CONFIG");
+        // NOT-SAFE: this is likely causing race conditions
+        unsafe {
+            std::env::remove_var("DOCKER_CONFIG");
+        }
     }
 
     fn into_auth_should_read_docker_registry_credentials() {
@@ -267,7 +270,10 @@ mod tests {
             }
         });
         std::fs::write(docker_config, auths.to_string()).unwrap();
-        std::env::set_var("DOCKER_CONFIG", temp_docker_config.path().as_os_str());
+        // NOT-SAFE: this is likely causing race conditions
+        unsafe {
+            std::env::set_var("DOCKER_CONFIG", temp_docker_config.path().as_os_str());
+        }
         let auth = auth.into_auth(reference).unwrap();
         assert_eq!(RegistryAuth::Basic(username, password), auth);
     }

@@ -10,17 +10,17 @@ mod publisher;
 
 use docker_credential::{CredentialRetrievalError, DockerCredential};
 use oci_client::{
-    errors::OciDistributionError, secrets::RegistryAuth, Reference, RegistryOperation,
+    Reference, RegistryOperation, errors::OciDistributionError, secrets::RegistryAuth,
 };
 use secrecy::ExposeSecret;
 use serde::Deserialize;
 use tokio::sync::OnceCell;
 use wasm_pkg_common::{
+    Error,
     config::RegistryConfig,
     metadata::RegistryMetadata,
     package::{PackageRef, Version},
     registry::Registry,
-    Error,
 };
 
 /// Re-exported for convenience.

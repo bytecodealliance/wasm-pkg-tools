@@ -3,12 +3,12 @@
 use std::sync::Arc;
 
 use serde::Deserialize;
-use warg_client::{storage::PackageInfo, ClientError, FileSystemClient};
+use warg_client::{ClientError, FileSystemClient, storage::PackageInfo};
 use warg_crypto::signing::PrivateKey;
 use warg_protocol::registry::PackageName;
 use wasm_pkg_common::{
-    config::RegistryConfig, metadata::RegistryMetadata, package::PackageRef, registry::Registry,
-    Error,
+    Error, config::RegistryConfig, metadata::RegistryMetadata, package::PackageRef,
+    registry::Registry,
 };
 
 mod config;

@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 use wasm_pkg_client::{
-    caching::{CachingClient, FileCache},
     Client,
+    caching::{CachingClient, FileCache},
 };
 
 pub fn fixture_dir() -> PathBuf {

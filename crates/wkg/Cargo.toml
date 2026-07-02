@@ -15,7 +15,7 @@ docker-tests = []
 
 [dependencies]
 anyhow = { workspace = true }
-clap = { version = "4.5", features = ["derive", "wrap_help", "env"] }
+clap = { workspace = true, features = ["derive", "wrap_help", "env"] }
 docker_credential = { workspace = true }
 futures-util = { workspace = true, features = ["io"] }
 oci-client = { workspace = true }

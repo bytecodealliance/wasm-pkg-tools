@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use bytes::Bytes;
-use futures_util::{future::ready, stream::once, Stream, StreamExt, TryStream, TryStreamExt};
+use futures_util::{Stream, StreamExt, TryStream, TryStreamExt, future::ready, stream::once};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -14,10 +14,13 @@ pub enum ContentDigest {
 }
 
 impl ContentDigest {
-    pub fn validating_stream(
+    pub fn validating_stream<S>(
         &self,
-        stream: impl TryStream<Ok = Bytes, Error = Error>,
-    ) -> impl Stream<Item = Result<Bytes, Error>> {
+        stream: S,
+    ) -> impl Stream<Item = Result<Bytes, Error>> + use<S>
+    where
+        S: TryStream<Ok = Bytes, Error = Error>,
+    {
         let want = self.clone();
         stream.map_ok(Some).chain(once(async { Ok(None) })).scan(
             Sha256::new(),

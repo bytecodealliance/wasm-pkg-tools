@@ -47,12 +47,12 @@ use tokio::sync::RwLock;
 use tokio_util::io::SyncIoBridge;
 use wasm_pkg_common::metadata::{LOCAL_PROTOCOL, OCI_PROTOCOL, WARG_PROTOCOL};
 pub use wasm_pkg_common::{
+    Error,
     config::{Config, CustomConfig, RegistryMapping},
     digest::ContentDigest,
     metadata::RegistryMetadata,
     package::{PackageRef, Version},
     registry::Registry,
-    Error,
 };
 use wit_component::DecodedWasm;
 

@@ -4,15 +4,15 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::{anyhow, ensure, Context};
+use anyhow::{Context, anyhow, ensure};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::level_filters::LevelFilter;
 use wasm_pkg_client::{
+    Client, PublishOpts,
     caching::{CachingClient, FileCache},
     local::LocalConfig,
-    Client, PublishOpts,
 };
 use wasm_pkg_common::{
     self,
@@ -415,7 +415,9 @@ impl PublishArgs {
     fn publish_opts(&self) -> anyhow::Result<PublishOpts> {
         let package = match self.package.clone() {
             Some(_) if self.paths.len() > 2 => {
-                anyhow::bail!("`--package` is currently unsupported when providing more than one path argument");
+                anyhow::bail!(
+                    "`--package` is currently unsupported when providing more than one path argument"
+                );
             }
             Some(PackageSpec {
                 package,

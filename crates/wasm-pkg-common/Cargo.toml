@@ -22,7 +22,7 @@ anyhow = { workspace = true }
 bytes = { workspace = true }
 etcetera = { workspace = true, optional = true }
 futures-util = { workspace = true }
-http = "1.1.0"
+http = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
