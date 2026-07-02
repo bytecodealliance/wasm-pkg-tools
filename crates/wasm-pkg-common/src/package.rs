@@ -47,11 +47,11 @@ impl std::fmt::Display for PackageRef {
         #[cfg(feature = "ansi-term-output")]
         {
             use ansi::{LABEL, SEP};
-            return write!(
+            write!(
                 f,
                 "{LABEL}{}{LABEL:#}{SEP}:{SEP:#}{LABEL}{}{LABEL:#}",
                 self.namespace, self.name,
-            );
+            )
         }
         #[cfg(not(feature = "ansi-term-output"))]
         write!(f, "{}:{}", self.namespace, self.name)
@@ -94,11 +94,11 @@ impl std::fmt::Display for PackageSpec {
                 #[cfg(feature = "ansi-term-output")]
                 {
                     use ansi::{SEP, VERSION};
-                    return write!(
+                    write!(
                         f,
                         "{}{SEP}@{SEP:#}{VERSION}{version}{VERSION:#}",
                         self.package,
-                    );
+                    )
                 }
                 #[cfg(not(feature = "ansi-term-output"))]
                 write!(f, "{}@{version}", self.package)
