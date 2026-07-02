@@ -27,12 +27,13 @@ tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["ansi"] }
-wasm-pkg-common = { workspace = true }
 wasm-pkg-client = { workspace = true }
-wit-component = { workspace = true }
+wasm-pkg-common = { workspace = true }
 wasm-pkg-core = { workspace = true }
+wit-component = { workspace = true }
 
 [dev-dependencies]
+anstream = { workspace = true, features = ["test"] }
 base64 = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
