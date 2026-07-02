@@ -90,9 +90,14 @@ impl PackageLoader for LocalBackend {
         let mut versions = vec![];
         let package_dir = self.package_dir(package);
         tracing::debug!(?package_dir, "Reading versions from path");
-        let mut entries = tokio::fs::read_dir(&package_dir)
-            .await
-            .map_err(|e| registry_path_context(e, &package_dir))?;
+
+        let mut entries = match tokio::fs::read_dir(&package_dir).await {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Err(Error::PackageNotFound)
+            }
+            Err(e) => return Err(registry_path_context(e, &package_dir)),
+        };
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
             if path.extension() != Some("wasm".as_ref()) {

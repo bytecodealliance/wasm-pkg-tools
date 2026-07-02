@@ -19,6 +19,8 @@ pub enum Error {
     CredentialError(#[source] anyhow::Error),
     #[error("malformed component: {0:#}")]
     InvalidComponent(#[source] anyhow::Error),
+    #[error("malformed package: {0:#}")]
+    InvalidPackage(#[source] anyhow::Error),
     #[error("invalid config: {0}")]
     InvalidConfig(#[source] anyhow::Error),
     #[error("invalid content: {0}")]
@@ -51,4 +53,15 @@ pub enum Error {
     RegistryMetadataError(#[source] anyhow::Error),
     #[error("version not found: {0}")]
     VersionNotFound(semver::Version),
+    #[error("version {0} is already published for this package")]
+    VersionAlreadyExists(semver::Version),
+    #[error(
+        "new version {new} is not semver-compatible with existing version {previous}: {source:#}"
+    )]
+    SemverIncompatible {
+        previous: semver::Version,
+        new: semver::Version,
+        #[source]
+        source: anyhow::Error,
+    },
 }
