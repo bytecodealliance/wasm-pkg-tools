@@ -31,8 +31,8 @@ jobs:
 
       - name: Set up rust cache
         uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+        # with:
+        #   save-if: ${{ github.ref == 'refs/heads/main' }}
 
 
       - name: Run lints
