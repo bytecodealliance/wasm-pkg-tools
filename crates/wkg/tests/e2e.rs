@@ -7,8 +7,8 @@ mod common;
 #[cfg(feature = "docker-tests")]
 #[tokio::test]
 async fn build_and_publish_with_metadata() {
-    use oci_client::{client::ClientConfig, manifest::OciManifest, Reference};
-    use wasm_pkg_core::manifest::{Manifest, MANIFEST_FILE_NAME};
+    use oci_client::{Reference, client::ClientConfig, manifest::OciManifest};
+    use wasm_pkg_core::manifest::{MANIFEST_FILE_NAME, Manifest};
 
     let (config, registry, _container) = common::start_registry().await;
 

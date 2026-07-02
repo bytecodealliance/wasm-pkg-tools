@@ -1,9 +1,9 @@
 use anyhow::Context;
 use reqwest::StatusCode;
 use wasm_pkg_common::{
-    metadata::{RegistryMetadata, REGISTRY_METADATA_PATH},
-    registry::Registry,
     Error,
+    metadata::{REGISTRY_METADATA_PATH, RegistryMetadata},
+    registry::Registry,
 };
 
 /// Extension trait for [`RegistryMetadata`] adding client functionality.

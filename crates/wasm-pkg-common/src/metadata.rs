@@ -3,7 +3,7 @@ use std::{
     collections::{BTreeSet, HashMap},
 };
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::Error;
 

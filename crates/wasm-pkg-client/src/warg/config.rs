@@ -3,7 +3,7 @@ use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize, Serializer};
 use warg_crypto::signing::PrivateKey;
-use wasm_pkg_common::{config::RegistryConfig, Error};
+use wasm_pkg_common::{Error, config::RegistryConfig};
 
 /// Registry configuration for Warg backends.
 ///

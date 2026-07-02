@@ -2,17 +2,17 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
 use wasm_pkg_common::{
-    package::{PackageRef, Version},
     Error,
+    package::{PackageRef, Version},
 };
 
 use crate::{
+    ContentStream,
     loader::PackageLoader,
     release::{Release, VersionInfo},
-    ContentStream,
 };
 
-use super::{package_ref_to_name, warg_registry_error, WargBackend};
+use super::{WargBackend, package_ref_to_name, warg_registry_error};
 
 #[async_trait]
 impl PackageLoader for WargBackend {

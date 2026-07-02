@@ -1,13 +1,13 @@
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use wasm_pkg_common::{
-    package::{PackageRef, Version},
     Error,
+    package::{PackageRef, Version},
 };
 
 use crate::{
-    release::{Release, VersionInfo},
     ContentStream,
+    release::{Release, VersionInfo},
 };
 
 #[async_trait]

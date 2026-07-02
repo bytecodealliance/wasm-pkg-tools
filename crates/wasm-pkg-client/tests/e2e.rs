@@ -7,9 +7,9 @@ const FIXTURE_WASM: &str = "./tests/testdata/binary_wit.wasm";
 #[tokio::test]
 async fn publish_and_fetch_smoke_test() {
     use testcontainers::{
+        GenericImage, ImageExt,
         core::{IntoContainerPort, WaitFor},
         runners::AsyncRunner,
-        GenericImage, ImageExt,
     };
 
     let _container = GenericImage::new("registry", "2")
@@ -62,9 +62,9 @@ async fn publish_and_fetch_smoke_test() {
 #[tokio::test]
 async fn publish_and_fetch_succeed_with_self_signed_registry() {
     use testcontainers::{
+        GenericImage, ImageExt,
         core::{IntoContainerPort, WaitFor},
         runners::AsyncRunner,
-        GenericImage, ImageExt,
     };
 
     let (fixture_pem_cert, fixture_pem_key) = generate_self_signed_tls_fixture();

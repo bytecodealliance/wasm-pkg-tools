@@ -1,16 +1,16 @@
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt};
-use oci_client::{manifest::OciDescriptor, RegistryOperation};
+use oci_client::{RegistryOperation, manifest::OciDescriptor};
 use warg_protocol::Version;
-use wasm_pkg_common::{package::PackageRef, Error};
+use wasm_pkg_common::{Error, package::PackageRef};
 
 use crate::{
+    ContentStream,
     loader::PackageLoader,
     release::{Release, VersionInfo},
-    ContentStream,
 };
 
-use super::{oci_registry_error, OciBackend};
+use super::{OciBackend, oci_registry_error};
 
 #[async_trait]
 impl PackageLoader for OciBackend {

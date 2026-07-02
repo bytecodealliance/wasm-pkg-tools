@@ -202,15 +202,13 @@ impl LockFile {
             name: package_ref.clone(),
             registry: registry.map(ToString::to_string),
             versions: vec![],
-        }) {
-            if let Some(locked) = pkg
-                .versions
-                .iter()
-                .find(|locked| &locked.requirement == requirement)
-            {
-                tracing::info!(%package_ref, ?registry, %requirement, resolved_version = %locked.version, "dependency package was resolved by the lock file");
-                return Ok(Some(locked));
-            }
+        }) && let Some(locked) = pkg
+            .versions
+            .iter()
+            .find(|locked| &locked.requirement == requirement)
+        {
+            tracing::info!(%package_ref, ?registry, %requirement, resolved_version = %locked.version, "dependency package was resolved by the lock file");
+            return Ok(Some(locked));
         }
 
         tracing::info!(%package_ref, ?registry, %requirement, "dependency package was not in the lock file");
@@ -685,7 +683,7 @@ mod sys {
     use windows_sys::Win32::Foundation::HANDLE;
     use windows_sys::Win32::Foundation::{ERROR_INVALID_FUNCTION, ERROR_LOCK_VIOLATION};
     use windows_sys::Win32::Storage::FileSystem::{
-        LockFileEx, UnlockFile, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
+        LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY, LockFileEx, UnlockFile,
     };
 
     pub(super) fn lock_shared(file: &File) -> Result<()> {
