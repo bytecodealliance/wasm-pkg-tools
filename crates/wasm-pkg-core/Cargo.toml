@@ -7,11 +7,6 @@ version.workspace = true
 authors.workspace = true
 license.workspace = true
 
-[features]
-ansi-term-output = ["wasm-pkg-common/ansi-term-output"]
-# running `cargo test` (implicit `--workspace` flag), leaks `ansi-term-output` from wkg
-test = ["wasm-pkg-common/test"]
-
 [dependencies]
 anyhow = { workspace = true }
 futures-util = { workspace = true }

@@ -14,14 +14,10 @@ registry-config = [
     "dep:tokio",
     "dep:toml",
 ]
-ansi-term-output = [ "dep:anstyle" ]
-# running `cargo test` (implicit `--workspace` flag), leaks `ansi-term-output` from wkg
-test = []
 # Extra features to facilitate making working with OCI images easier
 oci_extras = []
 
 [dependencies]
-anstyle = { workspace = true, optional = true }
 anyhow = { workspace = true }
 bytes = { workspace = true }
 etcetera = { workspace = true, optional = true }

@@ -6,15 +6,6 @@ use crate::{Error, label::Label};
 
 pub use semver::Version;
 
-#[cfg(all(feature = "ansi-term-output", not(feature = "test")))]
-pub(crate) mod ansi {
-    use anstyle::{Ansi256Color, AnsiColor, Style};
-
-    pub(crate) const LABEL: Style = AnsiColor::BrightBlue.on_default().bold();
-    pub(crate) const VERSION: Style = AnsiColor::BrightRed.on_default();
-    pub(crate) const SEP: Style = Ansi256Color(249).on_default();
-}
-
 /// A package reference, consisting of kebab-case namespace and name.
 ///
 /// Ex: `wasm-pkg:client`
@@ -44,16 +35,6 @@ impl PackageRef {
 
 impl std::fmt::Display for PackageRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        #[cfg(all(feature = "ansi-term-output", not(feature = "test")))]
-        {
-            use ansi::{LABEL, SEP};
-            write!(
-                f,
-                "{LABEL}{}{LABEL:#}{SEP}:{SEP:#}{LABEL}{}{LABEL:#}",
-                self.namespace, self.name,
-            )
-        }
-        #[cfg(not(all(feature = "ansi-term-output", not(feature = "test"))))]
         write!(f, "{}:{}", self.namespace, self.name)
     }
 }
@@ -89,21 +70,10 @@ impl FromStr for PackageRef {
 }
 impl std::fmt::Display for PackageSpec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.version {
-            Some(version) => {
-                #[cfg(all(feature = "ansi-term-output", not(feature = "test")))]
-                {
-                    use ansi::{SEP, VERSION};
-                    write!(
-                        f,
-                        "{}{SEP}@{SEP:#}{VERSION}{version}{VERSION:#}",
-                        self.package,
-                    )
-                }
-                #[cfg(not(all(feature = "ansi-term-output", not(feature = "test"))))]
-                write!(f, "{}@{version}", self.package)
-            }
-            None => write!(f, "{}", self.package),
+        if let Some(version) = &self.version {
+            write!(f, "{}@{}", self.package, version)
+        } else {
+            write!(f, "{}", self.package)
         }
     }
 }

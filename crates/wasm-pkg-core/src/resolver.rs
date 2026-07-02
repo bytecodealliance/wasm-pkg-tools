@@ -952,14 +952,17 @@ impl PublishPlan {
 
 impl std::fmt::Display for PublishPlan {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // TODO(mkatychev): handle with anstyle and anstream, passing in `anstream::AutoStream` for colour choice
         for id in self.dependents.nodes_iter() {
             let dep = &self.dependents[id];
+            // initial dependency graph visualization
             let mut neighbors = self
                 .dependents
                 .neighbors_directed(id, Direction::Outgoing)
                 .peekable();
 
             if neighbors.peek().is_none() {
+                // tracing::debug!("{dep} has no dependents");
                 writeln!(f, "[{dep} has no dependents]")?;
             } else {
                 writeln!(f, "[{dep}]")?;

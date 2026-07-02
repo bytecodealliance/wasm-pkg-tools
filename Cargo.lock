@@ -5204,7 +5204,6 @@ dependencies = [
 name = "wasm-pkg-common"
 version = "0.16.0"
 dependencies = [
- "anstyle",
  "anyhow",
  "bytes",
  "etcetera 0.11.0",
