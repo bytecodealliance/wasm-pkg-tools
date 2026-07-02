@@ -8,7 +8,7 @@ authors.workspace = true
 license.workspace = true
 
 [features]
-anstyle = ["wasm-pkg-common/anstyle"]
+ansi-term-output = ["wasm-pkg-common/ansi-term-output"]
 
 [dependencies]
 anyhow = { workspace = true }

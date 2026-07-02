@@ -6,7 +6,7 @@ use crate::{label::Label, Error};
 
 pub use semver::Version;
 
-#[cfg(feature = "anstyle")]
+#[cfg(feature = "ansi-term-output")]
 pub(crate) mod ansi {
     use anstyle::{Ansi256Color, AnsiColor, Style};
 
@@ -49,7 +49,7 @@ impl PackageRef {
 
 impl std::fmt::Display for PackageRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        #[cfg(feature = "anstyle")]
+        #[cfg(feature = "ansi-term-output")]
         if ansi::is_terminal() {
             use ansi::{LABEL, SEP};
             return write!(
@@ -93,7 +93,7 @@ impl FromStr for PackageRef {
 }
 impl std::fmt::Display for PackageSpec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        #[cfg(feature = "anstyle")]
+        #[cfg(feature = "ansi-term-output")]
         if ansi::is_terminal() {
             use ansi::{SEP, VERSION};
             return match &self.version {

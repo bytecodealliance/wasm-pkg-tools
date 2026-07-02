@@ -27,10 +27,10 @@ tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["ansi"] }
-wasm-pkg-common = { workspace = true, features = ["anstyle"] }
+wasm-pkg-common = { workspace = true, features = ["ansi-term-output"] }
 wasm-pkg-client = { workspace = true }
 wit-component = { workspace = true }
-wasm-pkg-core = { workspace = true, features = ["anstyle"] }
+wasm-pkg-core = { workspace = true, features = ["ansi-term-output"] }
 
 [dev-dependencies]
 base64 = { workspace = true }

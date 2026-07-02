@@ -14,6 +14,7 @@ registry-config = [
     "dep:tokio",
     "dep:toml",
 ]
+ansi-term-output = [ "dep:anstyle" ]
 # Extra features to facilitate making working with OCI images easier
 oci_extras = []
 
