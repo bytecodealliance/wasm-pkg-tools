@@ -34,7 +34,6 @@ pub mod metadata;
 pub mod oci;
 mod publisher;
 mod release;
-pub mod warg;
 
 use std::{cmp::Ordering, collections::HashMap, path::Path, pin::Pin, sync::Arc};
 
@@ -43,7 +42,7 @@ use bytes::Bytes;
 use decoded_component::DecodedComponent;
 use futures_util::Stream;
 use tokio::sync::RwLock;
-use wasm_pkg_common::metadata::{LOCAL_PROTOCOL, OCI_PROTOCOL, WARG_PROTOCOL};
+use wasm_pkg_common::metadata::{LOCAL_PROTOCOL, OCI_PROTOCOL};
 pub use wasm_pkg_common::{
     Error,
     config::{Config, CustomConfig, RegistryMapping},
@@ -57,7 +56,7 @@ use crate::loader::VersionSort;
 use crate::local::LocalBackend;
 use crate::metadata::RegistryMetadataExt;
 pub use crate::{loader::PackageLoader, publisher::PackagePublisher};
-use crate::{oci::OciBackend, warg::WargBackend};
+use crate::oci::OciBackend;
 
 pub use release::{Release, VersionInfo};
 
@@ -334,9 +333,6 @@ impl Client {
                 &registry_config,
                 &registry_meta,
             )?),
-            WARG_PROTOCOL => {
-                Box::new(WargBackend::new(&registry, &registry_config, &registry_meta).await?)
-            }
             other => {
                 return Err(Error::InvalidConfig(anyhow!(
                     "unknown backend type {other:?}"

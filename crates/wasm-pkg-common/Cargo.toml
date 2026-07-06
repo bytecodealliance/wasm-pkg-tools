@@ -23,7 +23,14 @@ bytes = { workspace = true }
 etcetera = { workspace = true, optional = true }
 futures-util = { workspace = true }
 http = { workspace = true }
-semver = { workspace = true }
+reqwest = { workspace = true, features = [
+    "rustls-tls",
+    "charset",
+    "http2",
+    "macos-system-configuration",
+    "json",
+], optional = true }
+semver = { workspace = true, features = ["serde"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

@@ -35,10 +35,7 @@ toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 url = { workspace = true }
-warg-client = { workspace = true }
-warg-crypto = { workspace = true }
 wasm-metadata = { workspace = true }
-warg-protocol = { workspace = true }
 wasm-pkg-common = { workspace = true, features = ["registry-config"] }
 wit-component = { workspace = true, features = ["semver-check"] }
 wit-parser = { workspace = true }
