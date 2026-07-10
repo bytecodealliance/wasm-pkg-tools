@@ -240,18 +240,26 @@ impl DependencyResolution {
         };
 
         if &bytes[0..4] != b"\0asm" {
+            let package = UnresolvedPackageGroup::parse(
+                // This is fake, but it's needed for the parser to work.
+                self.name().to_string(),
+                std::str::from_utf8(&bytes).with_context(|| {
+                    format!(
+                        "dependency `{name}` is not UTF-8 encoded",
+                        name = self.name()
+                    )
+                })?,
+            )
+            .map_err(|(src_map, parse_err)| {
+                anyhow::format_err!(
+                    "failed to parse package group: {}",
+                    parse_err.render(&src_map)
+                )
+            })?;
+
             return Ok(DecodedDependency::Wit {
                 resolution: self,
-                package: UnresolvedPackageGroup::parse(
-                    // This is fake, but it's needed for the parser to work.
-                    self.name().to_string(),
-                    std::str::from_utf8(&bytes).with_context(|| {
-                        format!(
-                            "dependency `{name}` is not UTF-8 encoded",
-                            name = self.name()
-                        )
-                    })?,
-                )?,
+                package,
             });
         }
 

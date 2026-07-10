@@ -6,7 +6,7 @@ use std::{
     str::FromStr,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Context as _, Result, bail};
 use petgraph::{Direction, data::Build};
 use semver::{Version, VersionReq};
 use wasm_metadata::{AddMetadata, AddMetadataField};
@@ -150,8 +150,32 @@ pub async fn fetch_dependencies(
 pub fn get_packages(
     path: impl AsRef<Path>,
 ) -> Result<(PackageSpec, HashSet<(PackageRef, VersionReq)>)> {
-    let group =
-        wit_parser::UnresolvedPackageGroup::parse_path(path).context("Couldn't parse package")?;
+    let path = path.as_ref();
+
+    // Build a package group out of a single file or a directory
+    let group = match std::fs::metadata(path).map(|m| m.file_type()) {
+        Ok(ftype) => {
+            if ftype.is_file() {
+                let contents = std::fs::read_to_string(path)
+                    .with_context(|| format!("Couldn't read WIT file @ [{}]", path.display()))?;
+                wit_parser::UnresolvedPackageGroup::parse(path, &contents)
+                    .map_err(|(src_map, err)| {
+                        anyhow::format_err!(
+                            "failed to parse WIT file @ [{}]: {}",
+                            path.display(),
+                            err.render(&src_map)
+                        )
+                    })
+                    .context("Couldn't parse package")?
+            } else if ftype.is_dir() {
+                wit_parser::UnresolvedPackageGroup::parse_dir(path)
+                    .context("Couldn't parse package")?
+            } else {
+                anyhow::bail!("unsupported file type for package group, must be file or directory")
+            }
+        }
+        Err(_) => bail!("failed to check metadata for path [{}]", path.display()),
+    };
 
     let package = PackageRef::new(
         group
