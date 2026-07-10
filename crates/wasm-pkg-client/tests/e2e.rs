@@ -66,9 +66,9 @@ async fn publish_and_fetch_smoke_test() {
 #[tokio::test]
 async fn publish_with_semver_check_succeeds_for_new_package() {
     use testcontainers::{
+        GenericImage, ImageExt,
         core::{IntoContainerPort, WaitFor},
         runners::AsyncRunner,
-        GenericImage, ImageExt,
     };
 
     let _container = GenericImage::new("registry", "2")

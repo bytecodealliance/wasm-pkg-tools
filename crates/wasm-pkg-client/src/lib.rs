@@ -55,8 +55,8 @@ pub use wasm_pkg_common::{
 use crate::loader::VersionSort;
 use crate::local::LocalBackend;
 use crate::metadata::RegistryMetadataExt;
-pub use crate::{loader::PackageLoader, publisher::PackagePublisher};
 use crate::oci::OciBackend;
+pub use crate::{loader::PackageLoader, publisher::PackagePublisher};
 
 pub use release::{Release, VersionInfo};
 
