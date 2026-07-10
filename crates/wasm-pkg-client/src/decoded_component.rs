@@ -222,7 +222,7 @@ fn extract_resolve_and_world_id(
         DecodedWasm::WitPackage(resolve, pkg) => {
             let world_id = resolve
                 .select_world(&[*pkg], None)
-                .map_err(Error::InvalidPackage)?;
+                .map_err(|e| Error::InvalidPackage(e.context("we currently do not support multiple wolds, etc...")))?;
             Ok((resolve, world_id))
         }
     }
