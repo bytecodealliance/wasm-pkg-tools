@@ -38,8 +38,11 @@ fn semver_incompatible(previous: &str, new: &str) -> Error {
     }
 }
 
-fn version_already_exists(version: &str) -> Error {
-    Error::VersionAlreadyExists(version.parse().unwrap())
+fn version_already_exists(package: &str, version: &str) -> Error {
+    Error::VersionAlreadyExists(
+        format!("{NAMESPACE}:{package}").parse().unwrap(),
+        version.parse().unwrap(),
+    )
 }
 
 fn make_client(root: &Path) -> Client {
@@ -141,7 +144,7 @@ async fn publish(client: &Client, bytes: Vec<u8>, opts: PublishOpts) -> Result<(
     Some(("0.1.0", WorldDiff::AddBase)),
     ("0.1.0", WorldDiff::AddBase),
     false,
-    Err(version_already_exists("0.1.0"))
+    Err(version_already_exists("dup-version", "0.1.0"))
 )]
 #[case::duplicate_version_with_skip_semver_check(
     "dup-version-opt-out",
@@ -209,8 +212,12 @@ async fn publish_semver_check(
             assert_eq!(previous, exp_prev, "previous version mismatch");
             assert_eq!(new, exp_new, "new version mismatch");
         }
-        (Err(Error::VersionAlreadyExists(exp)), Err(Error::VersionAlreadyExists(actual))) => {
-            assert_eq!(actual, exp, "duplicate version mismatch");
+        (
+            Err(Error::VersionAlreadyExists(exp_pkg, exp_ver)),
+            Err(Error::VersionAlreadyExists(pkg, ver)),
+        ) => {
+            assert_eq!(pkg, exp_pkg, "duplicate package mismatch");
+            assert_eq!(ver, exp_ver, "duplicate version mismatch");
         }
         _ => panic!("expectation mismatch\n  expected: {expected:?}\n  actual:   {result:?}",),
     }

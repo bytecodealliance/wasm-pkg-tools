@@ -373,7 +373,6 @@ impl AsRef<File> for Locker {
 // NOTE(thomastaylor312): These lock file primitives from here on down are mostly copied wholesale
 // from the lock file implementation of cargo-component with some minor modifications to make them
 // work with tokio
-
 impl Locker {
     // NOTE(thomastaylor312): I am keeping around these try methods for possible later use. Right
     // now we're ignoring the dead code

@@ -1,37 +1,38 @@
 use std::{
-    collections::HashMap,
     io::{Cursor, Seek},
     path::PathBuf,
 };
 
 use anstream::eprintln;
-use anyhow::{Context, anyhow, ensure};
+use anyhow::{Context, anyhow, bail, ensure};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tracing::level_filters::LevelFilter;
 use wasm_pkg_client::{
-    Client, PublishOpts,
+    Client, PackageRef, PublishOpts, Version,
     caching::{CachingClient, FileCache},
-    local::LocalConfig,
 };
 use wasm_pkg_common::{
     self,
-    config::{Config, RegistryConfig, RegistryMapping},
-    metadata::LOCAL_PROTOCOL,
+    config::{Config, RegistryMapping},
     package::PackageSpec,
     registry::Registry,
 };
-use wasm_pkg_core::{lock::LockFile, resolver::PublishPlan};
+use wasm_pkg_core::{
+    lock::LockFile,
+    manifest::{Manifest, workspace::WorkspaceRootConfig},
+};
 use wit_component::DecodedWasm;
 
 mod oci;
+mod overlay;
 mod wit;
 
 use oci::OciCommands;
 use wit::{BuildArgs, FetchArgs, UpdateArgs, WitCommands};
 
-use crate::wit::temp_wit_file;
+use crate::{overlay::PublishVerifier, wit::temp_wit_file};
 
 #[macro_export]
 macro_rules! warnln {
@@ -286,119 +287,77 @@ struct PublishArgs {
     #[arg(long)]
     dry_run: bool,
 
+    /// Publish all packages in the workspace
+    #[arg(long)]
+    workspace: bool,
+
     /// Disable semver compatibility checks.
     #[arg(long)]
     skip_semver_check: bool,
+
+    /// Skip publishing any package whose `(name, version)` already exists on
+    /// the target registry. A successful `get_release` probe short-circuits the
+    /// publish; probe failures fall through to a normal publish attempt.
+    #[arg(long)]
+    skip_dupes: bool,
 
     #[command(flatten)]
     common: Common,
 }
 
 impl PublishArgs {
-    pub async fn run(self) -> anyhow::Result<()> {
+    pub async fn run(mut self) -> anyhow::Result<()> {
         let publish_opts = self.publish_opts()?;
+        let _root = self.workspace_root().await?;
         let path = match &self.paths[..] {
+            [] => {
+                anyhow::bail!(
+                    "no publish targets: pass one or more paths, or run from a workspace \
+                     (see `[workspace] members` in `wkg.toml`)"
+                );
+            }
             [path] => path,
             paths => {
-                let mut overlay_config = self.common.load_config().await?;
-                let cache = self.common.load_cache().await?;
-
-                let local_config = LocalConfig::temp_dir()?;
-                let reg_config = RegistryConfig::default()
-                    .with_default_backend(LOCAL_PROTOCOL, &local_config)?;
                 // Route every package in the plan to the local overlay registry
                 // backed by `reg_config`, so the client used in `build_wit_dir`
                 // resolves these packages against the local overlay instead of
                 // an upstream remote.
-                let local_registry: Registry = "tmp_local_publish".parse()?;
-                overlay_config
-                    .get_or_insert_registry_config_mut(&local_registry)
-                    .merge(reg_config);
-
-                let mut plan = PublishPlan::from_paths(paths)?;
+                let mut lock_file = LockFile::load(false).await?;
+                let verifier = PublishVerifier::try_new(
+                    paths,
+                    "tmp_local_publish",
+                    self.common.load_config().await?,
+                    self.common.load_cache().await?,
+                    &mut lock_file,
+                    true,
+                )
+                .await?;
+                let mut plan = verifier.plan;
                 anstream::eprintln!("{plan}");
 
-                // TODO(mkatychev): Add support for `PackageLoader::get_release` to handle
-                // querying on a per package, namespace, and registry level
-                // to handle cargo style overlays.
-                // see this reference of `cargo::core::Dependency` usage for local overlays in Cargo:
-                // https://github.com/rust-lang/cargo/blob/d6900d00af2644ea1c0068c5694d9dbe11a3ab39/src/cargo/sources/overlay.rs#L47
-                // this is still needed for `wit::build_wit_dir`
-                for spec in plan.iter() {
-                    overlay_config.set_package_registry_override(
-                        spec.package.clone(),
-                        RegistryMapping::Registry(local_registry.clone()),
-                    );
-                }
-                let client = CachingClient::new(Some(Client::new(overlay_config)), cache);
-
-                let mut lock_file = LockFile::load(false).await?;
-                // these are packages that have been successfully pushed to our "tmp_local_publish"
-                let mut validated_packages = HashMap::new();
-
-                // 1. Publish our packages to "tmp_local_publish" ensuring all dependencies are
-                //    resolved by the local backend
-                for spec in plan.iter() {
-                    let path = plan.get_path(&spec.package).unwrap();
-                    let data = if path.is_dir() {
-                        let _prev_lock_ref = (lock_file.version, lock_file.packages.clone());
-                        let (_pkg_ref, _version, bytes) =
-                            wit::build_wit_dir(&path, client.clone(), &mut lock_file).await?;
-                        bytes
-                    } else {
-                        let mut file = tokio::fs::OpenOptions::new().read(true).open(path).await?;
-                        let mut buf = Vec::new();
-                        file.read_exact(&mut buf).await?;
-                        buf
-                    };
-
-                    let source = Box::pin(Cursor::new(data.clone()));
-                    client
-                        .client()?
-                        .publish_release_data(
-                            source,
-                            PublishOpts {
-                                package: None,
-                                registry: Some(local_registry.clone()),
-                                // we want to publish to "tmp_local_publish" regardless of flags passed in
-                                dry_run: false,
-                                skip_semver_check: publish_opts.skip_semver_check,
-                            },
-                        )
-                        .await?;
-
-                    let id = plan
-                        .get_node_index(&spec.package)
-                        .expect("missing node index");
-                    validated_packages.insert(id, data);
-                }
-
                 let client = self.common.get_client().await?;
-                // 2. Publish our packages in "waves" to the actual registries ensuring all
-                //    possible dependency free packages are published in the same group
+                // Publish our packages in "waves" to the actual registries ensuring all
+                // possible dependency free packages are published in the same group
                 while !plan.is_empty() {
-                    // `ready_for_publish` is guaranteed to be nonempty IF `plan.is_empty() == false
+                    // `ready_for_publish` is guaranteed to be nonempty IF `plan.is_empty() == false`
                     //
                     // A `DependencyGraph` (`petgraph::Acyclic`) should always hold valid edges.
                     // Any insertions to the `DependencyGraph` that would produce invalid edges should
                     // result in an error when calling `try_update_edge` inside `wasm_pkg_core::wit::get_local_dependencies`
                     let ready_for_publish = plan.take_ready();
                     for spec in &ready_for_publish {
-                        let id = plan
-                            .get_node_index(&spec.package)
-                            .expect("missing node index");
-                        let source = Box::pin(Cursor::new(validated_packages[&id].clone()));
+                        let data = verifier
+                            .data
+                            .get(&spec.package)
+                            .expect("missing package ref");
+                        let source = Box::pin(Cursor::new(data.clone()));
                         // we do not have guarantees that the underlying `PackagePublisher::publish`
                         // will terminate
-                        let (package, version) = client
+                        let res = client
                             .client()?
                             .publish_release_data(source, publish_opts.clone())
-                            .await?;
-                        if self.dry_run {
-                            warnln!("Aborting publish due to dry run: {}@{}", package, version);
-                        } else {
-                            eprintln!("Published {}@{}", package, version);
-                        }
+                            .await;
+                        self.handle_publish_result(res).context(spec.clone())?;
                     }
                     plan.mark_confirmed(ready_for_publish);
                 }
@@ -437,23 +396,20 @@ impl PublishArgs {
             (path.clone(), None)
         };
 
-        let (package, version) = client
+        let res = client
             .client()?
             .publish_release_file(&publish_path, publish_opts)
-            .await?;
-        if self.dry_run {
-            eprintln!("Aborting publish due to dry run: {}@{}", package, version);
-        } else {
-            eprintln!("Published {}@{}", package, version);
-        }
+            .await;
+        self.handle_publish_result(res)?;
+
         Ok(())
     }
 
-    fn publish_opts(&self) -> anyhow::Result<PublishOpts> {
+    fn publish_opts(&mut self) -> anyhow::Result<PublishOpts> {
         let package = match self.package.clone() {
-            Some(_) if self.paths.len() > 2 => {
+            Some(_) if self.paths.len() != 1 => {
                 anyhow::bail!(
-                    "`--package` is currently unsupported when providing more than one path argument"
+                    "`--package` is currently only supported when providing one path argument"
                 );
             }
             Some(PackageSpec {
@@ -465,12 +421,53 @@ impl PublishArgs {
             }
             None => None,
         };
+
         Ok(PublishOpts {
             package,
             registry: self.registry_args.registry.clone(),
             dry_run: self.dry_run,
             skip_semver_check: self.skip_semver_check,
         })
+    }
+    async fn workspace_root(&mut self) -> anyhow::Result<Option<WorkspaceRootConfig>> {
+        match self.workspace {
+            true if !self.paths.is_empty() => anyhow::bail!(
+                "`--workspace` selects every workspace member; do not also pass explicit \
+                     path arguments"
+            ),
+
+            true => {}
+            false => return Ok(None),
+        }
+        let cwd = std::env::current_dir()?;
+        let Some(root) = Manifest::load_root_workspace(&cwd).await? else {
+            bail!(
+                "`--workspace` called but unable to find workspace root from {}",
+                cwd.display(),
+            )
+        };
+        self.paths = root.members.clone();
+        Ok(Some(root))
+    }
+
+    fn handle_publish_result(
+        &self,
+        res: Result<(PackageRef, Version), wasm_pkg_common::Error>,
+    ) -> Result<(), anyhow::Error> {
+        match res {
+            Err(e @ wasm_pkg_common::Error::VersionAlreadyExists(..)) if self.skip_dupes => {
+                warnln!("Skipping publish: {e}");
+            }
+            Ok((package, version)) => {
+                if self.dry_run {
+                    warnln!("Aborting publish due to dry run: {}@{}", package, version);
+                } else {
+                    eprintln!("Published {}@{}", package, version);
+                }
+            }
+            Err(e) => return Err(e.into()),
+        }
+        Ok(())
     }
 }
 

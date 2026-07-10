@@ -69,3 +69,8 @@ extend-ignore-words-re = [
 [workspace.metadata.typos.default.extend-words]
 # strategy shorthand
 strat = "strat"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

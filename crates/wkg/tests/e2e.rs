@@ -156,13 +156,85 @@ async fn publish_multiple_transitive_local_packages() {
     }
 }
 
+#[cfg(feature = "docker-tests")]
+#[tokio::test]
+async fn publish_workspace_packages() {
+    use std::path::PathBuf;
+
+    let (config, registry, _container) = common::start_registry().await;
+    let namespaces = ["example-a", "example-b", "example-c", "example-d"];
+
+    let temp_dir = tempfile::tempdir().expect("Failed to create tempdir");
+    let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../wasm-pkg-core/tests/fixtures/transitive-local");
+    let fixture_root = temp_dir.path().join("transitive-local");
+    copy_dir(&src_root, &fixture_root).await.unwrap();
+
+    // The wkg.toml at fixture_root must have shipped over (it lives next to the example-* dirs).
+    assert!(
+        fixture_root.join("wkg.toml").exists(),
+        "fixture must include the workspace manifest copied from \
+         crates/wasm-pkg-core/tests/fixtures/transitive-local/wkg.toml",
+    );
+
+    let mut mapped = config.clone();
+    for ns in namespaces {
+        mapped = common::map_namespace(&mapped, ns, &registry);
+    }
+    let config_path = temp_dir.path().join("config.toml");
+    mapped.to_file(&config_path).await.expect("write config");
+
+    // `--workspace` expands to every `[workspace] members` entry from the root's `wkg.toml`.
+    let status = tokio::process::Command::new(env!("CARGO_BIN_EXE_wkg"))
+        .current_dir(&fixture_root)
+        .env("WKG_CACHE_DIR", temp_dir.path().join("cache"))
+        .env("WKG_CONFIG_FILE", &config_path)
+        .args(["publish", "--workspace"])
+        .status()
+        .await
+        .expect("spawn wkg publish");
+    assert!(
+        status.success(),
+        "wkg publish --workspace at workspace root should expand to all members and succeed",
+    );
+
+    let client = wasm_pkg_client::Client::new(mapped);
+    let expected_version = "0.1.0".parse::<Version>().unwrap();
+    for name in [
+        "example-a:foo",
+        "example-b:bar",
+        "example-c:baz",
+        "example-c:nested",
+        "example-d:foo",
+    ] {
+        let pkg = name.parse().unwrap();
+        let versions = client
+            .list_all_versions(&pkg)
+            .await
+            .unwrap_or_else(|e| panic!("list versions for {name}: {e:#}"));
+        std::assert_matches!(
+            &versions[..],
+            [VersionInfo { version, .. }] if version == &expected_version,
+            "{name} should have exactly one published version",
+        );
+    }
+}
+
 #[tokio::test]
 pub async fn check() {
+    // Use an explicit config that maps `wasi` to `wasi.dev`.
+    let mut config = wasm_pkg_client::Config::empty();
+    config.set_namespace_registry(
+        "wasi".parse().unwrap(),
+        wasm_pkg_client::RegistryMapping::Registry("wasi.dev".parse().unwrap()),
+    );
+
     let fixture = common::load_fixture("wasi-http").await;
     let output = fixture.temp_dir.path().join("out");
 
     let get = fixture
-        .command()
+        .command_with_config(&config)
+        .await
         .arg("get")
         .arg("wasi:http")
         .arg("--output")
@@ -173,7 +245,8 @@ pub async fn check() {
     assert!(get.success());
 
     let check_same = fixture
-        .command()
+        .command_with_config(&config)
+        .await
         .arg("get")
         .arg("--check")
         .arg("wasi:http")
@@ -187,7 +260,8 @@ pub async fn check() {
     std::fs::write(&output, vec![1, 2, 3, 4]).expect("overwrite output with bogus contents");
 
     let check_diff = fixture
-        .command()
+        .command_with_config(&config)
+        .await
         .arg("get")
         .arg("--check")
         .arg("wasi:http")

@@ -2,11 +2,12 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
+    path::{Path, PathBuf},
     str::FromStr,
 };
 
 use anyhow::{Context as _, Result, bail};
+use indexmap::IndexMap;
 use petgraph::{Direction, data::Build};
 use semver::{Version, VersionReq};
 use wasm_metadata::{AddMetadata, AddMetadataField};
@@ -27,6 +28,9 @@ use crate::{
         RegistryPackage,
     },
 };
+
+/// Directory holding WIT dependencies for one or more packages
+pub const WIT_DEPS_DIR: &str = "deps";
 
 /// The supported output types for WIT deps
 #[derive(Debug, Clone, Copy, Default)]
@@ -318,91 +322,22 @@ pub async fn resolve_dependencies(
 /// will be created. Any existing files in the directory will be deleted. The dependencies will be
 /// put into the `deps` subdirectory within the directory in the format specified by the output
 /// type. Please note that if a local dep is encountered when using [`OutputType::Wasm`] and it
-/// isn't a wasm binary, it will be copied directly to the directory and not packaged into a wit
+/// isn't a wasm binary, it will be copied directly to the directory and not packaged into a WIT
 /// package first
 pub async fn populate_dependencies(
     path: impl AsRef<Path>,
     deps: &DependencyResolutionMap,
     output: OutputType,
 ) -> Result<()> {
-    // Canonicalizing will error if the path doesn't exist, so we don't need to check for that
-    let path = tokio::fs::canonicalize(path).await?;
-    let metadata = tokio::fs::metadata(&path).await?;
-    if !metadata.is_dir() {
-        anyhow::bail!("Path is not a directory");
-    }
-    let deps_path = path.join("deps");
-    // Remove the whole directory if it already exists and then recreate
-    if let Err(e) = tokio::fs::remove_dir_all(&deps_path).await {
-        // If the directory doesn't exist, ignore the error
-        if e.kind() != std::io::ErrorKind::NotFound {
-            return Err(anyhow::anyhow!("Unable to remove deps directory: {e}"));
-        }
-    }
-    tokio::fs::create_dir_all(&deps_path).await?;
+    let deps_path = prepare_deps_dir(path.as_ref()).await?;
 
     // For wit output, generate the resolve and then output each package in the resolve
     if let OutputType::Wit = output {
-        let (resolve, pkg_id) = deps.generate_resolve(&path).await?;
+        let (resolve, pkg_id) = deps.generate_resolve(path.as_ref()).await?;
         return print_wit_from_resolve(&resolve, pkg_id, &deps_path).await;
     }
 
-    // If we got binary output, write them instead of the wit
-    let decoded_deps = deps.decode_dependencies().await?;
-
-    for (name, dep) in decoded_deps.iter() {
-        let mut output_path = deps_path.join(name_from_package_name(name));
-
-        match dep {
-            DecodedDependency::Wit {
-                resolution: DependencyResolution::Local(local),
-                ..
-            } => {
-                // Local deps always need to be written to a subdirectory of deps so create that here
-                tokio::fs::create_dir_all(&output_path).await?;
-                write_local_dep(local, output_path).await?;
-            }
-            // This case shouldn't happen because registries only support wit packages. We can't get
-            // a resolve from the unresolved group, so error out here. Ideally we could print the
-            // unresolved group, but WitPrinter doesn't support that yet
-            DecodedDependency::Wit {
-                resolution: DependencyResolution::Registry(_),
-                ..
-            } => {
-                anyhow::bail!("Unable to resolve dependency, this is a programmer error");
-            }
-            // Right now WIT packages include all of their dependencies, so we don't need to fetch
-            // those too. In the future, we'll need to look for unsatisfied dependencies and fetch
-            // them
-            DecodedDependency::Wasm { resolution, .. } => {
-                // This is going to be written to a single file, so we don't create a directory here
-                // NOTE(thomastaylor312): This janky looking thing is to avoid chopping off the
-                // patch number from the release. Once `add_extension` is stabilized, we can use
-                // that instead
-                let mut file_name = output_path.file_name().unwrap().to_owned();
-                file_name.push(".wasm");
-                output_path.set_file_name(file_name);
-                match resolution {
-                    DependencyResolution::Local(local) => {
-                        let meta = tokio::fs::metadata(&local.path).await?;
-                        if !meta.is_file() {
-                            anyhow::bail!("Local dependency is not single wit package file");
-                        }
-                        tokio::fs::copy(&local.path, output_path)
-                            .await
-                            .context("Unable to copy local dependency")?;
-                    }
-                    DependencyResolution::Registry(registry) => {
-                        let mut reader = registry.fetch().await?;
-                        let mut output_file = tokio::fs::File::create(output_path).await?;
-                        tokio::io::copy(&mut reader, &mut output_file).await?;
-                        output_file.sync_all().await?;
-                    }
-                }
-            }
-        }
-    }
-    Ok(())
+    write_wasm_deps(&deps_path, &deps.decode_dependencies().await?).await
 }
 
 fn packages_from_foreign_deps(
@@ -455,11 +390,23 @@ async fn print_wit_from_resolve(
     top_level_id: PackageId,
     root_deps_dir: &Path,
 ) -> Result<()> {
-    for (id, pkg) in resolve
-        .packages
-        .iter()
-        .filter(|(id, _)| *id != top_level_id)
-    {
+    print_wit_packages(
+        resolve,
+        root_deps_dir,
+        resolve
+            .packages
+            .iter()
+            .filter(|(id, _)| *id != top_level_id),
+    )
+    .await
+}
+
+async fn print_wit_packages<'a>(
+    resolve: &Resolve,
+    root_deps_dir: &Path,
+    packages: impl IntoIterator<Item = (PackageId, &'a wit_parser::Package)>,
+) -> Result<()> {
+    for (id, pkg) in packages {
         let dep_path = root_deps_dir.join(name_from_package_name(&pkg.name));
         tokio::fs::create_dir_all(&dep_path).await?;
         let mut printer = WitPrinter::default();
@@ -467,6 +414,134 @@ async fn print_wit_from_resolve(
             .print(resolve, id, &[])
             .context("Unable to print wit")?;
         tokio::fs::write(dep_path.join("package.wit"), &printer.output.to_string()).await?;
+    }
+    Ok(())
+}
+
+/// Populate dependency list to a given directory, aggregating subdirectory dependencies.
+/// Behaves like [`populate_dependencies`], but is intended for workspace-scoped aggregation
+///
+/// [`OutputType::Wit`] will merge all decoded dependencies into a single [`Resolve`], printing
+/// each package.
+/// [`OutputType::Wasm`] behaves identically to [`populate_dependencies`].
+pub async fn populate_dependencies_workspace(
+    path: impl AsRef<Path>,
+    deps: &DependencyResolutionMap,
+    output: OutputType,
+) -> Result<()> {
+    let deps_path = prepare_deps_dir(path.as_ref()).await?;
+    let deps = deps.decode_dependencies().await?;
+
+    if let OutputType::Wit = output {
+        let mut merged = Resolve {
+            all_features: true,
+            ..Resolve::default()
+        };
+        for decoded in deps.into_values() {
+            match decoded {
+                DecodedDependency::Wit {
+                    resolution,
+                    package,
+                } => {
+                    let name = resolution.name().to_string();
+                    merged
+                        .push_group(package)
+                        .with_context(|| format!("failed to merge `{name}`"))?;
+                }
+                DecodedDependency::Wasm {
+                    resolution,
+                    decoded,
+                } => {
+                    let name = resolution.name().to_string();
+                    let resolve = match decoded {
+                        wit_component::DecodedWasm::WitPackage(resolve, _) => resolve,
+                        wit_component::DecodedWasm::Component(resolve, _) => resolve,
+                    };
+                    merged
+                        .merge(resolve)
+                        .with_context(|| format!("failed to merge world for `{name}`"))?;
+                }
+            }
+        }
+        return print_wit_packages(&merged, &deps_path, merged.packages.iter()).await;
+    }
+
+    write_wasm_deps(&deps_path, &deps).await
+}
+
+async fn prepare_deps_dir(path: &Path) -> Result<PathBuf> {
+    // Canonicalizing will error if the path doesn't exist, so we don't need to check for that
+    let path = tokio::fs::canonicalize(path).await?;
+    if !tokio::fs::metadata(&path).await?.is_dir() {
+        anyhow::bail!("Path is not a directory");
+    }
+    let deps_path = path.join(WIT_DEPS_DIR);
+    // Remove the whole directory if it already exists and then recreate
+    if let Err(e) = tokio::fs::remove_dir_all(&deps_path).await
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        return Err(anyhow::anyhow!("Unable to remove deps directory: {e}")
+            .context(format!("dir: {}", deps_path.display())));
+    }
+    tokio::fs::create_dir_all(&deps_path).await?;
+    Ok(deps_path)
+}
+
+async fn write_wasm_deps(
+    deps_path: &Path,
+    decoded_deps: &IndexMap<PackageName, DecodedDependency<'_>>,
+) -> Result<()> {
+    for (name, dep) in decoded_deps.iter() {
+        let mut output_path = deps_path.join(name_from_package_name(name));
+
+        match dep {
+            DecodedDependency::Wit {
+                resolution: DependencyResolution::Local(local),
+                ..
+            } => {
+                // Local deps always need to be written to a subdirectory of deps so create that here
+                tokio::fs::create_dir_all(&output_path).await?;
+                write_local_dep(local, output_path).await?;
+            }
+            // This case shouldn't happen because registries only support wit packages. We can't get
+            // a resolve from the unresolved group, so error out here. Ideally we could print the
+            // unresolved group, but WitPrinter doesn't support that yet
+            DecodedDependency::Wit {
+                resolution: DependencyResolution::Registry(_),
+                ..
+            } => {
+                anyhow::bail!("Unable to resolve dependency, this is a programmer error");
+            }
+            // Right now WIT packages include all of their dependencies, so we don't need to fetch
+            // those too. In the future, we'll need to look for unsatisfied dependencies and fetch
+            // them
+            DecodedDependency::Wasm { resolution, .. } => {
+                // This is going to be written to a single file, so we don't create a directory here
+                // NOTE(thomastaylor312): This janky looking thing is to avoid chopping off the
+                // patch number from the release. Once `add_extension` is stabilized, we can use
+                // that instead
+                let mut file_name = output_path.file_name().unwrap().to_owned();
+                file_name.push(".wasm");
+                output_path.set_file_name(file_name);
+                match resolution {
+                    DependencyResolution::Local(local) => {
+                        let meta = tokio::fs::metadata(&local.path).await?;
+                        if !meta.is_file() {
+                            anyhow::bail!("Local dependency is not single wit package file");
+                        }
+                        tokio::fs::copy(&local.path, output_path)
+                            .await
+                            .context("Unable to copy local dependency")?;
+                    }
+                    DependencyResolution::Registry(registry) => {
+                        let mut reader = registry.fetch().await?;
+                        let mut output_file = tokio::fs::File::create(output_path).await?;
+                        tokio::io::copy(&mut reader, &mut output_file).await?;
+                        output_file.sync_all().await?;
+                    }
+                }
+            }
+        }
     }
     Ok(())
 }

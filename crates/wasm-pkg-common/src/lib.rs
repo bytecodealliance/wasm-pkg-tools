@@ -1,6 +1,8 @@
 use http::uri::InvalidUri;
 use label::Label;
 
+use crate::package::PackageRef;
+
 #[cfg(feature = "registry-config")]
 pub mod config;
 pub mod digest;
@@ -53,8 +55,8 @@ pub enum Error {
     RegistryMetadataError(#[source] anyhow::Error),
     #[error("version not found: {0}")]
     VersionNotFound(semver::Version),
-    #[error("version {0} is already published for this package")]
-    VersionAlreadyExists(semver::Version),
+    #[error("{0}@{1} already exists in the registry")]
+    VersionAlreadyExists(PackageRef, semver::Version),
     #[error(
         "new version {new} is not semver-compatible with existing version {previous}: {source:#}"
     )]

@@ -1,7 +1,7 @@
 [package]
 name = "wasm-pkg-core"
 description = "Wasm Package Tools core libraries for wkg"
-repository = "https://github.com/bytecodealliance/wasm-pkg-tools/tree/main/crates/wasm-pkg-core"
+repository = "https://github.com/bytecodealliance/wasm-pkg-tools/"
 edition.workspace = true
 version.workspace = true
 authors.workspace = true
@@ -23,6 +23,7 @@ wasm-pkg-client = { workspace = true }
 wit-component = { workspace = true }
 wit-parser = { workspace = true }
 petgraph = { workspace = true }
+glob = "0.3.3"
 
 [target.'cfg(unix)'.dependencies.libc]
 version = "0.2"
