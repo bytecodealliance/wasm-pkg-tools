@@ -93,10 +93,21 @@ impl DecodedComponent {
 
         // Merge resolves, remap merged resolve, check for incompatibility
         let mut merged = prev_resolve.clone();
-        let new_world = merged
+        let new_world = match merged
             .merge(new_resolve.clone())
-            .and_then(|remap| remap.map_world(new_world, None))
-            .map_err(Error::InvalidComponent)?;
+            .map(|remap| remap.map_world(new_world, wit_parser::Span::default()))
+        {
+            Ok(Ok(w)) => w,
+            Ok(Err(e)) => {
+                return Err(Error::InvalidComponent(anyhow::format_err!(
+                    "failed to remap merged worlds: {}",
+                    e.kind()
+                )));
+            }
+            Err(e) => {
+                return Err(Error::InvalidComponent(e));
+            }
+        };
 
         wit_component::semver_check(merged, prev_world, new_world).map_err(|e| {
             Error::SemverIncompatible {
