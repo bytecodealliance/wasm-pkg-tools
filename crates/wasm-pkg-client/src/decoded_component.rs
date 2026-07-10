@@ -208,10 +208,14 @@ fn extract_package_version(decoded: &DecodedWasm) -> Result<(PackageRef, Version
     Ok((package, version))
 }
 
-/// Borrow the inner `wit_parser::Resolve` and resolve a concrete `WorldId`.
-/// For a decoded component the world is fixed; for a WIT package we ask
-/// `Resolve::select_world` to pick one — deferred until needed so a
-/// multi-world WIT package can publish its first version unambiguously.
+/// Borrow the inner `wit_parser::Resolve` and resolve a concrete `WorldId`
+/// for semver checking.
+///
+/// Semver checks compare two versions of the same component, and a
+/// component is defined by exactly one world; thus a `WitPackage` must
+/// define exactly one world.
+///
+/// A multi-world `WitPackage` describes multiple components that must be handled individually.
 fn extract_resolve_and_world_id(
     decoded: &DecodedWasm,
 ) -> Result<(&wit_parser::Resolve, wit_parser::WorldId), Error> {
