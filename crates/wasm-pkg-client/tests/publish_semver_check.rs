@@ -215,3 +215,112 @@ async fn publish_semver_check(
         _ => panic!("expectation mismatch\n  expected: {expected:?}\n  actual:   {result:?}",),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Multi-world packages (issue: semver_check assumed at most one world).
+//
+// A WIT package may declare more than one world. Semver checking must compare
+// worlds pairwise by name: shared worlds must stay compatible, adding a world
+// is additive (OK), and removing a world within the same compat range is
+// breaking (strict policy).
+// ---------------------------------------------------------------------------
+
+/// Which worlds a multi-world fixture declares, and the body of each.
+struct MultiWorld {
+    /// `alpha` world body, if present.
+    alpha: Option<WorldDiff>,
+    /// `beta` world body, if present.
+    beta: Option<WorldDiff>,
+}
+
+fn multiworld_wit(package: &str, version: &str, worlds: &MultiWorld) -> String {
+    let mut out = format!("\npackage {NAMESPACE}:{package}@{version};\n");
+    if let Some(diff) = worlds.alpha {
+        out.push_str(&format!("\nworld alpha {{\n    {diff}\n}}\n"));
+    }
+    if let Some(diff) = worlds.beta {
+        out.push_str(&format!("\nworld beta {{\n    {diff}\n}}\n"));
+    }
+    out
+}
+
+#[rstest]
+// Both worlds compatible across a minor bump within a major -> OK.
+#[case::multiworld_all_compatible(
+    "mw-all-compat",
+    ("1.2.0", MultiWorld { alpha: Some(WorldDiff::AddBase), beta: Some(WorldDiff::AddBase) }),
+    ("1.3.0", MultiWorld { alpha: Some(WorldDiff::AddExtra), beta: Some(WorldDiff::AddExtra) }),
+    Ok(())
+)]
+// One shared world (beta) breaks across a minor bump -> incompatible.
+#[case::multiworld_one_incompatible(
+    "mw-one-incompat",
+    ("1.2.0", MultiWorld { alpha: Some(WorldDiff::AddBase), beta: Some(WorldDiff::AddBase) }),
+    ("1.3.0", MultiWorld { alpha: Some(WorldDiff::AddExtra), beta: Some(WorldDiff::ChangeBase) }),
+    Err(semver_incompatible("1.2.0", "1.3.0"))
+)]
+// Adding a world across a minor bump is additive -> OK.
+#[case::multiworld_added_world(
+    "mw-added",
+    ("1.2.0", MultiWorld { alpha: Some(WorldDiff::AddBase), beta: None }),
+    ("1.3.0", MultiWorld { alpha: Some(WorldDiff::AddExtra), beta: Some(WorldDiff::AddBase) }),
+    Ok(())
+)]
+// Removing a world within the same major is breaking (strict policy) -> incompatible.
+#[case::multiworld_removed_world_same_major(
+    "mw-removed",
+    ("1.2.0", MultiWorld { alpha: Some(WorldDiff::AddBase), beta: Some(WorldDiff::AddBase) }),
+    ("1.3.0", MultiWorld { alpha: Some(WorldDiff::AddExtra), beta: None }),
+    Err(semver_incompatible("1.2.0", "1.3.0"))
+)]
+// Removing a world across a major boundary is allowed: the versions fall in
+// different compatibility ranges, so `semver_check` never compares them.
+#[case::multiworld_removed_world_across_major(
+    "mw-removed-cross-major",
+    ("1.2.0", MultiWorld { alpha: Some(WorldDiff::AddBase), beta: Some(WorldDiff::AddBase) }),
+    ("2.0.0", MultiWorld { alpha: Some(WorldDiff::AddBase), beta: None }),
+    Ok(())
+)]
+#[tokio::test]
+async fn publish_semver_check_multiworld(
+    #[case] package: &str,
+    #[case] initial: (&str, MultiWorld),
+    #[case] candidate: (&str, MultiWorld),
+    #[case] expected: Result<(), Error>,
+) {
+    let tmp = TempDir::new().unwrap();
+    let client = make_client(tmp.path());
+
+    let (init_version, init_worlds) = initial;
+    publish(
+        &client,
+        wit_to_wasm(&multiworld_wit(package, init_version, &init_worlds)),
+        Default::default(),
+    )
+    .await
+    .unwrap_or_else(|e| panic!("seeding {init_version} failed: {e:?}"));
+
+    let (cand_version, cand_worlds) = candidate;
+    let result = publish(
+        &client,
+        wit_to_wasm(&multiworld_wit(package, cand_version, &cand_worlds)),
+        Default::default(),
+    )
+    .await;
+
+    match (&expected, &result) {
+        (Ok(()), Ok(())) => {}
+        (
+            Err(Error::SemverIncompatible {
+                previous: exp_prev,
+                new: exp_new,
+                ..
+            }),
+            Err(Error::SemverIncompatible { previous, new, .. }),
+        ) => {
+            assert_eq!(previous, exp_prev, "previous version mismatch");
+            assert_eq!(new, exp_new, "new version mismatch");
+        }
+        _ => panic!("expectation mismatch\n  expected: {expected:?}\n  actual:   {result:?}",),
+    }
+}
