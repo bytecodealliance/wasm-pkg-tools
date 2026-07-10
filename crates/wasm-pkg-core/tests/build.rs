@@ -94,7 +94,7 @@ async fn test_bad_dep_failure() {
         .expect("Should be able to create a new lock file");
     let (_temp_cache, client) = common::get_client().await.unwrap();
 
-    let world_file = fixture_path.join("wit").join("proxy.wit");
+    let world_file = fixture_path.join("wit/proxy.wit");
     let str_world = tokio::fs::read_to_string(&world_file)
         .await
         .expect("Should be able to read the world file");

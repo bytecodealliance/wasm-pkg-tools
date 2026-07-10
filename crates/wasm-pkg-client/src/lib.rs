@@ -131,6 +131,7 @@ impl Client {
         package: &PackageRef,
         version: &Version,
     ) -> Result<Release, Error> {
+        // FIXME: the `None` below means we ignore workspace overrides for this call
         let source = self.resolve_source(package, None).await?;
         source.get_release(package, version).await
     }
@@ -191,7 +192,12 @@ impl Client {
                 fetch_semver_series(source.as_ref().as_ref(), &package, &version).await?
             {
                 match version.cmp(&version_info.version) {
-                    Ordering::Equal => return Err(Error::VersionAlreadyExists(version.to_owned())),
+                    Ordering::Equal => {
+                        return Err(Error::VersionAlreadyExists(
+                            package.clone(),
+                            version.to_owned(),
+                        ));
+                    }
                     Ordering::Greater => {
                         // incoming version is greater than neighbor
                         neighbors[0] = Some(version_info);

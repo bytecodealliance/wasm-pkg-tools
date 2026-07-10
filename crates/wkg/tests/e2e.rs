@@ -158,11 +158,19 @@ async fn publish_multiple_transitive_local_packages() {
 
 #[tokio::test]
 pub async fn check() {
+    // Use an explicit config that maps `wasi` to `wasi.dev`.
+    let mut config = wasm_pkg_client::Config::empty();
+    config.set_namespace_registry(
+        "wasi".parse().unwrap(),
+        wasm_pkg_client::RegistryMapping::Registry("wasi.dev".parse().unwrap()),
+    );
+
     let fixture = common::load_fixture("wasi-http").await;
     let output = fixture.temp_dir.path().join("out");
 
     let get = fixture
-        .command()
+        .command_with_config(&config)
+        .await
         .arg("get")
         .arg("wasi:http")
         .arg("--output")
@@ -173,7 +181,8 @@ pub async fn check() {
     assert!(get.success());
 
     let check_same = fixture
-        .command()
+        .command_with_config(&config)
+        .await
         .arg("get")
         .arg("--check")
         .arg("wasi:http")
@@ -187,7 +196,8 @@ pub async fn check() {
     std::fs::write(&output, vec![1, 2, 3, 4]).expect("overwrite output with bogus contents");
 
     let check_diff = fixture
-        .command()
+        .command_with_config(&config)
+        .await
         .arg("get")
         .arg("--check")
         .arg("wasi:http")

@@ -28,6 +28,9 @@ use crate::{
     },
 };
 
+/// Directory holding WIT dependencies for one or more packages
+pub const WIT_DEPS_DIR: &str = "deps";
+
 /// The supported output types for WIT deps
 #[derive(Debug, Clone, Copy, Default)]
 pub enum OutputType {

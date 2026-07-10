@@ -2,9 +2,10 @@ use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 use wasm_pkg_client::{
-    Client,
+    Client, Config,
     caching::{CachingClient, FileCache},
 };
+use wasm_pkg_core::wit::WIT_DEPS_DIR;
 
 pub fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -13,7 +14,8 @@ pub fn fixture_dir() -> PathBuf {
 }
 
 pub async fn get_client() -> anyhow::Result<(TempDir, CachingClient<FileCache>)> {
-    let client = Client::with_global_defaults().await?;
+    // NOTE: `Client::with_global_defaults()` may pick up a user's redirect of `wasi` to a private registry
+    let client = Client::new(Config::default());
     let cache_temp_dir = tempfile::tempdir()?;
     let cache = FileCache::new(cache_temp_dir.path()).await?;
 
@@ -38,7 +40,7 @@ async fn copy_dir(source: impl AsRef<Path>, destination: impl AsRef<Path>) -> an
         let filetype = entry.file_type().await?;
         if filetype.is_dir() {
             // Skip the deps directory in case it is there from debugging
-            if entry.path().file_name().unwrap_or_default() == "deps" {
+            if entry.path().file_name().unwrap_or_default() == WIT_DEPS_DIR {
                 continue;
             }
             Box::pin(copy_dir(
