@@ -94,7 +94,7 @@ impl PackageLoader for LocalBackend {
         let mut entries = match tokio::fs::read_dir(&package_dir).await {
             Ok(entries) => entries,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Err(Error::PackageNotFound)
+                return Err(Error::PackageNotFound);
             }
             Err(e) => return Err(registry_path_context(e, &package_dir)),
         };
