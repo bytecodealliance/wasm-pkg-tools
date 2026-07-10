@@ -212,10 +212,8 @@ fn extract_package_version(decoded: &DecodedWasm) -> Result<(PackageRef, Version
 /// for semver checking.
 ///
 /// Semver checks compare two versions of the same component, and a
-/// component is defined by exactly one world; thus a `WitPackage` must
-/// define exactly one world.
-///
-/// A multi-world `WitPackage` describes multiple components that must be handled individually.
+/// component is defined by exactly one world. Therefore it is considered
+/// an error if a `WitPackage` defines more than one world.
 fn extract_resolve_and_world_id(
     decoded: &DecodedWasm,
 ) -> Result<(&wit_parser::Resolve, wit_parser::WorldId), Error> {
