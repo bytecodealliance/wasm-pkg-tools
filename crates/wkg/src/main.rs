@@ -318,10 +318,6 @@ impl PublishArgs {
             }
             [path] => path,
             paths => {
-                // Route every package in the plan to the local overlay registry
-                // backed by `reg_config`, so the client used in `build_wit_dir`
-                // resolves these packages against the local overlay instead of
-                // an upstream remote.
                 let mut lock_file = LockFile::load(false).await?;
                 let verifier = PublishVerifier::try_new(
                     paths,

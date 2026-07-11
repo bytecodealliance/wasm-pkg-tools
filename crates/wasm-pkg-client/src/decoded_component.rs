@@ -88,34 +88,47 @@ impl DecodedComponent {
             (other, self)
         };
 
-        let (prev_resolve, prev_world) = extract_resolve_and_world_id(&newer.decoded_wasm)?;
-        let (new_resolve, new_world) = extract_resolve_and_world_id(&older.decoded_wasm)?;
+        let (prev_resolve, prev_worlds) = extract_resolve_and_worlds(&newer.decoded_wasm);
+        let (new_resolve, new_worlds) = extract_resolve_and_worlds(&older.decoded_wasm);
 
-        // Merge resolves, remap merged resolve, check for incompatibility
-        let mut merged = prev_resolve.clone();
-        let new_world = match merged
-            .merge(new_resolve.clone())
-            .map(|remap| remap.map_world(new_world, wit_parser::Span::default()))
-        {
-            Ok(Ok(w)) => w,
-            Ok(Err(e)) => {
-                return Err(Error::InvalidComponent(anyhow::format_err!(
-                    "failed to remap merged worlds: {}",
-                    e.kind()
-                )));
-            }
-            Err(e) => {
-                return Err(Error::InvalidComponent(e));
-            }
-        };
+        for (name, new_world) in new_worlds {
+            let Some(&prev_world) = prev_worlds.get(&name) else {
+                // World removal is considered a breaking change
+                return Err(Error::SemverIncompatible {
+                    previous: older.version.clone(),
+                    new: newer.version.clone(),
+                    source: anyhow::anyhow!("world `{name}` was removed"),
+                });
+            };
 
-        wit_component::semver_check(merged, prev_world, new_world).map_err(|e| {
-            Error::SemverIncompatible {
-                previous: older.version.clone(),
-                new: newer.version.clone(),
-                source: e,
-            }
-        })
+            // Merge resolves, remap merged resolve, check for incompatibility
+            let mut merged = prev_resolve.clone();
+            let new_world = match merged
+                .merge(new_resolve.clone())
+                .map(|remap| remap.map_world(new_world, wit_parser::Span::default()))
+            {
+                Ok(Ok(w)) => w,
+                Ok(Err(e)) => {
+                    return Err(Error::InvalidComponent(anyhow::format_err!(
+                        "failed to remap merged worlds: {}",
+                        e.kind()
+                    )));
+                }
+                Err(e) => {
+                    return Err(Error::InvalidComponent(e));
+                }
+            };
+
+            wit_component::semver_check(merged, prev_world, new_world).map_err(|e| {
+                Error::SemverIncompatible {
+                    previous: older.version.clone(),
+                    new: newer.version.clone(),
+                    source: e.context(format!("world `{name}`")),
+                }
+            })?;
+        }
+
+        Ok(())
     }
 }
 
@@ -208,20 +221,26 @@ fn extract_package_version(decoded: &DecodedWasm) -> Result<(PackageRef, Version
     Ok((package, version))
 }
 
-/// Borrow the inner `wit_parser::Resolve` and resolve a concrete `WorldId`.
-/// For a decoded component the world is fixed; for a WIT package we ask
-/// `Resolve::select_world` to pick one — deferred until needed so a
-/// multi-world WIT package can publish its first version unambiguously.
-fn extract_resolve_and_world_id(
+/// Borrow the inner `Resolve` and build an index of its worlds. The world
+/// names are borrowed from the `Resolve`, which outlives the returned index.
+fn extract_resolve_and_worlds(
     decoded: &DecodedWasm,
-) -> Result<(&wit_parser::Resolve, wit_parser::WorldId), Error> {
+) -> (
+    &wit_parser::Resolve,
+    std::collections::HashMap<&str, wit_parser::WorldId>,
+) {
     match decoded {
-        DecodedWasm::Component(resolve, world_id) => Ok((resolve, *world_id)),
+        DecodedWasm::Component(resolve, world_id) => {
+            let name = resolve.worlds[*world_id].name.as_str();
+            (resolve, std::iter::once((name, *world_id)).collect())
+        }
         DecodedWasm::WitPackage(resolve, pkg) => {
-            let world_id = resolve
-                .select_world(&[*pkg], None)
-                .map_err(Error::InvalidPackage)?;
-            Ok((resolve, world_id))
+            let worlds = resolve.packages[*pkg]
+                .worlds
+                .iter()
+                .map(|(name, id)| (name.as_str(), *id))
+                .collect();
+            (resolve, worlds)
         }
     }
 }
