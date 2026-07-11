@@ -23,7 +23,7 @@ wasm-pkg-client = { workspace = true }
 wit-component = { workspace = true }
 wit-parser = { workspace = true }
 petgraph = { workspace = true }
-glob = "0.3.3"
+glob = { workspace = true }
 
 [target.'cfg(unix)'.dependencies.libc]
 version = "0.2"
