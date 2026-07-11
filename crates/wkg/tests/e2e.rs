@@ -91,7 +91,7 @@ async fn build_and_publish_with_metadata() {
 
 #[cfg(feature = "docker-tests")]
 #[tokio::test]
-async fn publish_multiple_transitive_local_packages() {
+async fn publish_workspace_packages() {
     use std::path::PathBuf;
 
     let (config, registry, _container) = common::start_registry().await;
@@ -104,73 +104,6 @@ async fn publish_multiple_transitive_local_packages() {
     let fixture_root = temp_dir.path().join("transitive-local");
     copy_dir(&src_root, &fixture_root).await.unwrap();
 
-    let mut mapped = config.clone();
-    for ns in namespaces {
-        mapped = common::map_namespace(&mapped, ns, &registry);
-    }
-    let config_path = temp_dir.path().join("config.toml");
-    mapped.to_file(&config_path).await.expect("write config");
-
-    // pass all fixture dirs to a single `wkg publish` invocation
-    let mut dirs: Vec<PathBuf> = namespaces
-        .iter()
-        .map(|name| fixture_root.join(name).join("wit"))
-        .collect();
-    // TODO use glob suchas in `wasm_pkgs_core::resolver::tests::transitive_local_paths`
-    dirs.push(fixture_root.join("example-c/wit/nested"));
-
-    let mut publish = tokio::process::Command::new(env!("CARGO_BIN_EXE_wkg"));
-    publish
-        .current_dir(temp_dir.path())
-        .env("WKG_CACHE_DIR", temp_dir.path().join("cache"))
-        .env("WKG_CONFIG_FILE", &config_path)
-        .arg("publish");
-    for dir in &dirs {
-        publish.arg(dir);
-    }
-    let status = publish.status().await.expect("spawn wkg publish");
-    assert!(status.success(), "wkg publish should succeed");
-
-    let client = wasm_pkg_client::Client::new(mapped);
-
-    let expected_version = "0.1.0".parse::<Version>().unwrap();
-    for name in [
-        "example-a:foo",
-        "example-b:bar",
-        "example-c:baz",
-        "example-c:nested",
-        "example-d:foo",
-    ] {
-        let pkg = name.parse().unwrap();
-        let versions = client
-            .list_all_versions(&pkg)
-            .await
-            .unwrap_or_else(|e| panic!("list versions for {name}: {e:#}"));
-        assert!(
-            matches!(
-                &versions[..],
-                [VersionInfo { version, .. }] if version == &expected_version,
-            ),
-            "{name} should have exactly one published version, got {versions:?}",
-        );
-    }
-}
-
-#[cfg(feature = "docker-tests")]
-#[tokio::test]
-async fn publish_workspace_packages() {
-    use std::path::PathBuf;
-
-    let (config, registry, _container) = common::start_registry().await;
-    let namespaces = ["example-a", "example-b", "example-c", "example-d"];
-
-    let temp_dir = tempfile::tempdir().expect("Failed to create tempdir");
-    let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../wasm-pkg-core/tests/fixtures/transitive-local");
-    let fixture_root = temp_dir.path().join("transitive-local");
-    copy_dir(&src_root, &fixture_root).await.unwrap();
-
-    // The wkg.toml at fixture_root must have shipped over (it lives next to the example-* dirs).
     assert!(
         fixture_root.join("wkg.toml").exists(),
         "fixture must include the workspace manifest copied from \
@@ -184,7 +117,6 @@ async fn publish_workspace_packages() {
     let config_path = temp_dir.path().join("config.toml");
     mapped.to_file(&config_path).await.expect("write config");
 
-    // `--workspace` expands to every `[workspace] members` entry from the root's `wkg.toml`.
     let status = tokio::process::Command::new(env!("CARGO_BIN_EXE_wkg"))
         .current_dir(&fixture_root)
         .env("WKG_CACHE_DIR", temp_dir.path().join("cache"))
