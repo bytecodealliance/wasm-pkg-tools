@@ -425,26 +425,6 @@ impl PublishArgs {
             skip_semver_check: self.skip_semver_check,
         })
     }
-    async fn workspace_root(&mut self) -> anyhow::Result<Option<WorkspaceRootConfig>> {
-        match self.workspace {
-            true if !self.paths.is_empty() => anyhow::bail!(
-                "`--workspace` selects every workspace member; do not also pass explicit \
-                     path arguments"
-            ),
-
-            true => {}
-            false => return Ok(None),
-        }
-        let cwd = std::env::current_dir()?;
-        let Some(root) = Manifest::load_root_workspace(&cwd).await? else {
-            bail!(
-                "`--workspace` called but unable to find workspace root from {}",
-                cwd.display(),
-            )
-        };
-        self.paths = root.members.clone();
-        Ok(Some(root))
-    }
 
     fn handle_publish_result(
         &self,
@@ -464,6 +444,27 @@ impl PublishArgs {
             Err(e) => return Err(e.into()),
         }
         Ok(())
+    }
+
+    async fn workspace_root(&mut self) -> anyhow::Result<Option<WorkspaceRootConfig>> {
+        match self.workspace {
+            true if !self.paths.is_empty() => anyhow::bail!(
+                "`--workspace` selects every workspace member; do not also pass explicit \
+                     path arguments"
+            ),
+
+            true => {}
+            false => return Ok(None),
+        }
+        let cwd = std::env::current_dir()?;
+        let Some(root) = Manifest::load_root_workspace(&cwd).await? else {
+            bail!(
+                "`--workspace` called but unable to find workspace root from {}",
+                cwd.display(),
+            )
+        };
+        self.paths = root.members.clone();
+        Ok(Some(root))
     }
 }
 

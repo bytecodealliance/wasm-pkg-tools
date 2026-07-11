@@ -19,11 +19,6 @@ use wasm_pkg_core::{
 use crate::Common;
 use crate::overlay::PublishVerifier;
 
-/// Registry name used as the overlay during workspace fetches. The same backend the publish
-/// command uses for its dry-run staging - we shadow workspace-member packages here so peer
-/// members can resolve each other locally without ever touching an upstream registry.
-const WORKSPACE_OVERLAY_REGISTRY: &str = "tmp_local_fetch";
-
 /// Commands for interacting with wit
 #[derive(Debug, Subcommand)]
 pub enum WitCommands {
@@ -217,7 +212,7 @@ async fn run_workspace_fetch(
 
     let verifier = PublishVerifier::try_new(
         root.members.as_ref(),
-        WORKSPACE_OVERLAY_REGISTRY,
+        "tmp_local_fetch",
         common.load_config().await?,
         common.load_cache().await?,
         &mut lock_file,
@@ -262,10 +257,10 @@ async fn run_workspace_fetch(
         })
 }
 
-/// Iterate `dirs` and run `fetch_dependencies` for each, unioning each call's resolved
-/// lock entries into a single set before assigning back. `fetch_dependencies` replaces
-/// `lock_file.packages` on every call (it calls `update_dependencies` internally), so
-/// we snapshot between calls to avoid losing earlier entries.
+/// Iterate `dirs` and run [`wit::fetch_dependencies`] unioning each call's resolved lock entries into a
+/// single set.
+/// `fetch_dependencies` replaces [`LockFile`] packages on every call so we snapshot
+/// between calls to avoid losing earlier entries.
 async fn fetch_into_lock(
     dirs: &[PathBuf],
     config: &Manifest,

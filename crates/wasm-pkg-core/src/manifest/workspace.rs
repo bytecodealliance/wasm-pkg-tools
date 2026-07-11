@@ -39,11 +39,6 @@ impl WorkspaceConfig {
 ///
 /// Knows the Workspace Root path, as well as `members` and `metadata`, which
 /// together tell if some path is recognized as a member by this root or not.
-///
-/// `members` is stored as resolved, normalized paths: glob patterns from the
-/// raw TOML are expanded, joined to `root_dir`, and normalized during
-/// [`super::Manifest::load_from_path`]. Downstream code can read
-/// `self.members` directly without re-resolving.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct WorkspaceRootConfig {
     #[serde(default, skip)]
