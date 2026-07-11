@@ -120,6 +120,7 @@ impl Manifest {
 
     /// Tries to find the root workspace config
     /// Returns `Ok(None)` when there is no `wkg.toml` ancestor that can be [`WorkspaceRootConfig`]
+    // TODO(maktychev): reconcile load_from_path and load_root_workspace
     pub async fn load_root_workspace(cwd: &Path) -> Result<Option<WorkspaceRootConfig>> {
         let Some(manifest_file) = find_root_manifest_for_wd(cwd) else {
             return Ok(None);

@@ -160,12 +160,11 @@ impl FetchArgs {
         let dirs = if let Some(dir) = self.dir.clone() {
             vec![dir]
         } else {
-            match root.as_ref() {
-                Some(root) => root.members.clone(),
-                None => vec![PathBuf::from("wit")],
-            }
+            root.as_ref()
+                .map(|r| r.members.clone())
+                .unwrap_or_else(|| vec![PathBuf::from("wit")])
         };
-        let config = match root.as_ref() {
+        let manifest = match root.as_ref() {
             Some(root) => {
                 let manifest_path = root.root_dir().join(MANIFEST_FILE_NAME);
                 Manifest::load_from_path(manifest_path).await?
@@ -179,105 +178,101 @@ impl FetchArgs {
         }
 
         match root {
-            Some(root) => run_workspace_fetch(&dirs, output, &config, root, &self.common).await,
-            None => run_simple_fetch(&dirs, output, &config, &self.common).await,
-        }
-    }
-}
-
-async fn run_simple_fetch(
-    dirs: &[PathBuf],
-    output: OutputType,
-    config: &Manifest,
-    common: &Common,
-) -> anyhow::Result<()> {
-    let client = common.get_client().await?;
-    let mut lock_file = LockFile::load(false).await?;
-    fetch_into_lock(dirs, config, client, output, &mut lock_file).await?;
-    lock_file.write().await?;
-    Ok(())
-}
-
-// fetch dependneces for a given workspace root, merging dependencies trees for included packages
-async fn run_workspace_fetch(
-    dirs: &[PathBuf],
-    output: OutputType,
-    config: &Manifest,
-    root: WorkspaceRootConfig,
-    common: &Common,
-) -> anyhow::Result<()> {
-    // Load/create the root lock file. This is the file that will be committed back to disk
-    let lock_path = root.root_dir().join(LOCK_FILE_NAME);
-    let mut lock_file = load_or_create_lock(&lock_path).await?;
-
-    let verifier = PublishVerifier::try_new(
-        root.members.as_ref(),
-        "tmp_local_fetch",
-        common.load_config().await?,
-        common.load_cache().await?,
-        &mut lock_file,
-        false,
-    )
-    .await?;
-
-    // Resolve dependencies for every requested member through the publish verifier
-    let mut merged: DependencyResolutionMap = DependencyResolutionMap::default();
-    for dir in dirs {
-        let resolved =
-            wit::resolve_dependencies(config, dir, Some(&lock_file), verifier.client.clone())
-                .await
-                .with_context(|| format!("failed to resolve dependencies for {}", dir.display()))?;
-        for (pkg, resolution) in resolved.as_ref() {
-            if verifier.packages.contains(pkg) {
-                continue;
+            Some(root) => {
+                self.run_workspace_fetch(&dirs, output, &manifest, root)
+                    .await
             }
-            merged.insert(pkg.clone(), resolution.clone());
+            None => self.fetch_into_lock(&dirs, &manifest, output).await,
         }
     }
 
-    lock_file.update_dependencies(&merged);
-    lock_file
-        .write()
-        .await
-        .with_context(|| format!("failed to commit lock file at {}", lock_path.display()))?;
+    // fetch dependneces for a given workspace root, merging dependencies trees for included packages
+    async fn run_workspace_fetch(
+        &self,
+        dirs: &[PathBuf],
+        output: OutputType,
+        manifest: &Manifest,
+        root: WorkspaceRootConfig,
+    ) -> anyhow::Result<()> {
+        // Load/create the root lock file. This is the file that will be committed back to disk
+        let lock_path = root.root_dir().join(LOCK_FILE_NAME);
+        let mut lock_file = load_or_create_lock(&lock_path).await?;
 
-    // 5. Ensure `<root-dir>/wkg/` exists and drop the aggregated deps into `<root-dir>/wkg/deps`.
-    //    `populate_dependencies` canonicalizes its argument, so the parent must exist.
-    let out_dir = root.out_dir();
-    tokio::fs::create_dir_all(&out_dir)
-        .await
-        .with_context(|| format!("failed to create {}", out_dir.display()))?;
-    wit::populate_dependencies_workspace(&out_dir, &merged, output)
-        .await
-        .with_context(|| {
-            format!(
-                "failed to populate workspace deps at {}",
-                out_dir.join(WIT_DEPS_DIR).display(),
-            )
-        })
-}
+        let verifier = PublishVerifier::try_new(
+            root.members.as_ref(),
+            "tmp_local_fetch",
+            self.common.load_config().await?,
+            self.common.load_cache().await?,
+            &mut lock_file,
+            false,
+        )
+        .await?;
 
-/// Iterate `dirs` and run [`wit::fetch_dependencies`] unioning each call's resolved lock entries into a
-/// single set.
-/// `fetch_dependencies` replaces [`LockFile`] packages on every call so we snapshot
-/// between calls to avoid losing earlier entries.
-async fn fetch_into_lock(
-    dirs: &[PathBuf],
-    config: &Manifest,
-    client: CachingClient<FileCache>,
-    output: OutputType,
-    lock_file: &mut LockFile,
-) -> anyhow::Result<()> {
-    let mut union: BTreeSet<LockedPackage> = BTreeSet::new();
-    merge_locked_packages(&mut union, std::mem::take(&mut lock_file.packages));
-    for dir in dirs {
-        wit::fetch_dependencies(config, dir, lock_file, client.clone(), output)
+        // Resolve dependencies for every requested member through the publish verifier
+        let mut merged = DependencyResolutionMap::default();
+        for dir in dirs {
+            let resolved =
+                wit::resolve_dependencies(manifest, dir, Some(&lock_file), verifier.client.clone())
+                    .await
+                    .with_context(|| {
+                        format!("failed to resolve dependencies for {}", dir.display())
+                    })?;
+            for (pkg, resolution) in resolved.as_ref() {
+                if verifier.packages.contains(pkg) {
+                    continue;
+                }
+                merged.insert(pkg.clone(), resolution.clone());
+            }
+        }
+
+        lock_file.update_dependencies(&merged);
+        lock_file
+            .write()
             .await
-            .with_context(|| format!("failed to fetch dependencies for {}", dir.display()))?;
-        merge_locked_packages(&mut union, std::mem::take(&mut lock_file.packages));
+            .with_context(|| format!("failed to commit lock file at {}", lock_path.display()))?;
+
+        // Ensure `<root-dir>/wkg/` exists and drop the aggregated deps into `<root-dir>/wkg/deps`.
+        // `populate_dependencies` canonicalizes its argument, so the parent must exist.
+        let out_dir = root.out_dir();
+        tokio::fs::create_dir_all(&out_dir)
+            .await
+            .with_context(|| format!("failed to create {}", out_dir.display()))?;
+        wit::populate_dependencies_workspace(&out_dir, &merged, output)
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to populate workspace deps at {}",
+                    out_dir.join(WIT_DEPS_DIR).display(),
+                )
+            })
     }
-    lock_file.packages = union;
-    Ok(())
+
+    /// Iterate `dirs` and run [`wit::fetch_dependencies`] unioning each call's resolved lock entries into a
+    /// single set.
+    /// `fetch_dependencies` replaces [`LockFile`] packages on every call so we snapshot
+    /// between calls to avoid losing earlier entries.
+    async fn fetch_into_lock(
+        &self,
+        dirs: &[PathBuf],
+        manifest: &Manifest,
+        output: OutputType,
+    ) -> anyhow::Result<()> {
+        let client = self.common.get_client().await?;
+        let mut lock_file = LockFile::load(false).await?;
+
+        let mut union: BTreeSet<LockedPackage> = BTreeSet::new();
+        merge_locked_packages(&mut union, std::mem::take(&mut lock_file.packages));
+        for dir in dirs {
+            wit::fetch_dependencies(manifest, dir, &mut lock_file, client.clone(), output)
+                .await
+                .with_context(|| format!("failed to fetch dependencies for {}", dir.display()))?;
+            merge_locked_packages(&mut union, std::mem::take(&mut lock_file.packages));
+        }
+        lock_file.packages = union;
+
+        lock_file.write().await?;
+        Ok(())
+    }
 }
 
 /// Open `<root-dir>/wkg.lock` for read-write, creating it as an empty lockfile if missing.

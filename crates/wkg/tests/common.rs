@@ -116,18 +116,27 @@ pub fn fixture_dir() -> PathBuf {
         .join("fixtures")
 }
 
+pub fn transitive_local_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../wasm-pkg-core/tests/fixtures/transitive-local")
+}
+
 /// Loads the fixture with the given name into a temporary directory. This will copy the fixture
 /// from the tests/fixtures directory into a temporary directory and return the tempdir containing
 /// that directory (and its path)
 pub async fn load_fixture(fixture: &str) -> Fixture {
+    load_fixture_from(fixture_dir().join(fixture)).await
+}
+
+pub async fn load_fixture_from(src: impl AsRef<Path>) -> Fixture {
+    let src = src.as_ref();
     let temp_dir = tempfile::tempdir().expect("Failed to create tempdir");
-    let fixture_path = fixture_dir().join(fixture);
     // This will error if it doesn't exist, which is what we want
-    tokio::fs::metadata(&fixture_path)
+    tokio::fs::metadata(src)
         .await
         .expect("Fixture does not exist or couldn't be read");
-    let copied_path = temp_dir.path().join(fixture_path.file_name().unwrap());
-    copy_dir(&fixture_path, &copied_path)
+    let copied_path = temp_dir.path().join(src.file_name().unwrap());
+    copy_dir(src, &copied_path)
         .await
         .expect("Failed to copy fixture");
     Fixture {
