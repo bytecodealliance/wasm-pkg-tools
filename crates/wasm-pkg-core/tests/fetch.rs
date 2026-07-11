@@ -60,7 +60,7 @@ async fn test_nested_local(#[values(OutputType::Wasm, OutputType::Wit)] output: 
     overrides.insert(
         "my:local".to_string(),
         Override {
-            path: Some(fixture_path.join("local-dep").join("wit")),
+            path: Some(fixture_path.join("local-dep/wit")),
             ..Default::default()
         },
     );
@@ -103,21 +103,21 @@ async fn test_transitive_local(#[values(OutputType::Wasm, OutputType::Wit)] outp
             (
                 "example-b:bar".to_string(),
                 Override {
-                    path: Some(fixture_path.join("example-b").join("wit")),
+                    path: Some(fixture_path.join("example-b/wit")),
                     version: None,
                 },
             ),
             (
                 "example-c:baz".to_string(),
                 Override {
-                    path: Some(fixture_path.join("example-c").join("wit")),
+                    path: Some(fixture_path.join("example-c/wit")),
                     version: None,
                 },
             ),
             (
                 "example-c:nested".to_string(),
                 Override {
-                    path: Some(fixture_path.join("example-c").join("wit/nested")),
+                    path: Some(fixture_path.join("example-c/wit/nested")),
                     version: None,
                 },
             ),
@@ -138,7 +138,7 @@ async fn test_transitive_local(#[values(OutputType::Wasm, OutputType::Wit)] outp
     .unwrap_or_else(|e| panic!("Should be able to fetch the dependencies: {e:#}"));
 
     // Ensure that the deps directory contains the correct dependencies
-    let mut deps_dir = tokio::fs::read_dir(project_path.join("wit").join("deps"))
+    let mut deps_dir = tokio::fs::read_dir(project_path.join("wit/deps"))
         .await
         .expect("Should be able to read the deps directory");
     let mut deps = Vec::new();

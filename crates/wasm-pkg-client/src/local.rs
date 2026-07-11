@@ -1,6 +1,6 @@
 //! Local filesystem-based package backend.
 //!
-//! Each package release is a file: `<root>/<namespace>/<name>/<version>.wasm`
+//! Each package release is a file: `<root-dir>/<namespace>/<name>/<version>.wasm`
 
 use std::{
     io,

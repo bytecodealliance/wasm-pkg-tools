@@ -12,6 +12,7 @@ use testcontainers::{
 };
 use tokio::{net::TcpListener, process::Command};
 use wasm_pkg_client::{Config, CustomConfig, Registry, RegistryMetadata, oci::OciRegistryConfig};
+use wasm_pkg_core::wit::WIT_DEPS_DIR;
 
 /// Returns an open port on localhost
 pub async fn find_open_port() -> u16 {
@@ -145,7 +146,7 @@ pub async fn copy_dir(
         let filetype = entry.file_type().await?;
         if filetype.is_dir() {
             // Skip the deps directory in case it is there from debugging
-            if entry.path().file_name().unwrap_or_default() == "deps" {
+            if entry.path().file_name().unwrap_or_default() == WIT_DEPS_DIR {
                 continue;
             }
             Box::pin(copy_dir(
