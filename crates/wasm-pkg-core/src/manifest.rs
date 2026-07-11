@@ -72,7 +72,7 @@ impl Manifest {
 
     fn root(&self) -> Option<&WorkspaceRootConfig> {
         if let Some(WorkspaceConfig::Root(root)) = &self.workspace {
-            return Some(&root);
+            return Some(root);
         }
         None
     }
@@ -135,11 +135,10 @@ impl Manifest {
         // keep walking up if we have not found root
         for file in find_root_iter(&manifest_file) {
             let manifest = Self::load_from_path(&file).await?;
-            if let Some(WorkspaceConfig::Root(root)) = manifest.workspace {
-                if root.is_explicitly_listed_member(&manifest_dir) {
+            if let Some(WorkspaceConfig::Root(root)) = manifest.workspace
+                && root.is_explicitly_listed_member(manifest_dir) {
                     return Ok(Some(root));
                 }
-            }
         }
 
         Ok(None)
