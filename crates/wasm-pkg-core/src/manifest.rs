@@ -8,8 +8,6 @@ use std::{
 use anyhow::{Context, Result};
 use semver::VersionReq;
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncWriteExt;
-
 mod paths;
 pub mod workspace;
 
@@ -147,8 +145,7 @@ impl Manifest {
     /// Serializes and writes the manifest to the given path.
     pub async fn write(&self, path: impl AsRef<Path>) -> Result<()> {
         let contents = toml::to_string_pretty(self)?;
-        let mut file = tokio::fs::File::create(path).await?;
-        file.write_all(contents.as_bytes())
+        tokio::fs::write(path, contents)
             .await
             .context("unable to write manifest to path")
     }
