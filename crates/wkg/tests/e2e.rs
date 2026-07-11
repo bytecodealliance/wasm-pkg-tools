@@ -1,6 +1,5 @@
 use wasm_pkg_client::{Version, VersionInfo};
 
-use crate::common::{load_fixture_from, transitive_local_fixture};
 #[cfg(feature = "docker-tests")]
 use crate::common::{map_transitive_local_namespaces, publish_transitive_local};
 
@@ -95,29 +94,15 @@ async fn build_and_publish_with_metadata() {
 #[tokio::test]
 async fn publish_workspace_packages() {
     let (config, registry, _container) = common::start_registry().await;
-    let namespaces = ["example-a", "example-b", "example-c", "example-d"];
 
-    let fixture = load_fixture_from(transitive_local_fixture()).await;
+    let mapped = map_transitive_local_namespaces(&config, &registry);
+    let fixture = publish_transitive_local(&mapped).await;
 
     assert!(
         fixture.fixture_path.join("wkg.toml").exists(),
         "fixture must include the workspace manifest copied from \
          crates/wasm-pkg-core/tests/fixtures/transitive-local/wkg.toml",
     );
-
-    let mut mapped = config.clone();
-    for ns in namespaces {
-        mapped = common::map_namespace(&mapped, ns, &registry);
-    }
-
-    let status = fixture
-        .command_with_config(&mapped)
-        .await
-        .args(["publish", "--workspace"])
-        .status()
-        .await
-        .expect("spawn wkg publish");
-    assert!(status.success(), "`wkg publish --workspace` should succeed",);
 
     let client = wasm_pkg_client::Client::new(mapped);
     let expected_version = "0.1.0".parse::<Version>().unwrap();
@@ -141,34 +126,54 @@ async fn publish_workspace_packages() {
     }
 }
 
+#[cfg(feature = "docker-tests")]
 #[tokio::test]
 async fn fetch_workspace_packages() {
-    let fixture = load_fixture_from(transitive_local_fixture()).await;
+    use wasm_pkg_core::lock::{LOCK_FILE_NAME, LockFile};
 
+    let (config, registry, _container) = common::start_registry().await;
+    let mapped = map_transitive_local_namespaces(&config, &registry);
+    let _publisher = publish_transitive_local(&mapped).await;
+
+    let fixture = common::load_fixture("fetch-workspace").await;
     let status = fixture
-        .command_with_config(&wasm_pkg_client::Config::empty())
+        .command_with_config(&mapped)
         .await
         .arg("fetch")
         .status()
         .await
         .expect("spawn wkg fetch");
-    assert!(status.success(), "`wkg fetch` in workspace should succeed",);
-
     assert!(
-        fixture.fixture_path.join("wkg.lock").exists(),
-        "workspace fetch should create wkg.lock at the workspace root",
-    );
-    let aggregated_deps = fixture.fixture_path.join("wkg/deps");
-    assert!(
-        aggregated_deps.is_dir(),
-        "workspace fetch should create <root>/wkg/deps/",
+        status.success(),
+        "`wkg fetch` in fetch-workspace should succeed"
     );
 
-    let mut entries = tokio::fs::read_dir(&aggregated_deps).await.unwrap();
-    assert!(
-        entries.next_entry().await.unwrap().is_none(),
-        "aggregated deps should be empty when every dep is a workspace member",
-    );
+    let lock_path = fixture.fixture_path.join(LOCK_FILE_NAME);
+    assert!(lock_path.exists(), "`wkg fetch` should create wkg.lock",);
+    let lock = LockFile::load_from_path(&lock_path, true)
+        .await
+        .expect("load fetch-workspace wkg.lock");
+    let expected_version = "0.1.0".parse::<Version>().unwrap();
+    for expected_pkgs in ["example-a:foo", "example-d:foo"] {
+        let pkg = expected_pkgs.parse().unwrap();
+        let entry = lock
+            .packages
+            .iter()
+            .find(|p| p.name == pkg)
+            .unwrap_or_else(|| {
+                panic!(
+                    "wkg.lock should contain {expected_pkgs}; had: {:?}",
+                    lock.packages
+                        .iter()
+                        .map(|p| p.name.to_string())
+                        .collect::<Vec<_>>()
+                )
+            });
+        assert!(
+            entry.versions.iter().any(|v| v.version == expected_version),
+            "{expected_pkgs} should be locked at {expected_version}; entry: {entry:?}",
+        );
+    }
 }
 
 #[tokio::test]

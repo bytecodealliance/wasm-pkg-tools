@@ -61,6 +61,32 @@ pub async fn start_registry() -> (Config, Registry, ContainerAsync<GenericImage>
     (config, registry, container)
 }
 
+pub const TRANSITIVE_LOCAL_NAMESPACES: &[&str] =
+    &["example-a", "example-b", "example-c", "example-d"];
+
+/// Maps every namespace in [`TRANSITIVE_LOCAL_NAMESPACES`] to `registry`.
+pub fn map_transitive_local_namespaces(config: &Config, registry: &Registry) -> Config {
+    let mut mapped = config.clone();
+    for ns in TRANSITIVE_LOCAL_NAMESPACES {
+        mapped = map_namespace(&mapped, ns, registry);
+    }
+    mapped
+}
+
+/// runs `wkg publish --workspace` for [`TRANSITIVE_LOCAL_NAMESPACES`] packages
+pub async fn publish_transitive_local(config: &Config) -> Fixture {
+    let fixture = load_fixture_from(transitive_local_fixture()).await;
+    let status = fixture
+        .command_with_config(config)
+        .await
+        .args(["publish", "--workspace"])
+        .status()
+        .await
+        .expect("spawn wkg publish");
+    assert!(status.success(), "`wkg publish --workspace` should succeed",);
+    fixture
+}
+
 /// Clones the given config, mapping the namespace to the given registry at the top level
 pub fn map_namespace(config: &Config, namespace: &str, registry: &Registry) -> Config {
     let mut config = config.clone();
