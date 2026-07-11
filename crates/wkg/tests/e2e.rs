@@ -1,6 +1,8 @@
 use wasm_pkg_client::{Version, VersionInfo};
 
 use crate::common::{load_fixture_from, transitive_local_fixture};
+#[cfg(feature = "docker-tests")]
+use crate::common::{map_transitive_local_namespaces, publish_transitive_local};
 
 mod common;
 
@@ -115,10 +117,7 @@ async fn publish_workspace_packages() {
         .status()
         .await
         .expect("spawn wkg publish");
-    assert!(
-        status.success(),
-        "wkg publish --workspace at workspace root should expand to all members and succeed",
-    );
+    assert!(status.success(), "`wkg publish --workspace` should succeed",);
 
     let client = wasm_pkg_client::Client::new(mapped);
     let expected_version = "0.1.0".parse::<Version>().unwrap();
@@ -146,9 +145,6 @@ async fn publish_workspace_packages() {
 async fn fetch_workspace_packages() {
     let fixture = load_fixture_from(transitive_local_fixture()).await;
 
-    // `transitive-local` is fully self-contained (every dep is a workspace member),
-    // so an empty config is enough — the PublishVerifier stands up a temp local
-    // backend to satisfy inter-member resolution.
     let status = fixture
         .command_with_config(&wasm_pkg_client::Config::empty())
         .await
@@ -156,10 +152,7 @@ async fn fetch_workspace_packages() {
         .status()
         .await
         .expect("spawn wkg fetch");
-    assert!(
-        status.success(),
-        "wkg fetch at workspace root should expand to all members and succeed",
-    );
+    assert!(status.success(), "`wkg fetch` in workspace should succeed",);
 
     assert!(
         fixture.fixture_path.join("wkg.lock").exists(),
@@ -171,11 +164,7 @@ async fn fetch_workspace_packages() {
         "workspace fetch should create <root>/wkg/deps/",
     );
 
-    // All deps are workspace members and are filtered out of the aggregated
-    // map, so the deps directory should be created but empty.
-    let mut entries = tokio::fs::read_dir(&aggregated_deps)
-        .await
-        .expect("read aggregated deps dir");
+    let mut entries = tokio::fs::read_dir(&aggregated_deps).await.unwrap();
     assert!(
         entries.next_entry().await.unwrap().is_none(),
         "aggregated deps should be empty when every dep is a workspace member",
