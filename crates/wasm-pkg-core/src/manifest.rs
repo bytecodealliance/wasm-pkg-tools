@@ -123,7 +123,7 @@ impl Manifest {
         let Some(manifest_file) = find_root_manifest_for_wd(cwd) else {
             return Ok(None);
         };
-        let manifest_dir = manifest_file.parent().unwrap();
+        let manifest_dir = manifest_file.parent().context("unexpectedly missing directory containing manifest")?;
         let manifest = Self::load_from_path(&manifest_file).await?;
 
         if let Some(root) = manifest.root() {
