@@ -4,7 +4,7 @@ use std::{
 };
 
 use anstream::eprintln;
-use anyhow::{Context, anyhow, ensure};
+use anyhow::{Context, anyhow, bail, ensure};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures_util::TryStreamExt;
 use tokio::io::AsyncWriteExt;
@@ -19,7 +19,10 @@ use wasm_pkg_common::{
     package::PackageSpec,
     registry::Registry,
 };
-use wasm_pkg_core::lock::LockFile;
+use wasm_pkg_core::{
+    lock::LockFile,
+    manifest::{Manifest, workspace::WorkspaceRootConfig},
+};
 use wit_component::DecodedWasm;
 
 mod oci;
@@ -284,6 +287,10 @@ struct PublishArgs {
     #[arg(long)]
     dry_run: bool,
 
+    /// Publish all packages in the workspace
+    #[arg(long)]
+    workspace: bool,
+
     /// Disable semver compatibility checks.
     #[arg(long)]
     skip_semver_check: bool,
@@ -299,9 +306,16 @@ struct PublishArgs {
 }
 
 impl PublishArgs {
-    pub async fn run(self) -> anyhow::Result<()> {
+    pub async fn run(mut self) -> anyhow::Result<()> {
         let publish_opts = self.publish_opts()?;
+        let _root = self.workspace_root().await?;
         let path = match &self.paths[..] {
+            [] => {
+                anyhow::bail!(
+                    "no publish targets: pass one or more paths, or run from a workspace \
+                     (see `[workspace] members` in `wkg.toml`)"
+                );
+            }
             [path] => path,
             paths => {
                 let mut lock_file = LockFile::load(false).await?;
@@ -387,6 +401,31 @@ impl PublishArgs {
         Ok(())
     }
 
+    fn publish_opts(&mut self) -> anyhow::Result<PublishOpts> {
+        let package = match self.package.clone() {
+            Some(_) if self.paths.len() != 1 => {
+                anyhow::bail!(
+                    "`--package` is currently only supported when providing one path argument"
+                );
+            }
+            Some(PackageSpec {
+                package,
+                version: Some(v),
+            }) => Some((package, v)),
+            Some(PackageSpec { version: None, .. }) => {
+                anyhow::bail!("version is required when manually overriding the package ID");
+            }
+            None => None,
+        };
+
+        Ok(PublishOpts {
+            package,
+            registry: self.registry_args.registry.clone(),
+            dry_run: self.dry_run,
+            skip_semver_check: self.skip_semver_check,
+        })
+    }
+
     fn handle_publish_result(
         &self,
         res: Result<(PackageRef, Version), wasm_pkg_common::Error>,
@@ -407,28 +446,25 @@ impl PublishArgs {
         Ok(())
     }
 
-    fn publish_opts(&self) -> anyhow::Result<PublishOpts> {
-        let package = match self.package.clone() {
-            Some(_) if self.paths.len() > 2 => {
-                anyhow::bail!(
-                    "`--package` is currently unsupported when providing more than one path argument"
-                );
-            }
-            Some(PackageSpec {
-                package,
-                version: Some(v),
-            }) => Some((package, v)),
-            Some(PackageSpec { version: None, .. }) => {
-                anyhow::bail!("version is required when manually overriding the package ID");
-            }
-            None => None,
+    async fn workspace_root(&mut self) -> anyhow::Result<Option<WorkspaceRootConfig>> {
+        match self.workspace {
+            true if !self.paths.is_empty() => anyhow::bail!(
+                "`--workspace` selects every workspace member; do not also pass explicit \
+                     path arguments"
+            ),
+
+            true => {}
+            false => return Ok(None),
+        }
+        let cwd = std::env::current_dir()?;
+        let Some(root) = Manifest::load_root_workspace(&cwd).await? else {
+            bail!(
+                "`--workspace` called but unable to find workspace root from {}",
+                cwd.display(),
+            )
         };
-        Ok(PublishOpts {
-            package,
-            registry: self.registry_args.registry.clone(),
-            dry_run: self.dry_run,
-            skip_semver_check: self.skip_semver_check,
-        })
+        self.paths = root.members.clone();
+        Ok(Some(root))
     }
 }
 

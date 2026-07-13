@@ -61,6 +61,32 @@ pub async fn start_registry() -> (Config, Registry, ContainerAsync<GenericImage>
     (config, registry, container)
 }
 
+pub const TRANSITIVE_LOCAL_NAMESPACES: &[&str] =
+    &["example-a", "example-b", "example-c", "example-d"];
+
+/// Maps every namespace in [`TRANSITIVE_LOCAL_NAMESPACES`] to `registry`.
+pub fn map_transitive_local_namespaces(config: &Config, registry: &Registry) -> Config {
+    let mut mapped = config.clone();
+    for ns in TRANSITIVE_LOCAL_NAMESPACES {
+        mapped = map_namespace(&mapped, ns, registry);
+    }
+    mapped
+}
+
+/// runs `wkg publish --workspace` for [`TRANSITIVE_LOCAL_NAMESPACES`] packages
+pub async fn publish_transitive_local(config: &Config) -> Fixture {
+    let fixture = load_fixture_from(transitive_local_fixture()).await;
+    let status = fixture
+        .command_with_config(config)
+        .await
+        .args(["publish", "--workspace"])
+        .status()
+        .await
+        .expect("spawn wkg publish");
+    assert!(status.success(), "`wkg publish --workspace` should succeed",);
+    fixture
+}
+
 /// Clones the given config, mapping the namespace to the given registry at the top level
 pub fn map_namespace(config: &Config, namespace: &str, registry: &Registry) -> Config {
     let mut config = config.clone();
@@ -116,18 +142,27 @@ pub fn fixture_dir() -> PathBuf {
         .join("fixtures")
 }
 
+pub fn transitive_local_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../wasm-pkg-core/tests/fixtures/transitive-local")
+}
+
 /// Loads the fixture with the given name into a temporary directory. This will copy the fixture
 /// from the tests/fixtures directory into a temporary directory and return the tempdir containing
 /// that directory (and its path)
 pub async fn load_fixture(fixture: &str) -> Fixture {
+    load_fixture_from(fixture_dir().join(fixture)).await
+}
+
+pub async fn load_fixture_from(src: impl AsRef<Path>) -> Fixture {
+    let src = src.as_ref();
     let temp_dir = tempfile::tempdir().expect("Failed to create tempdir");
-    let fixture_path = fixture_dir().join(fixture);
     // This will error if it doesn't exist, which is what we want
-    tokio::fs::metadata(&fixture_path)
+    tokio::fs::metadata(src)
         .await
         .expect("Fixture does not exist or couldn't be read");
-    let copied_path = temp_dir.path().join(fixture_path.file_name().unwrap());
-    copy_dir(&fixture_path, &copied_path)
+    let copied_path = temp_dir.path().join(src.file_name().unwrap());
+    copy_dir(src, &copied_path)
         .await
         .expect("Failed to copy fixture");
     Fixture {

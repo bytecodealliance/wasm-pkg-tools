@@ -1,0 +1,6 @@
+[workspace]
+# Mix glob with literal entries
+members = [
+    "example-*/wit",
+    "example-c/wit/nested",
+]

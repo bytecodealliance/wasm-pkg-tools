@@ -1,4 +1,5 @@
 //! Args and commands for interacting with WIT files and dependencies
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use anstream::eprintln;
@@ -7,13 +8,16 @@ use clap::{Args, Subcommand};
 use tempfile::NamedTempFile;
 use wasm_pkg_client::caching::{CachingClient, FileCache};
 use wasm_pkg_common::package::{PackageRef, Version};
+use wasm_pkg_core::wit::WIT_DEPS_DIR;
 use wasm_pkg_core::{
-    lock::LockFile,
-    manifest::Manifest,
+    lock::{LOCK_FILE_NAME, LockFile, LockedPackage},
+    manifest::{MANIFEST_FILE_NAME, Manifest, workspace::WorkspaceRootConfig},
+    resolver::DependencyResolutionMap,
     wit::{self, OutputType},
 };
 
 use crate::Common;
+use crate::overlay::PublishVerifier;
 
 /// Commands for interacting with wit
 #[derive(Debug, Subcommand)]
@@ -43,7 +47,7 @@ pub struct BuildArgs {
     pub dir: PathBuf,
 
     /// The name of the file that should be written. This can also be a full path. Defaults to the
-    /// current directory with the name of the package
+    /// current directory with the name of the package.
     #[clap(short = 'o', long = "output")]
     pub output: Option<PathBuf>,
 
@@ -60,8 +64,8 @@ pub struct BuildArgs {
 #[derive(Debug, Args)]
 pub struct FetchArgs {
     /// The directory containing the WIT files to fetch dependencies for.
-    #[clap(short = 'd', long = "wit-dir", default_value = "wit")]
-    pub dir: PathBuf,
+    /// Falls back to workspace manifest if empty.
+    pub dir: Option<PathBuf>,
 
     /// The desired output type of the dependencies. Valid options are "wit" or "wasm" (wasm is the
     /// WIT package binary format).
@@ -150,21 +154,162 @@ pub async fn temp_wit_file(package: &PackageRef, bytes: &[u8]) -> anyhow::Result
 
 impl FetchArgs {
     pub async fn run(self) -> anyhow::Result<()> {
-        check_dir(&self.dir).await?;
-        let client = self.common.get_client().await?;
-        let manifest = Manifest::load().await?;
-        let mut lock_file = LockFile::load(false).await?;
-        wit::fetch_dependencies(
-            &manifest,
-            self.dir,
+        let cwd = std::env::current_dir()?;
+        let root = Manifest::load_root_workspace(&cwd).await?;
+
+        let dirs = if let Some(dir) = self.dir.clone() {
+            vec![dir]
+        } else {
+            root.as_ref()
+                .map(|r| r.members.clone())
+                .unwrap_or_else(|| vec![PathBuf::from("wit")])
+        };
+        let manifest = match root.as_ref() {
+            Some(root) => {
+                let manifest_path = root.root_dir().join(MANIFEST_FILE_NAME);
+                Manifest::load_from_path(manifest_path).await?
+            }
+            None => Manifest::load().await?,
+        };
+        let output = self.output_type.unwrap_or_default();
+
+        for dir in &dirs {
+            check_dir(dir).await?;
+        }
+
+        match root {
+            Some(root) => {
+                self.run_workspace_fetch(&dirs, output, &manifest, root)
+                    .await
+            }
+            None => self.fetch_into_lock(&dirs, &manifest, output).await,
+        }
+    }
+
+    // fetch dependneces for a given workspace root, merging dependencies trees for included packages
+    async fn run_workspace_fetch(
+        &self,
+        dirs: &[PathBuf],
+        output: OutputType,
+        manifest: &Manifest,
+        root: WorkspaceRootConfig,
+    ) -> anyhow::Result<()> {
+        // Load/create the root lock file. This is the file that will be committed back to disk
+        let lock_path = root.root_dir().join(LOCK_FILE_NAME);
+        let mut lock_file = load_or_create_lock(&lock_path).await?;
+
+        let verifier = PublishVerifier::try_new(
+            root.members.as_ref(),
+            "tmp_local_fetch",
+            self.common.load_config().await?,
+            self.common.load_cache().await?,
             &mut lock_file,
-            client,
-            self.output_type.unwrap_or_default(),
+            false,
         )
         .await?;
-        // Now write out the lock file since everything else succeeded
+
+        // Resolve dependencies for every requested member through the publish verifier
+        let mut merged = DependencyResolutionMap::default();
+        for dir in dirs {
+            let resolved =
+                wit::resolve_dependencies(manifest, dir, Some(&lock_file), verifier.client.clone())
+                    .await
+                    .with_context(|| {
+                        format!("failed to resolve dependencies for {}", dir.display())
+                    })?;
+            for (pkg, resolution) in resolved.as_ref() {
+                if verifier.packages.contains(pkg) {
+                    continue;
+                }
+                merged.insert(pkg.clone(), resolution.clone());
+            }
+        }
+
+        lock_file.update_dependencies(&merged);
+        lock_file
+            .write()
+            .await
+            .with_context(|| format!("failed to commit lock file at {}", lock_path.display()))?;
+
+        // Ensure `<root-dir>/wkg/` exists and drop the aggregated deps into `<root-dir>/wkg/deps`.
+        // `populate_dependencies` canonicalizes its argument, so the parent must exist.
+        let out_dir = root.out_dir();
+        tokio::fs::create_dir_all(&out_dir)
+            .await
+            .with_context(|| format!("failed to create {}", out_dir.display()))?;
+        wit::populate_dependencies_workspace(&out_dir, &merged, output)
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to populate workspace deps at {}",
+                    out_dir.join(WIT_DEPS_DIR).display(),
+                )
+            })
+    }
+
+    /// Iterate `dirs` and run [`wit::fetch_dependencies`] unioning each call's resolved lock entries into a
+    /// single set.
+    /// `fetch_dependencies` replaces [`LockFile`] packages on every call so we snapshot
+    /// between calls to avoid losing earlier entries.
+    async fn fetch_into_lock(
+        &self,
+        dirs: &[PathBuf],
+        manifest: &Manifest,
+        output: OutputType,
+    ) -> anyhow::Result<()> {
+        let client = self.common.get_client().await?;
+        let mut lock_file = LockFile::load(false).await?;
+
+        let mut union: BTreeSet<LockedPackage> = BTreeSet::new();
+        merge_locked_packages(&mut union, std::mem::take(&mut lock_file.packages));
+        for dir in dirs {
+            wit::fetch_dependencies(manifest, dir, &mut lock_file, client.clone(), output)
+                .await
+                .with_context(|| format!("failed to fetch dependencies for {}", dir.display()))?;
+            merge_locked_packages(&mut union, std::mem::take(&mut lock_file.packages));
+        }
+        lock_file.packages = union;
+
         lock_file.write().await?;
         Ok(())
+    }
+}
+
+/// Open `<root-dir>/wkg.lock` for read-write, creating it as an empty lockfile if missing.
+/// Mirrors `LockFile::load`'s create-if-absent semantics but at an explicit path.
+async fn load_or_create_lock(path: &Path) -> anyhow::Result<LockFile> {
+    if !tokio::fs::try_exists(path).await? {
+        let mut empty = LockFile::new_with_path([], path).await?;
+        empty.write().await?;
+        drop(empty);
+    }
+    LockFile::load_from_path(path, false)
+        .await
+        .with_context(|| format!("failed to load lock file at {}", path.display()))
+}
+
+/// Merge `incoming` locked packages into `acc`, unioning per-package version
+/// entries when the same `(name, registry)` key appears in both sets. Newer
+/// version entries win on conflicting requirements within a package.
+fn merge_locked_packages(acc: &mut BTreeSet<LockedPackage>, incoming: BTreeSet<LockedPackage>) {
+    for pkg in incoming {
+        if let Some(existing) = acc.take(&pkg) {
+            let mut merged = existing;
+            for v in pkg.versions {
+                if let Some(slot) = merged
+                    .versions
+                    .iter_mut()
+                    .find(|e| e.requirement == v.requirement)
+                {
+                    *slot = v;
+                } else {
+                    merged.versions.push(v);
+                }
+            }
+            acc.insert(merged);
+        } else {
+            acc.insert(pkg);
+        }
     }
 }
 

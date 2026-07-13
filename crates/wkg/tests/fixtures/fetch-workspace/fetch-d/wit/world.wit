@@ -1,0 +1,5 @@
+package fetch:d@0.1.0;
+
+world app {
+    import example-d:foo/bar@0.1.0;
+}

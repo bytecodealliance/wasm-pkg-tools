@@ -8,16 +8,28 @@ use std::{
 use anyhow::{Context, Result};
 use semver::VersionReq;
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncWriteExt;
+mod paths;
+pub mod workspace;
+
+use workspace::*;
+
+use crate::manifest::paths::{find_root_iter, find_root_manifest_for_wd};
 
 /// The default name of the manifest file.
 pub const MANIFEST_FILE_NAME: &str = "wkg.toml";
+/// Directory next to the root [`MANIFEST_FILE_NAME`] that holds multi-package `deps` and `config.toml`.
+pub const WORKSPACE_OUT_DIR: &str = "wkg";
 
 /// The structure for a wkg.toml manifest file. This file is entirely optional and is used for
 /// overriding and annotating wasm packages.
+/// `workspace` is mutually exclusive with `overrides` and top-level `metadata`
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
+    /// Workspace declaration.
+    // TODO: this should be a `TomlWorkspace` so that serialization is not coupled to the config structure
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<WorkspaceConfig>,
     /// Overrides for various packages
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub overrides: Option<HashMap<String, Override>>,
@@ -28,15 +40,67 @@ pub struct Manifest {
 }
 
 impl Manifest {
+    fn from_toml(contents: &str) -> Result<Manifest> {
+        let manifest: Manifest = toml::from_str(contents)?;
+        manifest.validate()?;
+        Ok(manifest)
+    }
+
     /// Loads a manifest file from the given path.
     pub async fn load_from_path(path: impl AsRef<Path>) -> Result<Manifest> {
-        tracing::info!(path = %path.as_ref().display(), "loading wkg manifest file");
-        let contents = tokio::fs::read_to_string(path)
-            .await
-            .context("unable to load manifest from file")?;
-        let manifest: Manifest =
-            toml::from_str(&contents).context("unable to parse manifest file")?;
+        let path = path.as_ref();
+        tracing::info!(path = %path.display(), "loading wkg manifest file");
+        let contents = std::fs::read_to_string(path)
+            .with_context(|| format!("unable to load manifest from {}", path.display()))?;
+        let mut manifest = Self::from_toml(&contents)
+            .with_context(|| format!("invalid manifest at {}", path.display()))?;
+        if let Some(WorkspaceConfig::Root(root)) = &mut manifest.workspace {
+            root.root_dir = path
+                .parent()
+                .with_context(|| {
+                    format!("manifest path has no parent directory: {}", path.display())
+                })?
+                .to_path_buf();
+            // Resolve globs and relative paths eagerly
+            root.members = WorkspaceRootConfig::resolve_members(&root.members, &root.root_dir);
+        }
         Ok(manifest)
+    }
+
+    fn root(&self) -> Option<&WorkspaceRootConfig> {
+        if let Some(WorkspaceConfig::Root(root)) = &self.workspace {
+            return Some(root);
+        }
+        None
+    }
+
+    // `Manifest` validations, mirrors cargo's `Workspace::validate`
+    fn validate(&self) -> Result<()> {
+        self.validate_workspace_exclusivity()?;
+        // Add new validation rules with `self.validate_*()?;`
+        Ok(())
+    }
+
+    // no overrides or top-level metadata when workspace is present
+    fn validate_workspace_exclusivity(&self) -> Result<()> {
+        if self.workspace.is_none() {
+            return Ok(());
+        }
+        let mut conflicts = Vec::new();
+        if self.overrides.is_some() {
+            conflicts.push("overrides");
+        }
+        if self.metadata.is_some() {
+            conflicts.push("metadata");
+        }
+        if conflicts.is_empty() {
+            return Ok(());
+        }
+        anyhow::bail!(
+            "`[workspace]` cannot coexist with: `[{}]` - \
+             use `[workspace.metadata]` for workspace level values",
+            conflicts.join("]`, `[")
+        );
     }
 
     /// Attempts to load the manifest from the current directory. Most of the time, users of this
@@ -51,11 +115,39 @@ impl Manifest {
         Self::load_from_path(manifest_path).await
     }
 
+    /// Tries to find the root workspace config
+    /// Returns `Ok(None)` when there is no `wkg.toml` ancestor that can be [`WorkspaceRootConfig`]
+    // TODO(maktychev): reconcile load_from_path and load_root_workspace
+    pub async fn load_root_workspace(cwd: &Path) -> Result<Option<WorkspaceRootConfig>> {
+        let Some(manifest_file) = find_root_manifest_for_wd(cwd) else {
+            return Ok(None);
+        };
+        let manifest_dir = manifest_file
+            .parent()
+            .context("unexpectedly missing directory containing manifest")?;
+        let manifest = Self::load_from_path(&manifest_file).await?;
+
+        if let Some(root) = manifest.root() {
+            return Ok(Some(root.clone()));
+        }
+
+        // keep walking up if we have not found root
+        for file in find_root_iter(&manifest_file) {
+            let manifest = Self::load_from_path(&file).await?;
+            if let Some(WorkspaceConfig::Root(root)) = manifest.workspace
+                && root.is_explicitly_listed_member(manifest_dir)
+            {
+                return Ok(Some(root));
+            }
+        }
+
+        Ok(None)
+    }
+
     /// Serializes and writes the manifest to the given path.
     pub async fn write(&self, path: impl AsRef<Path>) -> Result<()> {
         let contents = toml::to_string_pretty(self)?;
-        let mut file = tokio::fs::File::create(path).await?;
-        file.write_all(contents.as_bytes())
+        tokio::fs::write(path, contents)
             .await
             .context("unable to write manifest to path")
     }
@@ -117,6 +209,7 @@ mod tests {
         let tempdir = tempfile::tempdir().unwrap();
         let manifest_path = tempdir.path().join(MANIFEST_FILE_NAME);
         let manifest = Manifest {
+            workspace: None,
             overrides: Some(HashMap::from([(
                 "foo:bar".to_string(),
                 Override {

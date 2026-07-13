@@ -1,6 +1,7 @@
 use wasm_pkg_client::{Version, VersionInfo};
 
-use crate::common::copy_dir;
+#[cfg(feature = "docker-tests")]
+use crate::common::{map_transitive_local_namespaces, publish_transitive_local};
 
 mod common;
 
@@ -91,48 +92,19 @@ async fn build_and_publish_with_metadata() {
 
 #[cfg(feature = "docker-tests")]
 #[tokio::test]
-async fn publish_multiple_transitive_local_packages() {
-    use std::path::PathBuf;
-
+async fn publish_workspace_packages() {
     let (config, registry, _container) = common::start_registry().await;
-    let namespaces = ["example-a", "example-b", "example-c", "example-d"];
 
-    // copy the transitive-local fixtures from wasm-pkg-core into a temp dir
-    let temp_dir = tempfile::tempdir().expect("Failed to create tempdir");
-    let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../wasm-pkg-core/tests/fixtures/transitive-local");
-    let fixture_root = temp_dir.path().join("transitive-local");
-    copy_dir(&src_root, &fixture_root).await.unwrap();
+    let mapped = map_transitive_local_namespaces(&config, &registry);
+    let fixture = publish_transitive_local(&mapped).await;
 
-    let mut mapped = config.clone();
-    for ns in namespaces {
-        mapped = common::map_namespace(&mapped, ns, &registry);
-    }
-    let config_path = temp_dir.path().join("config.toml");
-    mapped.to_file(&config_path).await.expect("write config");
-
-    // pass all fixture dirs to a single `wkg publish` invocation
-    let mut dirs: Vec<PathBuf> = namespaces
-        .iter()
-        .map(|name| fixture_root.join(name).join("wit"))
-        .collect();
-    // TODO use glob suchas in `wasm_pkgs_core::resolver::tests::transitive_local_paths`
-    dirs.push(fixture_root.join("example-c/wit/nested"));
-
-    let mut publish = tokio::process::Command::new(env!("CARGO_BIN_EXE_wkg"));
-    publish
-        .current_dir(temp_dir.path())
-        .env("WKG_CACHE_DIR", temp_dir.path().join("cache"))
-        .env("WKG_CONFIG_FILE", &config_path)
-        .arg("publish");
-    for dir in &dirs {
-        publish.arg(dir);
-    }
-    let status = publish.status().await.expect("spawn wkg publish");
-    assert!(status.success(), "wkg publish should succeed");
+    assert!(
+        fixture.fixture_path.join("wkg.toml").exists(),
+        "fixture must include the workspace manifest copied from \
+         crates/wasm-pkg-core/tests/fixtures/transitive-local/wkg.toml",
+    );
 
     let client = wasm_pkg_client::Client::new(mapped);
-
     let expected_version = "0.1.0".parse::<Version>().unwrap();
     for name in [
         "example-a:foo",
@@ -146,12 +118,60 @@ async fn publish_multiple_transitive_local_packages() {
             .list_all_versions(&pkg)
             .await
             .unwrap_or_else(|e| panic!("list versions for {name}: {e:#}"));
+        std::assert_matches!(
+            &versions[..],
+            [VersionInfo { version, .. }] if version == &expected_version,
+            "{name} should have exactly one published version",
+        );
+    }
+}
+
+#[cfg(feature = "docker-tests")]
+#[tokio::test]
+async fn fetch_workspace_packages() {
+    use wasm_pkg_core::lock::{LOCK_FILE_NAME, LockFile};
+
+    let (config, registry, _container) = common::start_registry().await;
+    let mapped = map_transitive_local_namespaces(&config, &registry);
+    let _publisher = publish_transitive_local(&mapped).await;
+
+    let fixture = common::load_fixture("fetch-workspace").await;
+    let status = fixture
+        .command_with_config(&mapped)
+        .await
+        .arg("fetch")
+        .status()
+        .await
+        .expect("spawn wkg fetch");
+    assert!(
+        status.success(),
+        "`wkg fetch` in fetch-workspace should succeed"
+    );
+
+    let lock_path = fixture.fixture_path.join(LOCK_FILE_NAME);
+    assert!(lock_path.exists(), "`wkg fetch` should create wkg.lock",);
+    let lock = LockFile::load_from_path(&lock_path, true)
+        .await
+        .expect("load fetch-workspace wkg.lock");
+    let expected_version = "0.1.0".parse::<Version>().unwrap();
+    for expected_pkgs in ["example-a:foo", "example-d:foo"] {
+        let pkg = expected_pkgs.parse().unwrap();
+        let entry = lock
+            .packages
+            .iter()
+            .find(|p| p.name == pkg)
+            .unwrap_or_else(|| {
+                panic!(
+                    "wkg.lock should contain {expected_pkgs}; had: {:?}",
+                    lock.packages
+                        .iter()
+                        .map(|p| p.name.to_string())
+                        .collect::<Vec<_>>()
+                )
+            });
         assert!(
-            matches!(
-                &versions[..],
-                [VersionInfo { version, .. }] if version == &expected_version,
-            ),
-            "{name} should have exactly one published version, got {versions:?}",
+            entry.versions.iter().any(|v| v.version == expected_version),
+            "{expected_pkgs} should be locked at {expected_version}; entry: {entry:?}",
         );
     }
 }

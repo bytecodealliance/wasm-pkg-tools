@@ -20,10 +20,8 @@ use crate::wit::build_wit_dir;
 
 /// A [`CachingClient`] and [`PublishPlan`] wired to a temporary local backend
 pub(crate) struct PublishVerifier {
-    #[expect(dead_code, reason = "workspaces")]
     pub(crate) client: CachingClient<FileCache>,
     pub(crate) plan: PublishPlan,
-    #[expect(dead_code, reason = "workspaces")]
     pub(crate) packages: BTreeSet<PackageRef>,
     pub(crate) data: HashMap<PackageRef, Vec<u8>>,
     /// Held so the temp local backend outlives the returned client.
