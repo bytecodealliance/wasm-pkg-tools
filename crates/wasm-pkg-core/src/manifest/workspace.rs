@@ -9,16 +9,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum WorkspaceConfig {
-    // `[workspace]`
     Root(WorkspaceRootConfig),
     // - `workspace = "path/to/workspace/root"`
     // - TODO(mkatychev): implement workspace package level field
     // - https://doc.rust-lang.org/cargo/reference/manifest.html#the-workspace-field
-    // Member {
-    //     root: Option<String>,
-    // },
+    Member { root: Option<String> },
 }
-
 impl Default for WorkspaceConfig {
     fn default() -> Self {
         // TODO(mkatychev): use member variant instead
@@ -31,6 +27,7 @@ impl WorkspaceConfig {
     pub fn as_root(&self) -> Option<&WorkspaceRootConfig> {
         match self {
             WorkspaceConfig::Root(r) => Some(r),
+            WorkspaceConfig::Member { .. } => None,
         }
     }
 }
