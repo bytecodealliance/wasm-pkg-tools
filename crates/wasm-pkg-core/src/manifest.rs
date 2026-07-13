@@ -41,8 +41,7 @@ pub struct Manifest {
 
 impl Manifest {
     fn from_toml(contents: &str) -> Result<Manifest> {
-        let manifest: Manifest =
-            toml::from_str(contents).context("unable to parse manifest file")?;
+        let manifest = toml::from_str(contents)?;
         manifest.validate()?;
         Ok(manifest)
     }
@@ -123,7 +122,9 @@ impl Manifest {
         let Some(manifest_file) = find_root_manifest_for_wd(cwd) else {
             return Ok(None);
         };
-        let manifest_dir = manifest_file.parent().context("unexpectedly missing directory containing manifest")?;
+        let manifest_dir = manifest_file
+            .parent()
+            .context("unexpectedly missing directory containing manifest")?;
         let manifest = Self::load_from_path(&manifest_file).await?;
 
         if let Some(root) = manifest.root() {
@@ -134,9 +135,10 @@ impl Manifest {
         for file in find_root_iter(&manifest_file) {
             let manifest = Self::load_from_path(&file).await?;
             if let Some(WorkspaceConfig::Root(root)) = manifest.workspace
-                && root.is_explicitly_listed_member(manifest_dir) {
-                    return Ok(Some(root));
-                }
+                && root.is_explicitly_listed_member(manifest_dir)
+            {
+                return Ok(Some(root));
+            }
         }
 
         Ok(None)
