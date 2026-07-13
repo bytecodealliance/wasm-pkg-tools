@@ -41,7 +41,7 @@ pub struct Manifest {
 
 impl Manifest {
     fn from_toml(contents: &str) -> Result<Manifest> {
-        let manifest = toml::from_str(contents)?;
+        let manifest: Manifest = toml::from_str(contents)?;
         manifest.validate()?;
         Ok(manifest)
     }
