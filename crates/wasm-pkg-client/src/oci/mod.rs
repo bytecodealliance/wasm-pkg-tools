@@ -114,6 +114,13 @@ impl OciBackend {
     }
 
     pub(crate) fn get_credentials(&self) -> Result<RegistryAuth, Error> {
+        // Prefer a bearer token from envvar if it exists
+        if let Ok(token) = std::env::var(registry_token_env_var(&self.oci_registry))
+            && !token.is_empty()
+        {
+            return Ok(RegistryAuth::Bearer(token));
+        }
+
         if let Some(BasicCredentials { username, password }) = &self.credentials {
             return Ok(RegistryAuth::Basic(
                 username.clone(),
@@ -176,6 +183,22 @@ pub(crate) fn oci_registry_error(err: OciDistributionError) -> Error {
     }
 }
 
+/// Returns the envvar used to provide a bearer token for a given registry:
+/// `WKG_REGISTRIES_<name>_TOKEN`, where registry `<name>` is defined by
+/// the resolution of [`wasm_pkg_common::config::Config`].
+///
+/// Any non-ASCII-alphanumeric characters (., -, :, /, ...) are replaced by `_` and
+/// the whole string is upper-cased.
+// TODO(mkatychev): move this into `wasm_pkg_common::config::Config` once overlays are implemented,
+// this should be a generic-to-backend way of overriding configs.
+fn registry_token_env_var(oci_registry: &str) -> String {
+    let sanitized: String = oci_registry
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    format!("WKG_REGISTRIES_{}_TOKEN", sanitized.to_ascii_uppercase())
+}
+
 fn get_docker_credential(registry: &str) -> Result<Option<RegistryAuth>, Error> {
     match docker_credential::get_credential(registry) {
         Ok(DockerCredential::UsernamePassword(username, password)) => {
@@ -202,4 +225,25 @@ fn get_docker_credential(registry: &str) -> Result<Option<RegistryAuth>, Error> 
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn token_env_var_sanitizes_registry_name() {
+        assert_eq!(
+            registry_token_env_var("example.com"),
+            "WKG_REGISTRIES_EXAMPLE_COM_TOKEN"
+        );
+        assert_eq!(
+            registry_token_env_var("ghcr.io"),
+            "WKG_REGISTRIES_GHCR_IO_TOKEN"
+        );
+        assert_eq!(
+            registry_token_env_var("localhost:1234"),
+            "WKG_REGISTRIES_LOCALHOST_1234_TOKEN",
+        );
+    }
 }
