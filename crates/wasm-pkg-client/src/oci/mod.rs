@@ -114,10 +114,13 @@ impl OciBackend {
     }
 
     pub(crate) fn get_credentials(&self) -> Result<RegistryAuth, Error> {
-        // Prefer a bearer token from envvar if it exists
-        if let Ok(token) = std::env::var(registry_token_env_var(&self.oci_registry))
+        // Detect `WKG_REGISTRY_<REGISTRY>_AUTH_<AUTH_SCHEME>` if present.
+        let auth_var_key = &registry_auth_env_var(&self.oci_registry, "BEARER");
+        if let Ok(token) = std::env::var(auth_var_key)
             && !token.is_empty()
         {
+            tracing::debug!(registry = %self.oci_registry, %auth_var_key, "Using detected authentication envvar key");
+            // Only `BEARER` AUTH_SCHEME for now
             return Ok(RegistryAuth::Bearer(token));
         }
 
@@ -183,20 +186,25 @@ pub(crate) fn oci_registry_error(err: OciDistributionError) -> Error {
     }
 }
 
-/// Returns the envvar used to provide a bearer token for a given registry:
-/// `WKG_REGISTRIES_<name>_TOKEN`, where registry `<name>` is defined by
-/// the resolution of [`wasm_pkg_common::config::Config`].
+/// Returns the envvar used to provide credentials for a given registry and
+/// auth scheme: `WKG_REGISTRY_<REGISTRY>_AUTH_<AUTH_SCHEME>`
+/// * `<REGISTRY>` : defined by the resolution of [`wasm_pkg_common::config::Config`] and
+/// * `<AUTH_SCHEME>`: the auth mechanism (`BEARER` only support)
 ///
-/// Any non-ASCII-alphanumeric characters (., -, :, /, ...) are replaced by `_` and
-/// the whole string is upper-cased.
+/// Any non-ASCII-alphanumeric characters (., -, :, /, ...) in the registry
+/// name are replaced by `_` and the whole string is upper-cased.
 // TODO(mkatychev): move this into `wasm_pkg_common::config::Config` once overlays are implemented,
 // this should be a generic-to-backend way of overriding configs.
-fn registry_token_env_var(oci_registry: &str) -> String {
+fn registry_auth_env_var(oci_registry: &str, scheme: &str) -> String {
     let sanitized: String = oci_registry
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect();
-    format!("WKG_REGISTRIES_{}_TOKEN", sanitized.to_ascii_uppercase())
+    format!(
+        "WKG_REGISTRY_{}_AUTH_{}",
+        sanitized.to_ascii_uppercase(),
+        scheme.to_ascii_uppercase(),
+    )
 }
 
 fn get_docker_credential(registry: &str) -> Result<Option<RegistryAuth>, Error> {
@@ -232,18 +240,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn token_env_var_sanitizes_registry_name() {
+    fn auth_env_var_sanitizes_registry_name() {
         assert_eq!(
-            registry_token_env_var("example.com"),
-            "WKG_REGISTRIES_EXAMPLE_COM_TOKEN"
+            registry_auth_env_var("example.com", "BEARER"),
+            "WKG_REGISTRY_EXAMPLE_COM_AUTH_BEARER"
         );
         assert_eq!(
-            registry_token_env_var("ghcr.io"),
-            "WKG_REGISTRIES_GHCR_IO_TOKEN"
+            registry_auth_env_var("ghcr.io", "BEARER"),
+            "WKG_REGISTRY_GHCR_IO_AUTH_BEARER"
         );
         assert_eq!(
-            registry_token_env_var("localhost:1234"),
-            "WKG_REGISTRIES_LOCALHOST_1234_TOKEN",
+            registry_auth_env_var("localhost:1234", "BEARER"),
+            "WKG_REGISTRY_LOCALHOST_1234_AUTH_BEARER",
+        );
+    }
+
+    #[test]
+    fn auth_env_var_upcases_scheme() {
+        assert_eq!(
+            registry_auth_env_var("example.com", "bearer"),
+            "WKG_REGISTRY_EXAMPLE_COM_AUTH_BEARER"
         );
     }
 }
