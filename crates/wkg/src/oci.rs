@@ -5,6 +5,7 @@ use clap::{Args, Subcommand};
 use docker_credential::DockerCredential;
 use oci_client::{
     Reference,
+    annotations::ORG_OPENCONTAINERS_IMAGE_TITLE,
     client::{ClientConfig, ClientProtocol, PushResponse},
     secrets::RegistryAuth,
 };
@@ -146,9 +147,21 @@ fn parse_key_val(s: &str) -> anyhow::Result<(String, String)> {
 impl PushArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         let client = get_client(self.common);
-        let (conf, layer) = WasmConfig::from_component(&self.file, self.author)
+        let (conf, mut layer) = WasmConfig::from_component(&self.file, self.author)
             .await
             .context("Unable to parse component")?;
+
+        let title = self
+            .file
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| format!("{}.wasm", self.reference.repository().replace('/', "_")));
+        // Set the layer title so OCI tools can name the file on disk
+        // TODO: unify with OciBackend::publish
+        layer.annotations = Some(std::collections::BTreeMap::from_iter([(
+            ORG_OPENCONTAINERS_IMAGE_TITLE.to_string(),
+            title,
+        )]));
 
         let annotations = match self.annotation.len() {
             0 => None,
