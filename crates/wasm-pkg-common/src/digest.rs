@@ -58,7 +58,7 @@ impl std::fmt::Display for ContentDigest {
 impl From<Sha256> for ContentDigest {
     fn from(hasher: Sha256) -> Self {
         Self::Sha256 {
-            hex: format!("{:x}", hasher.finalize()),
+            hex: base16ct::lower::encode_string(&hasher.finalize()),
         }
     }
 }

@@ -127,7 +127,7 @@ impl OciBackend {
         if let Some(BasicCredentials { username, password }) = &self.credentials {
             return Ok(RegistryAuth::Basic(
                 username.clone(),
-                password.expose_secret().clone(),
+                password.expose_secret().to_string(),
             ));
         }
 

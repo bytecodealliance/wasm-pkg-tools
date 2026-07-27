@@ -19,15 +19,15 @@ oci_extras = []
 
 [dependencies]
 anyhow = { workspace = true }
+base16ct = { workspace = true }
 bytes = { workspace = true }
 etcetera = { workspace = true, optional = true }
 futures-util = { workspace = true }
 http = { workspace = true }
 reqwest = { workspace = true, features = [
-    "rustls-tls",
+    "rustls",
     "charset",
     "http2",
-    "macos-system-configuration",
     "json",
 ], optional = true }
 semver = { workspace = true, features = ["serde"] }
