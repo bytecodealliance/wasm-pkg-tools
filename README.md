@@ -12,7 +12,20 @@ functionality of the libraries. The first (but not only) focus of this project i
 of Wit Interfaces stored as components for use in creating components. It can also be used to fetch
 and publish component "libraries" to/from a registry.
 
-## Installation
+## Documentation
+
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Configuration (`config.toml`)](docs/configuration.md)
+  - [Default fallback registries](docs/configuration.md#default-fallback-registries)
+- [Registry metadata (`/.well-known`)](docs/registry-metadata.md)
+  - [Conventions for storing components in OCI](docs/registry-metadata.md#conventions-for-storing-components-in-oci)
+- [Manifest (`wkg.toml`)](docs/manifest.md)
+  - [OCI annotation mapping](docs/manifest.md#oci-annotation-mapping)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Install
 
 Right now installation of `wkg` is manual. You can either clone the repo and build from source, or
 download a pre-built binary from the [releases
@@ -34,257 +47,59 @@ install `wkg` with a pre-built binary:
 cargo binstall wkg
 ```
 
-## Configuration
+## Quick start
 
-To quickly set the default registry:
-```
+Set the default registry:
+
+```sh
 wkg config --default-registry {REGISTRY_DOMAIN}
 ```
 
-For the complete configuration options, you can edit the config file with your default
-editor (set with env var `$EDITOR`):
-```
+Open the full config file in `$EDITOR`:
+
+```sh
 wkg config --edit
 ```
 
-The `wkg` tool and libraries use a configuration file to store settings. This config file is still
-subject to change but we will try to keep it backwards compatible as we continue to develop the
-tool. This config file is meant to be used by both `wkg` and also any other language-specific
-component tooling that wants to fetch from registries. This should allow for a single configuration
-file that can be used by all tooling, whether that be `wkg` or some other tool that isn't written in
-Rust.
+Download a package:
 
-The default location is `$XDG_CONFIG_HOME/wasm-pkg/config.toml` on unix-like systems and
-`{FOLDERID_RoamingAppData}\wasm-pkg\config.toml` on Windows but this can be overridden with the
-`--config` flag. Examples of this are found below:
-
-| Platform | Path                                  |
-| -------- | ------------------------------------- |
-| Linux    | `/home/<username>/.config`            |
-| macOS    | `/home/<username>/.config`            |
-| Windows  | `C:\Users\<username>\AppData\Roaming` |
-
-The configuration file is TOML and can be edited manually.
-
-Below is an annotated example of a configuration file that shows all the available options.
-
-```toml
-# The default registry to use when none is specified. Generally this is wasi.dev, but can be set
-# for cases when a company wants to use a private/internal registry.
-default_registry = "acme.registry.com"
-
-# This section contains a mapping of namespace prefixes (i.e. the "wasi" part of "wasi:http") to
-# registries. This is used to determine which registry to use when fetching or publishing a
-# component. If a namespace is not listed here, the default registry will be used.
-[namespace_registries]
-wasi = "wasi.dev"
-example = "example.com"
-# An example of providing your own registry mapping. For large and/or public registries, we
-# recommend creating a well-known metadata file that can be used to determine the registry to use
-# (see the section on "metadata" below). But many times you might want to override mappings or
-# provide something that is used by a single team. The registry name does not matter, but must be
-# parsable to URL authority. This name is purely used for mapping to registry config and isn't
-# actually used as a URL when metadata is provided
-another = { registry = "another", metadata = { preferredProtocol = "oci", "oci" = {registry = "ghcr.io", namespacePrefix = "webassembly/" } } }
-
-# This overrides the default registry for a specific package. This is useful for cases where a
-# package is published to multiple registries.
-[package_registry_overrides]
-"example:foo" = "example.com"
-# Same as namespace_registries above, but for a specific package.
-"example:bar" = { registry = "another", metadata = { preferredProtocol = "oci", "oci" = {registry = "ghcr.io", namespacePrefix = "webassembly/" } } }
-
-# This section contains a mapping of registries to their configuration. There are currently 2
-# supported types of registries: "oci" and "local". The "oci" type is the default.
-[registry."acme.registry.com"]
-[registry."acme.registry.com".oci]
-# The auth field can either be a username/password pair, or a base64 encoded `username:password`
-# string. If no auth is set, the `wkg` CLI (but not the libraries) will also attempt to load the
-# credentials from the docker config.json. This field is also optional and if not set, anonymous
-# auth will be used. If you're just pulling from a public registry, this is likely not required.
-# If you're using a private registry and/or publishing, you'll almost certainly need to set this.
-auth = { username = "open", password = "sesame" }
-# This is an optional field that tells the OCI client to use a specific http protocol. If this is
-# not set or not one of the accepted values of "http" or "https", then the default (https) will
-# be used.
-protocol = "https"
-[registry."acme.registry.com".local]
-# This is a required field that specifies the root directory on a filesystem where the components
-# are stored. This is mostly used for local development and testing.
-root = "/a/path"
-
-# If a registry only has a config section for one protocol, then that protocol is automatically
-# the default. The following is equivalent to:
-# [registry."example.com"]
-# default = "oci"
-# [registry."example.com".oci]
-# auth = { username = "open", password = "sesame" }
-[registry."example.com".oci]
-auth = { username = "open", password = "sesame" }
-
-# Configuration for the "another" registry defined above.
-[registry."another".oci]
-auth = { username = "open", password = "sesame" }
+```sh
+wkg get wasi:http@0.2.1
 ```
 
-### Metadata via Well-known URI (`/.well-known`)
+Publish a package to the configured registry:
 
-For well-used or public registries, we recommend creating a [well-known metadata file](https://en.wikipedia.org/wiki/Well-known_URI) that is used by
-the tool chain to simplify configuration and indicate to a client which protocols and mappings to
-use (although this can be set directly in config as well). The `wkg` tool and libraries expect a
-`registry.json` file to be present at a specific location to indicate to the tooling where the
-components are stored. For example, if a registry was `example.com`, then the tooling will attempt
-For well-used or public registries, we recommend creating a [`.well-known` metadata file](https://en.wikipedia.org/wiki/Well-known_URI) that is used by
-the tool chain to simplify configuration and indicate to a client which protocols and mappings to
-use (although this can be set directly in config as well).
-
-The `wkg` tool and libraries expect a `registry.json` file to be present at a specific location to indicate to the tooling where the components are stored. For example, given a registry `example.com`, then the tooling will attempt to find a `registry.json` file at `https://example.com/.well-known/wasm-pkg/registry.json`.
-
-A full example of what this `registry.json` file should look like is below:
-
-```json
-{
-  "preferredProtocol":"oci",
-  "oci": {"registry": "ghcr.io", "namespacePrefix": "webassembly/"}
-}
+```sh
+wkg publish path/to/component.wasm
 ```
 
-The `preferredProtocol` field is optional and specifies which protocol the registry expects you to
-use. While this field is present for future compatibility, it's generally fixed to "oci" in this implementation.
+Fetch WIT dependencies for the current project (uses `wkg.toml` / `wkg.lock`):
 
-For the `oci` config, the `registry` field is the base URL of the OCI registry, and the
-`namespacePrefix` field is the prefix that is used to store components in the registry. So in the
-example above (which is for wasi.dev), the components will be available at
-`ghcr.io/webassembly/$NAMESPACE/$PACKAGE:$VERSION` (e.g. `ghcr.io/webassembly/wasi/http:0.2.1`).
-
-Please note that for backwards compatibility, with previous tooling and versions of the `wkg` tool,
-you may also encounter a `registry.json` file that looks different. These files are still supported,
-but should be considered deprecated.
-
-For OCI registries, the JSON looks like this:
-
-```json
-{
-        "ociRegistry": "ghcr.io",
-        "ociNamespacePrefix": "webassembly/"
-}
+```sh
+wkg fetch
 ```
 
-### Conventions for storing components in OCI
+Update pinned versions in `wkg.lock`:
 
-Astute observers will note that OCI requires a specific structure for how those components are
-stored. To be clear, this does not apply to deployable artifacts (such as those used by various
-runtimes), but only to WIT components or library components. Based on the information in the
-`registry.json` file, the base URL and namespace prefix will be joined together with the namespace
-and package name to form the full URL. So if you have a custom company namespace called `acme`. Then
-a package called `acme:foo` should be stored with the name `acme/foo`. If we use the `registry.json`
-file from the example above, then the component will be stored at
-`ghcr.io/webassembly/acme/foo:0.1.0`. Please note that the tag _MUST_ be a valid semantic version or
-the tooling will ignore it when pulling.
-
-### Default fallback registries
-
-If no configuration is found, the following mapping of namespace prefixes is used as a fallback:
-```toml
-wasi = "wasi.dev"
-ba = "bytecodealliance.org"
-```
-The `wkg` tool will therefore fetch registry metadata from the respective [well-known URIs](https://en.wikipedia.org/wiki/Well-known_URI):
-```
-https://wasi.dev/.well-known/wasm-pkg/registry.json
-https://bytecodealliance.org/.well-known/wasm-pkg/registry.json
-```
-Both registries store their packages as OCI artifacts in the
-[GitHub Package Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
-
-## `wkg.toml` and `wkg.lock`
-
-Whenever `wkg` is used to fetch dependencies or build a wit package, it will automatically create a
-`wkg.lock` file. This lock file is the other standardized file that can be used by any other tooling
-integrating in with package tooling. Because components are cross language, this file will be the
-same for all languages. An example of this file is below:
-
-```toml
-version = 1
-
-[[packages]]
-name = "wasi:cli"
-registry = "wasi.dev"
-
-[[packages.versions]]
-requirement = "=0.2.0"
-version = "0.2.0"
-digest = "sha256:e7e85458e11caf76554b724ebf4f113259decf0f3b1ee2e2930de096f72114a7"
-
-[[packages]]
-name = "wasi:clocks"
-registry = "wasi.dev"
-
-[[packages.versions]]
-requirement = "=0.2.0"
-version = "0.2.0"
-digest = "sha256:51911098e929732f65d1d84f8dc393299f18a9e8de632d854714f37142efe97b"
-
-[[packages]]
-name = "wasi:io"
-registry = "wasi.dev"
-
-[[packages.versions]]
-requirement = "=0.2.0"
-version = "0.2.0"
-digest = "sha256:c33b1dbf050f64229ff4decbf9a3d3420e0643a86f5f0cea29f81054820020a6"
-
-[[packages]]
-name = "wasi:random"
-registry = "wasi.dev"
-
-[[packages.versions]]
-requirement = "=0.2.0"
-version = "0.2.0"
-digest = "sha256:5d535edc544d06719cf337861b7917c3d565360295e5dc424046dceddb0a0e42"
+```sh
+wkg update
 ```
 
-On the other hand, the `wkg.toml` manifest file is used to configure various parts of the tooling and _is
-entirely optional_. Projects are not required to use this file. Currently, it serves two purposes:
-adding additional metadata and overriding versions/dependencies. The most common usage will be to
-point to a local dependency:
+Build a WIT package into a component:
 
-```toml
-[overrides]
-"my:local-dep" = { path = "../local-dep/wit" }
+```sh
+wkg build
 ```
 
-There is also a `[metadata]` section that can be used to add additional metadata when building a WIT
-package (or can be used by other language tooling). For OCI, this metadata is also used to populate
-common OCI annotations when publishing a package. A full example of all fields are below:
+Point at a non-default config or cache directory (the `--config` / `--cache` flags attach to each
+subcommand, not to `wkg` itself):
 
-```toml
-[metadata]
-authors = ["WasmPkg <wasm-pkg@bytecodealliance.org>"]
-categories = ["wasm-pkg"]
-description = "WASI HTTP interface"
-license = "Apache-2.0"
-documentation = "https://docs.foobar.baz"
-homepage = "https://foobar.baz"
-repository = "https://github.com/bytecodealliance/wasm-pkg-tools"
+```sh
+wkg get --config .wkg/config.toml --cache ./wkg-cache wasi:cli@0.2.0
 ```
-
-### OCI Annotation Mapping
-
-When publish to OCI via `wkg publish`, it will load the metadata from the wasm binary (which is
-automatically added to the WIT package with `wkg wit build` if the metadata is present in the
-`wkg.toml` file). The metadata is mapped to the following OCI annotations:
-
-| `wkg.toml` Metadata Field | OCI Annotation                         |
-| ------------------------- | -------------------------------------- |
-| `description`             | `org.opencontainers.image.description` |
-| `license`                 | `org.opencontainers.image.licenses`    |
-| `homepage`                | `org.opencontainers.image.url`         |
-| `repository`              | `org.opencontainers.image.source`      |
-
-Additionally, the `org.opencontainers.image.version` annotation is set to the version of the package being published.
 
 ## Contributing
+
 Want to join us? Check out our ["Contributing" guide][contributing] and take a look at some of these
 issues:
 
