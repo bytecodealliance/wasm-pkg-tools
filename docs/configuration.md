@@ -138,6 +138,51 @@ default. Set to `"http"` for local test registries.
 protocol = "https"
 ```
 
+### `registry.<name>.oci.accept_invalid_certificates`
+
+- Type: bool, default `false`
+
+Skip TLS certificate validation. For local self-signed test registries only.
+
+### `registry.<name>.oci.extra_root_certificates`
+
+- Type: list of inline-tables `{ encoding = "pem" | "der", data = "<cert>" }`
+- Default: `[]`
+
+Additional root certificates trusted for TLS. `data` holds the certificate
+bytes as a string; use TOML multi-line literals for PEM blocks. Useful when a
+private OCI registry is fronted by an internal CA.
+
+```toml
+[[registry."internal.example.com".oci.extra_root_certificates]]
+encoding = "pem"
+data = """
+-----BEGIN CERTIFICATE-----
+MIIB...
+-----END CERTIFICATE-----
+"""
+```
+
+### Environment variable authentication
+
+For OCI registries, an environment variable of the form
+`WKG_REGISTRY_<REGISTRY>_AUTH_<SCHEME>` overrides any credentials configured
+under `[registry."<name>".oci.auth]`. `<REGISTRY>` is the registry name with
+every non-ASCII-alphanumeric character replaced by `_` and upper-cased.
+`<SCHEME>` is the auth scheme.
+
+| Registry         | Envvar                                    |
+| ---------------- | ----------------------------------------- |
+| `example.com`    | `WKG_REGISTRY_EXAMPLE_COM_AUTH_BEARER`    |
+| `localhost:8008` | `WKG_REGISTRY_LOCALHOST_8008_AUTH_BEARER` |
+| `foo.bar/baz` | `WKG_REGISTRY_FOO_BAR_BAZ_AUTH_BEARER` |
+
+NOTE: only `BEARER` scheme is currently supported through environmental variables.
+
+Useful for registries that expect a bearer token rather than a
+username/password pair, and for supplying credentials in CI without writing
+them to a config file.
+
 ### `registry.<name>.local.root`
 
 - Type: string (filesystem path)
