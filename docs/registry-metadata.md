@@ -26,9 +26,9 @@ find a `registry.json` file at
 ```
 
 
-### Deprecated format
 
 <details>
+  <summary>Deprecated variant</summary>
 For backwards compatibility with previous tooling and versions of the `wkg`
 tool, you may also encounter a `registry.json` file that looks different.
 These files are still supported, but should be considered deprecated. For OCI
@@ -41,6 +41,8 @@ registries, the JSON looks like this:
 }
 ```
 </details>
+
+---
 
 ### `preferredProtocol`
 
