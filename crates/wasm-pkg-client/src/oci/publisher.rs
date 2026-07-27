@@ -1,6 +1,14 @@
 use std::collections::BTreeMap;
 
-use oci_client::{Reference, RegistryOperation};
+use oci_client::{
+    Reference, RegistryOperation,
+    annotations::{
+        ORG_OPENCONTAINERS_IMAGE_AUTHORS, ORG_OPENCONTAINERS_IMAGE_DESCRIPTION,
+        ORG_OPENCONTAINERS_IMAGE_LICENSES, ORG_OPENCONTAINERS_IMAGE_SOURCE,
+        ORG_OPENCONTAINERS_IMAGE_TITLE, ORG_OPENCONTAINERS_IMAGE_URL,
+        ORG_OPENCONTAINERS_IMAGE_VERSION,
+    },
+};
 use tokio::io::AsyncReadExt;
 
 use crate::publisher::PackagePublisher;
@@ -26,39 +34,44 @@ impl PackagePublisher for OciBackend {
             crate::Error::InvalidComponent(anyhow::anyhow!("Unable to parse WASM: {e}"))
         })?;
         let meta = payload.metadata();
-        let (config, layer) = oci_wasm::WasmConfig::from_raw_component(buf, None)
+        let (config, mut layer) = oci_wasm::WasmConfig::from_raw_component(buf, None)
             .map_err(crate::Error::InvalidComponent)?;
+        // Set the layer title so OCI tools can name the file on disk
+        layer.annotations = Some(BTreeMap::from_iter([(
+            ORG_OPENCONTAINERS_IMAGE_TITLE.to_string(),
+            format!("{}.wasm", package.name()),
+        )]));
         let mut annotations = BTreeMap::from_iter([(
-            "org.opencontainers.image.version".to_string(),
+            ORG_OPENCONTAINERS_IMAGE_VERSION.to_string(),
             version.to_string(),
         )]);
         if let Some(desc) = &meta.description {
             annotations.insert(
-                "org.opencontainers.image.description".to_string(),
+                ORG_OPENCONTAINERS_IMAGE_DESCRIPTION.to_string(),
                 desc.to_string(),
             );
         }
         if let Some(licenses) = &meta.licenses {
             annotations.insert(
-                "org.opencontainers.image.licenses".to_string(),
+                ORG_OPENCONTAINERS_IMAGE_LICENSES.to_string(),
                 licenses.to_string(),
             );
         }
         if let Some(source) = &meta.source {
             annotations.insert(
-                "org.opencontainers.image.source".to_string(),
+                ORG_OPENCONTAINERS_IMAGE_SOURCE.to_string(),
                 source.to_string(),
             );
         }
         if let Some(homepage) = &meta.homepage {
             annotations.insert(
-                "org.opencontainers.image.url".to_string(),
+                ORG_OPENCONTAINERS_IMAGE_URL.to_string(),
                 homepage.to_string(),
             );
         }
         if let Some(authors) = &meta.authors {
             annotations.insert(
-                "org.opencontainers.image.authors".to_string(),
+                ORG_OPENCONTAINERS_IMAGE_AUTHORS.to_string(),
                 authors.to_string(),
             );
         }

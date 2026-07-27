@@ -30,7 +30,7 @@ indexmap = "2.5"
 oci-client = { version = "0.17", default-features = false, features = [
     "rustls-tls",
 ] }
-oci-wasm = { version = "0.5", default-features = false, features = [
+oci-wasm = { version = "0.6", default-features = false, features = [
     "rustls-tls",
 ] }
 petgraph = "0.8.3"

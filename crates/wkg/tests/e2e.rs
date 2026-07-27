@@ -52,6 +52,22 @@ async fn build_and_publish_with_metadata() {
         panic!("OciManifest should be an image manifest");
     };
 
+    let layer = manifest
+        .layers
+        .first()
+        .expect("OciManifest should have at least one layer");
+    let layer_annotations = layer
+        .annotations
+        .as_ref()
+        .expect("Layer should have annotations");
+    assert_eq!(
+        layer_annotations
+            .get(oci_client::annotations::ORG_OPENCONTAINERS_IMAGE_TITLE)
+            .expect("layer missing image.title"),
+        "http.wasm",
+        "layer title should be the package name with .wasm suffix",
+    );
+
     let annotations = manifest
         .annotations
         .expect("OciManifest should have annotations");
@@ -87,6 +103,64 @@ async fn build_and_publish_with_metadata() {
         annotations.get("org.opencontainers.image.url"),
         meta.homepage.as_ref(),
         "Name should match"
+    );
+}
+
+#[cfg(feature = "docker-tests")]
+#[tokio::test]
+async fn oci_push_sets_layer_title() {
+    use oci_client::{Reference, client::ClientConfig, manifest::OciManifest};
+
+    let (_config, registry, _container) = common::start_registry().await;
+
+    let fixture = common::load_fixture("wasi-http").await;
+    let status = fixture
+        .command()
+        .args(["wit", "build"])
+        .status()
+        .await
+        .expect("Should be able to build wit package");
+    assert!(status.success(), "Build should succeed");
+
+    let wasm_file = fixture.fixture_path.join("wasi:http@0.2.0.wasm");
+    let image_ref = format!("{registry}/wasi/http:0.2.0");
+    let status = fixture
+        .command()
+        .args(["oci", "push", "--insecure", &registry.to_string()])
+        .arg(&image_ref)
+        .arg(&wasm_file)
+        .status()
+        .await
+        .expect("Should be able to run wkg oci push");
+    assert!(status.success(), "`wkg oci push` should succeed");
+
+    let client = oci_client::Client::new(ClientConfig {
+        protocol: oci_client::client::ClientProtocol::Http,
+        ..Default::default()
+    });
+    let reference: Reference = image_ref.parse().unwrap();
+    let (manifest, _) = client
+        .pull_manifest(&reference, &oci_client::secrets::RegistryAuth::Anonymous)
+        .await
+        .expect("Should be able to fetch manifest");
+    let manifest = match manifest {
+        OciManifest::Image(m) => m,
+        _ => panic!("OciManifest should be an image manifest"),
+    };
+    let layer = manifest
+        .layers
+        .first()
+        .expect("manifest should have a wasm layer");
+    let layer_annotations = layer
+        .annotations
+        .as_ref()
+        .expect("wasm layer should have annotations");
+    assert_eq!(
+        layer_annotations
+            .get(oci_client::annotations::ORG_OPENCONTAINERS_IMAGE_TITLE)
+            .expect("layer should have image.title"),
+        "wasi:http@0.2.0.wasm",
+        "layer title should be the pushed file's basename",
     );
 }
 
