@@ -9,20 +9,36 @@ and *is entirely optional*. Projects are not required to use this file.
 Currently it serves two purposes: adding additional metadata and overriding
 versions/dependencies.
 
+*NOTE*: A top-level `[workspace]` table is mutually exclusive with top-level
+`[overrides]` and `[metadata]`: a workspace root uses `[workspace.metadata]`
+instead, and members manifests have their own `[overrides]` / `[metadata]`.
+
 ### Format
+
+Single-package layout:
 
 ```toml
 [overrides]
 "my:local-dep" = { path = "../local-dep/wit" }
 
 [metadata]
-authors = ["WasmPkg <wasm-pkg@bytecodealliance.org>"]
-categories = ["wasm-pkg"]
+authors = "WasmPkg <wasm-pkg@bytecodealliance.org>"
 description = "WASI HTTP interface"
 license = "Apache-2.0"
-documentation = "https://docs.foobar.baz"
 homepage = "https://foobar.baz"
 repository = "https://github.com/bytecodealliance/wasm-pkg-tools"
+revision = "f00ba4"
+```
+
+Workspace root layout:
+
+```toml
+[workspace]
+members = ["pkg-a", "pkg-b/wit", "examples/*/wit"]
+
+[workspace.metadata]
+authors = "WasmPkg <wasm-pkg@bytecodealliance.org>"
+license = "Apache-2.0"
 ```
 
 ### `overrides`
@@ -38,18 +54,39 @@ developing two components together.
 "my:local-dep" = { path = "../local-dep/wit" }
 ```
 
+### `workspace.members`
+
+- Type: list of strings (paths; gitignore-style globs allowed)
+
+Directories that make up the workspace. Each entry is either a literal path or
+a glob (e.g. `"examples/*/wit"`); globs expand relative to the workspace root
+and skip entries with no `.wit` files. Used by `wkg fetch --workspace` and
+`wkg publish --workspace` to operate on every member in one invocation.
+Members share the workspace-level `wkg/deps` and `wkg/config.toml` next to the
+root manifest.
+
+### `workspace.metadata`
+
+- Type: same shape as [`metadata`](#metadataauthors) below
+
+Workspace-wide package metadata applied to every member. Set here instead of
+top-level `[metadata]` when `[workspace]` is present.
+
+### Member declarations
+
+- Type: `{ workspace = "path/to/root" }` (optional)
+
+A member `wkg.toml` typically has no `[workspace]` table at all; the root is
+discovered by walking ancestor directories for a `wkg.toml` whose
+`workspace.members` matches this manifest's path.
+<!-- TODO -->
+<!-- Point at the root explicitly with `workspace = "/path/to/wkg.toml"` if it lives outside the ancestor chain. -->
+
 ### `metadata.authors`
 
-- Type: list of strings
+- Type: string (also accepts the legacy key `author`)
 
-Author list. Also consumed by downstream language tooling that reads
-`wkg.toml`.
-
-### `metadata.categories`
-
-- Type: list of strings
-
-Freeform category tags.
+Author line. Unlike `Cargo.toml`, this is a single string, not a list.
 
 ### `metadata.description`
 
@@ -60,15 +97,10 @@ Short description of the package. Emitted as the
 
 ### `metadata.license`
 
-- Type: string (SPDX expression)
+- Type: string (SPDX expression; serialized as `licenses`)
 
-License identifier. Emitted as `org.opencontainers.image.licenses`.
-
-### `metadata.documentation`
-
-- Type: string (URL)
-
-Documentation URL. Currently informational.
+License identifier. Accepts the singular `license` key as an alias. Emitted as
+`org.opencontainers.image.licenses`.
 
 ### `metadata.homepage`
 
@@ -78,15 +110,22 @@ Project homepage. Emitted as `org.opencontainers.image.url`.
 
 ### `metadata.repository`
 
-- Type: string (URL)
+- Type: string (URL; serialized as `source`)
 
-Source repository. Emitted as `org.opencontainers.image.source`.
+Source repository URL. Accepts `source` or `repository` on input. Emitted as
+`org.opencontainers.image.source`.
+
+### `metadata.revision`
+
+- Type: string
+
+Source-control revision (commit hash, tag, etc.) the package was built from.
 
 ## OCI annotation mapping
 
 When publishing to OCI via `wkg publish`, `wkg` loads the metadata from the
 wasm binary (which is automatically added to the WIT package with
-`wkg wit build` if the metadata is present in the `wkg.toml` file). The
+`wkg build` if the metadata is present in the `wkg.toml` file). The
 metadata is mapped to the following OCI annotations:
 
 | `wkg.toml` metadata field | OCI annotation                         |
