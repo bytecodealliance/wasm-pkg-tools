@@ -61,7 +61,42 @@ Open the full config file in `$EDITOR`:
 wkg config --edit
 ```
 
-See [Configuration](docs/configuration.md) for the file format and every available option.
+Download a package:
+
+```sh
+wkg get wasi:http@0.2.1
+```
+
+Publish a package to the configured registry:
+
+```sh
+wkg publish path/to/component.wasm
+```
+
+Fetch WIT dependencies for the current project (uses `wkg.toml` / `wkg.lock`):
+
+```sh
+wkg fetch
+```
+
+Update pinned versions in `wkg.lock`:
+
+```sh
+wkg update
+```
+
+Build a WIT package into a component:
+
+```sh
+wkg build
+```
+
+Point at a non-default config or cache directory (the `--config` / `--cache` flags attach to each
+subcommand, not to `wkg` itself):
+
+```sh
+wkg get --config .wkg/config.toml --cache ./wkg-cache wasi:cli@0.2.0
+```
 
 ## Contributing
 
