@@ -16,12 +16,12 @@ and publish component "libraries" to/from a registry.
 
 - [Install](#install)
 - [Quick start](#quick-start)
-- [Configuration](docs/configuration.md)
+- [Configuration (`config.toml`)](docs/configuration.md)
   - [Default fallback registries](docs/configuration.md#default-fallback-registries)
 - [Registry metadata (`/.well-known`)](docs/registry-metadata.md)
   - [Conventions for storing components in OCI](docs/registry-metadata.md#conventions-for-storing-components-in-oci)
-- [`wkg.toml` and `wkg.lock`](docs/wkg-manifest.md)
-  - [OCI annotation mapping](docs/wkg-manifest.md#oci-annotation-mapping)
+- [Manifest (`wkg.toml`)](docs/manifest.md)
+  - [OCI annotation mapping](docs/manifest.md#oci-annotation-mapping)
 - [Contributing](#contributing)
 - [License](#license)
 
