@@ -25,8 +25,6 @@ find a `registry.json` file at
 }
 ```
 
-
-
 <details>
   <summary>Deprecated variant</summary>
 For backwards compatibility with previous tooling and versions of the `wkg`
@@ -40,6 +38,7 @@ registries, the JSON looks like this:
   "ociNamespacePrefix": "webassembly/"
 }
 ```
+
 </details>
 
 ---
@@ -68,7 +67,6 @@ Prefix joined to the package's namespace when composing the OCI reference. For
 the example above (which is for `wasi.dev`), components are available at
 `ghcr.io/webassembly/$NAMESPACE/$PACKAGE:$VERSION` e.g. `ghcr.io/webassembly/wasi/http:0.2.1`).
 
-
 ## Conventions for storing components in OCI
 
 Astute observers will note that OCI requires a specific structure for how those
@@ -81,5 +79,5 @@ name to form the full URL. So if you have a custom company namespace called
 `acme/foo`. If we use the `registry.json` file from the example above, then the
 component will be stored at `ghcr.io/webassembly/acme/foo:0.1.0`.
 
-The tag _MUST_ be a valid semantic version or the tooling will ignore it when
+The tag *MUST* be a valid semantic version or the tooling will ignore it when
 pulling.

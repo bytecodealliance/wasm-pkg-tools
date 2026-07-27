@@ -5,7 +5,7 @@ Part of [wasm-pkg-tools docs](../README.md#documentation).
 ## `wkg.toml`
 
 The `wkg.toml` manifest file is used to configure various parts of the tooling
-and _is entirely optional_. Projects are not required to use this file.
+and *is entirely optional*. Projects are not required to use this file.
 Currently it serves two purposes: adding additional metadata and overriding
 versions/dependencies.
 
@@ -99,7 +99,6 @@ metadata is mapped to the following OCI annotations:
 Additionally, the `org.opencontainers.image.version` annotation is set to the
 version of the package being published.
 
-
 ## Lockfile (`wkg.lock`)
 
 Whenever `wkg` is used to fetch dependencies or build a wit package, it will
@@ -147,4 +146,3 @@ requirement = "=0.2.0"
 version = "0.2.0"
 digest = "sha256:5d535edc544d06719cf337861b7917c3d565360295e5dc424046dceddb0a0e42"
 ```
-
