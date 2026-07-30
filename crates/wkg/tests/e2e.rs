@@ -251,6 +251,25 @@ async fn fetch_workspace_packages() {
 }
 
 #[tokio::test]
+async fn fetch_from_member_manifest_uses_member_context() {
+    let fixture = common::load_fixture("fetch-workspace-member").await;
+    let member = fixture.fixture_path.join("member/wit");
+    let mut command = fixture.command();
+    command.current_dir(&member).args(["fetch", "."]);
+
+    let status = command.status().await.expect("spawn wkg fetch");
+    assert!(status.success(), "member fetch should succeed");
+    assert!(
+        member.join("wkg.lock").exists(),
+        "member fetch should create a member lock file"
+    );
+    assert!(
+        !fixture.fixture_path.join("wkg.lock").exists(),
+        "member fetch should not create a workspace lock file"
+    );
+}
+
+#[tokio::test]
 pub async fn check() {
     // Use an explicit config that maps `wasi` to `wasi.dev`.
     let mut config = wasm_pkg_client::Config::empty();
