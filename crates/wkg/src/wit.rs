@@ -11,7 +11,9 @@ use wasm_pkg_common::package::{PackageRef, Version};
 use wasm_pkg_core::wit::WIT_DEPS_DIR;
 use wasm_pkg_core::{
     lock::{LOCK_FILE_NAME, LockFile, LockedPackage},
-    manifest::{MANIFEST_FILE_NAME, Manifest, workspace::WorkspaceRootConfig},
+    manifest::{
+        MANIFEST_FILE_NAME, Manifest, find_root_manifest_for_wd, workspace::WorkspaceRootConfig,
+    },
     resolver::DependencyResolutionMap,
     wit::{self, OutputType},
 };
@@ -156,9 +158,13 @@ impl FetchArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         let cwd = std::env::current_dir()?;
         let mut root = Manifest::load_root_workspace(&cwd).await?;
-        if root.as_ref().is_some_and(|root| root.root_dir() != cwd)
-            && tokio::fs::try_exists(cwd.join(MANIFEST_FILE_NAME)).await?
-        {
+        let manifest_path = find_root_manifest_for_wd(&cwd);
+        if root.as_ref().is_some_and(|root| {
+            manifest_path
+                .as_deref()
+                .and_then(Path::parent)
+                .is_some_and(|manifest_dir| manifest_dir != root.root_dir())
+        }) {
             root = None;
         }
 
@@ -174,7 +180,10 @@ impl FetchArgs {
                 let manifest_path = root.root_dir().join(MANIFEST_FILE_NAME);
                 Manifest::load_from_path(manifest_path).await?
             }
-            None => Manifest::load().await?,
+            None => match manifest_path.as_ref() {
+                Some(path) => Manifest::load_from_path(path).await?,
+                None => Manifest::default(),
+            },
         };
         let output = self.output_type.unwrap_or_default();
 
@@ -187,7 +196,14 @@ impl FetchArgs {
                 self.run_workspace_fetch(&dirs, output, &manifest, root)
                     .await
             }
-            None => self.fetch_into_lock(&dirs, &manifest, output).await,
+            None => {
+                let lock_dir = manifest_path
+                    .as_deref()
+                    .and_then(Path::parent)
+                    .unwrap_or(&cwd);
+                self.fetch_into_lock(&dirs, &manifest, output, lock_dir.join(LOCK_FILE_NAME))
+                    .await
+            }
         }
     }
 
@@ -261,9 +277,10 @@ impl FetchArgs {
         dirs: &[PathBuf],
         manifest: &Manifest,
         output: OutputType,
+        lock_path: PathBuf,
     ) -> anyhow::Result<()> {
         let client = self.common.get_client().await?;
-        let mut lock_file = LockFile::load(false).await?;
+        let mut lock_file = load_or_create_lock(&lock_path).await?;
 
         let mut union: BTreeSet<LockedPackage> = BTreeSet::new();
         merge_locked_packages(&mut union, std::mem::take(&mut lock_file.packages));

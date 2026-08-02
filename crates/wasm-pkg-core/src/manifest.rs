@@ -13,7 +13,9 @@ pub mod workspace;
 
 use workspace::*;
 
-use crate::manifest::paths::{find_root_iter, find_root_manifest_for_wd};
+use crate::manifest::paths::find_root_iter;
+
+pub use crate::manifest::paths::find_root_manifest_for_wd;
 
 /// The default name of the manifest file.
 pub const MANIFEST_FILE_NAME: &str = "wkg.toml";

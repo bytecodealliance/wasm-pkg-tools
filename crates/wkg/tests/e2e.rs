@@ -251,11 +251,12 @@ async fn fetch_workspace_packages() {
 }
 
 #[tokio::test]
-async fn fetch_from_member_manifest_uses_member_context() {
+async fn fetch_from_member_subdirectory_uses_member_context() {
     let fixture = common::load_fixture("fetch-workspace-member").await;
     let member = fixture.fixture_path.join("member/wit");
+    let subdir = member.join("subdir");
     let mut command = fixture.command();
-    command.current_dir(&member).args(["fetch", "."]);
+    command.current_dir(&subdir).args(["fetch", "."]);
 
     let status = command.status().await.expect("spawn wkg fetch");
     assert!(status.success(), "member fetch should succeed");
