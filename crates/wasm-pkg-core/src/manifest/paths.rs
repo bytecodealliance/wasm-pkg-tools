@@ -4,7 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use crate::manifest::MANIFEST_FILE_NAME;
 
 /// Find the first ancestor [`super::Manifest`] path for current working directory.
-pub(crate) fn find_root_manifest_for_wd(cwd: impl AsRef<Path>) -> Option<PathBuf> {
+pub fn find_root_manifest_for_wd(cwd: impl AsRef<Path>) -> Option<PathBuf> {
     for current in cwd.as_ref().ancestors() {
         let manifest = current.join(MANIFEST_FILE_NAME);
         if manifest.exists() {
