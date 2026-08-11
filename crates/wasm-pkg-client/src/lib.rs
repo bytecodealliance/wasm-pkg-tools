@@ -176,7 +176,7 @@ impl Client {
 
         // construct verifiable publishing source
         let (data, candidate) =
-            DecodedComponent::from_publishing_source_with_package(data, pkg_authority).await?;
+            DecodedComponent::from_publishing_source(data, pkg_authority).await?;
 
         let (package, version) = (
             candidate.package().to_owned(),
