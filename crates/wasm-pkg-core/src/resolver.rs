@@ -104,6 +104,67 @@ impl FromStr for RegistryPackage {
     }
 }
 
+/// The key identifying a dependency in the resolver.
+///
+/// A single world can name more than one version of the same package — a component exporting both
+/// `ns:pkg/interface@0.2.0` and `@0.3.0`, for example — so a [`PackageRef`] on its own
+/// does not uniquely identify a dependency.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct DependencyKey {
+    /// The package the dependency refers to.
+    pub package: PackageRef,
+    /// The version this dependency was requested at.
+    ///
+    /// `None` means "every version". This only happens for a bare override key (no `@version`),
+    /// which applies to every version the WIT names.
+    pub version: Option<VersionReq>,
+}
+
+impl DependencyKey {
+    pub fn new(package: PackageRef, version: VersionReq) -> Self {
+        Self {
+            package,
+            version: Some(version),
+        }
+    }
+
+    /// Creates a key that applies to every version of the given package.
+    pub fn any_version(package: PackageRef) -> Self {
+        Self {
+            package,
+            version: None,
+        }
+    }
+
+    /// Returns whether this key applies to every version of its package.
+    pub fn is_any_version(&self) -> bool {
+        self.version.is_none()
+    }
+
+    /// Returns whether resolving this key also satisfies `other`, making `other` redundant.
+    ///
+    /// `foo:bar` has no version, so it satisfies every key for `foo:bar`. `foo:bar@0.1.0`
+    /// satisfies only itself.
+    pub fn supersedes(&self, other: &DependencyKey) -> bool {
+        self.package == other.package && (self.is_any_version() || self.version == other.version)
+    }
+}
+
+impl From<PackageRef> for DependencyKey {
+    fn from(package: PackageRef) -> Self {
+        Self::any_version(package)
+    }
+}
+
+impl std::fmt::Display for DependencyKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.version {
+            Some(version) => write!(f, "{}@{version}", self.package),
+            None => write!(f, "{}", self.package),
+        }
+    }
+}
+
 /// Represents information about a resolution of a registry package.
 #[derive(Clone)]
 pub struct RegistryResolution {
@@ -348,7 +409,8 @@ pub struct DependencyResolver<'a> {
     client: CachingClient<FileCache>,
     lock_file: Option<&'a LockFile>,
     packages: HashMap<PackageRef, Vec<VersionInfo>>,
-    dependencies: HashMap<PackageRef, RegistryDependency>,
+    dependencies: HashMap<DependencyKey, RegistryDependency>,
+    any_version_overrides: HashSet<PackageRef>,
     resolutions: DependencyResolutionMap,
 }
 
@@ -371,6 +433,7 @@ impl<'a> DependencyResolver<'a> {
             resolutions: Default::default(),
             packages: Default::default(),
             dependencies: Default::default(),
+            any_version_overrides: Default::default(),
         })
     }
 
@@ -390,6 +453,7 @@ impl<'a> DependencyResolver<'a> {
             resolutions: Default::default(),
             packages: Default::default(),
             dependencies: Default::default(),
+            any_version_overrides: Default::default(),
         })
     }
 
@@ -397,28 +461,58 @@ impl<'a> DependencyResolver<'a> {
     /// To override an existing dependency, use [`override_dependency`](Self::override_dependency).
     pub async fn add_dependency(
         &mut self,
-        name: &PackageRef,
+        key: &DependencyKey,
         dependency: &Dependency,
     ) -> Result<()> {
-        self.add_dependency_internal(name, dependency, false).await
+        self.add_dependency_internal(key, dependency, false).await
     }
 
     /// Add a dependency to the resolver. If the dependency already exists, then it will be
     /// overridden.
     pub async fn override_dependency(
         &mut self,
-        name: &PackageRef,
+        key: &DependencyKey,
         dependency: &Dependency,
     ) -> Result<()> {
-        self.add_dependency_internal(name, dependency, true).await
+        self.add_dependency_internal(key, dependency, true).await
+    }
+
+    /// Returns whether this key has already been handled: it was added before, or a bare
+    /// override for the whole package already covers it.
+    fn is_already_superseded(&self, key: &DependencyKey) -> bool {
+        // A bare override covers every version of a package, even ones we haven't added a
+        // dependency for yet, so we keep track of it separately from the maps below.
+        if !key.is_any_version() && self.any_version_overrides.contains(&key.package) {
+            return true;
+        }
+        self.resolutions.contains_key(key) || self.dependencies.contains_key(key)
+    }
+
+    /// Removes any registry dependency that this key replaces. Returns true if something was
+    /// removed.
+    fn take_superseded_dependencies(&mut self, key: &DependencyKey) -> bool {
+        let before = self.dependencies.len();
+        self.dependencies.retain(|k, _| !key.supersedes(k));
+        self.dependencies.len() != before
+    }
+
+    /// Returns whether a resolution that this key replaces has already been recorded.
+    fn has_superseded_resolution(&self, key: &DependencyKey) -> bool {
+        self.resolutions.keys().any(|k| key.supersedes(k))
     }
 
     async fn add_dependency_internal(
         &mut self,
-        name: &PackageRef,
+        key: &DependencyKey,
         dependency: &Dependency,
         force_override: bool,
     ) -> Result<()> {
+        let name = &key.package;
+        // Record this first: a versioned request for the same package later in this resolution
+        // will see it and be skipped.
+        if key.is_any_version() {
+            self.any_version_overrides.insert(name.clone());
+        }
         match dependency {
             Dependency::Package(package) => {
                 // Dependency comes from a registry, add a dependency to the resolver
@@ -445,14 +539,12 @@ impl<'a> DependencyResolver<'a> {
 
                 // So if it wasn't already fetched first? then we'll try and resolve it later, and the override
                 // is not present there for some reason
-                if !force_override
-                    && (self.resolutions.contains_key(name) || self.dependencies.contains_key(name))
-                {
-                    tracing::debug!(%name, %dependency, "dependency already exists and override is not set, ignoring");
+                if !force_override && self.is_already_superseded(key) {
+                    tracing::debug!(%key, %dependency, "dependency already exists and override is not set, ignoring");
                     return Ok(());
                 }
                 self.dependencies.insert(
-                    name.to_owned(),
+                    key.to_owned(),
                     RegistryDependency {
                         package: package_name,
                         version: package.version.clone(),
@@ -471,18 +563,13 @@ impl<'a> DependencyResolver<'a> {
                 // deps as registry deps. So if we're handling a local path and the dependencies
                 // have a registry package already, override it. Otherwise follow normal overrides.
                 // We should definitely fix this and change where we resolve these things
-                let should_insert = force_override
-                    || self.dependencies.contains_key(name)
-                    || !self.resolutions.contains_key(name);
+                let superseded = self.take_superseded_dependencies(key);
+                let should_insert =
+                    force_override || superseded || !self.has_superseded_resolution(key);
                 if !should_insert {
-                    tracing::debug!(%name, "dependency already exists and registry override is not set, ignoring");
+                    tracing::debug!(%key, "dependency already exists and registry override is not set, ignoring");
                     return Ok(());
                 }
-
-                // Because we got here, we should remove anything from dependencies that is the same
-                // package because we're overriding with the local package. Technically we could be
-                // clever and just do this in the boolean above, but I'm paranoid
-                self.dependencies.remove(name);
 
                 // Now that we check we haven't already inserted this dep, get the packages from the
                 // local dependency and add those to the resolver before adding the dependency
@@ -492,7 +579,7 @@ impl<'a> DependencyResolver<'a> {
                     .await
                     .context("Error adding packages to resolver for local dependency")?;
 
-                let prev = self.resolutions.insert(name.clone(), res);
+                let prev = self.resolutions.insert(key.clone(), res);
                 assert!(prev.is_none());
             }
         }
@@ -508,9 +595,9 @@ impl<'a> DependencyResolver<'a> {
     ) -> Result<()> {
         for (package, req) in packages {
             self.add_dependency(
-                &package,
+                &DependencyKey::new(package.clone(), req.clone()),
                 &Dependency::Package(RegistryPackage {
-                    name: Some(package.clone()),
+                    name: Some(package),
                     version: req,
                     registry: None,
                 }),
@@ -527,7 +614,8 @@ impl<'a> DependencyResolver<'a> {
     /// Returns the dependency resolution map.
     pub async fn resolve(mut self) -> Result<DependencyResolutionMap> {
         let mut resolutions = self.resolutions;
-        for (name, dependency) in self.dependencies.into_iter() {
+        for (key, dependency) in self.dependencies.into_iter() {
+            let name = &key.package;
             // We need to clone a handle to the client because we mutably borrow self below. Might
             // be worth replacing the mutable borrow with a RwLock down the line.
             let client = self.client.clone();
@@ -604,7 +692,7 @@ impl<'a> DependencyResolver<'a> {
                 registry: self.client.client().ok().and_then(|client| {
                     client
                         .config()
-                        .resolve_registry(&name)
+                        .resolve_registry(name)
                         .map(ToString::to_string)
                 }),
                 requirement: dependency.version.clone(),
@@ -612,7 +700,7 @@ impl<'a> DependencyResolver<'a> {
                 digest: release.content_digest.clone(),
                 client: self.client.clone(),
             };
-            resolutions.insert(name, DependencyResolution::Registry(resolution));
+            resolutions.insert(key, DependencyResolution::Registry(resolution));
         }
 
         Ok(resolutions)
@@ -660,18 +748,19 @@ fn find_latest_release<'a>(
 
 /// Represents a map of dependency resolutions.
 ///
-/// The key to the map is the package name of the dependency.
+/// Each key is a dependency's package plus the version it was requested at. This lets a world
+/// naming several versions of the same package resolve all of them, not just one.
 #[derive(Debug, Clone, Default)]
-pub struct DependencyResolutionMap(HashMap<PackageRef, DependencyResolution>);
+pub struct DependencyResolutionMap(HashMap<DependencyKey, DependencyResolution>);
 
-impl AsRef<HashMap<PackageRef, DependencyResolution>> for DependencyResolutionMap {
-    fn as_ref(&self) -> &HashMap<PackageRef, DependencyResolution> {
+impl AsRef<HashMap<DependencyKey, DependencyResolution>> for DependencyResolutionMap {
+    fn as_ref(&self) -> &HashMap<DependencyKey, DependencyResolution> {
         &self.0
     }
 }
 
 impl Deref for DependencyResolutionMap {
-    type Target = HashMap<PackageRef, DependencyResolution>;
+    type Target = HashMap<DependencyKey, DependencyResolution>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

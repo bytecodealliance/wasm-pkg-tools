@@ -54,6 +54,25 @@ developing two components together.
 "my:local-dep" = { path = "../local-dep/wit" }
 ```
 
+A bare package name applies to every version of that package the WIT names. To
+scope an override to one version, suffix the key with that exact version. This
+is what lets a world name more than one version of the same package, since each
+version can then point somewhere different:
+
+```toml
+[overrides]
+"my:local-dep@0.1.0" = { path = "../local-dep-0.1.0/wit" }
+"my:local-dep@0.2.0" = { path = "../local-dep-0.2.0/wit" }
+```
+
+A package cannot have both a bare and a versioned key, since the bare key
+already covers every version; such a manifest is rejected rather than resolved
+in an unspecified order.
+
+Note that the `version` field is a *registry* version requirement and is
+ignored when `path` is set — use a versioned key to select which version an
+override applies to.
+
 ### `workspace.members`
 
 - Type: list of strings (paths; gitignore-style globs allowed)
