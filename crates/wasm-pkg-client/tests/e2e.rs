@@ -1,6 +1,10 @@
+#[cfg(feature = "docker-tests")]
 use futures_util::TryStreamExt;
-use wasm_pkg_client::{Client, Config, PublishOpts};
+#[cfg(feature = "docker-tests")]
+use wasm_pkg_client::PublishOpts;
+use wasm_pkg_client::{Client, Config};
 
+#[cfg(feature = "docker-tests")]
 const FIXTURE_WASM: &str = "./tests/testdata/binary_wit.wasm";
 
 #[cfg(feature = "docker-tests")]
@@ -203,6 +207,7 @@ async fn fetch_with_custom_config() {
     );
 }
 
+#[cfg(feature = "docker-tests")]
 fn generate_self_signed_tls_fixture() -> (String, String) {
     let subject_alt_names = vec!["localhost".to_string(), "127.0.0.1".to_string()];
     let rcgen::CertifiedKey { cert, signing_key } =

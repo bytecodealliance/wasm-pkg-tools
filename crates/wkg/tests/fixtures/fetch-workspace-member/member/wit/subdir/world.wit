@@ -1,0 +1,3 @@
+package test:subdir;
+
+world subdir {}
