@@ -1,3 +1,7 @@
+// NOTE: test "lib" code needs to be under ./tests/common/mod.rs otherwise there will
+// be false clippy positives since ./tests/common.rs will be treated as a runnable test target
+#![cfg_attr(not(feature = "docker-tests"), allow(dead_code))]
+
 use std::{
     collections::HashMap,
     net::{Ipv4Addr, SocketAddrV4},
@@ -154,7 +158,7 @@ pub(crate) async fn load_fixture(fixture: &str) -> Fixture {
     load_fixture_from(fixture_dir().join(fixture)).await
 }
 
-pub(crate) async fn load_fixture_from(src: impl AsRef<Path>) -> Fixture {
+async fn load_fixture_from(src: impl AsRef<Path>) -> Fixture {
     let src = src.as_ref();
     let temp_dir = tempfile::tempdir().expect("Failed to create tempdir");
     // This will error if it doesn't exist, which is what we want

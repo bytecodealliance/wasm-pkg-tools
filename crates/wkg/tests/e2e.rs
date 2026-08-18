@@ -1,3 +1,4 @@
+#[cfg(feature = "docker-tests")]
 use wasm_pkg_client::{Version, VersionInfo};
 
 #[cfg(feature = "docker-tests")]

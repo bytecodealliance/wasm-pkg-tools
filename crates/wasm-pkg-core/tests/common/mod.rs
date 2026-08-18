@@ -1,3 +1,5 @@
+// NOTE: test "lib" code needs to be under ./tests/common/mod.rs otherwise there will
+// be false clippy positives since ./tests/common.rs will be treated as a runnable test target
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
