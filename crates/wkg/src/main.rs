@@ -1,3 +1,5 @@
+//! The `wkg` CLI: fetches and publishes WIT and Wasm Components
+
 use std::{
     io::{Cursor, Seek},
     path::PathBuf,
@@ -238,7 +240,7 @@ impl ConfigArgs {
 pub struct GetArgs {
     /// Output path. If this ends with a '/', a filename based on the package
     /// name, version, and format will be appended, e.g.
-    /// `name-space_name@1.0.0.wasm``.
+    /// `name-space_name@1.0.0.wasm`.
     #[arg(long, short, default_value = "./")]
     output: PathBuf,
 
@@ -259,7 +261,7 @@ pub struct GetArgs {
     overwrite: bool,
 
     /// The package to get, specified as `<namespace>:<name>` plus optional
-    /// `@<version>`, e.g. `wasi:cli" or `wasi:http@0.2.0`.
+    /// `@<version>`, e.g. `wasi:cli` or `wasi:http@0.2.0`.
     package_spec: PackageSpec,
 
     #[command(flatten)]
