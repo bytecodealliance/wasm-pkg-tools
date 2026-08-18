@@ -125,7 +125,7 @@ async fn oci_push_sets_layer_title() {
     let image_ref = format!("{registry}/wasi/http:0.2.0");
     let status = fixture
         .command()
-        .args(["oci", "push", "--insecure", &registry.to_string()])
+        .args(["oci", "push", "--insecure", registry.as_ref()])
         .arg(&image_ref)
         .arg(&wasm_file)
         .status()

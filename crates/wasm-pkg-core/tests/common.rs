@@ -7,13 +7,13 @@ use wasm_pkg_client::{
 };
 use wasm_pkg_core::wit::WIT_DEPS_DIR;
 
-pub fn fixture_dir() -> PathBuf {
+pub(crate) fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("fixtures")
 }
 
-pub async fn get_client() -> anyhow::Result<(TempDir, CachingClient<FileCache>)> {
+pub(crate) async fn get_client() -> anyhow::Result<(TempDir, CachingClient<FileCache>)> {
     // NOTE: `Client::with_global_defaults()` may pick up a user's redirect of `wasi` to a private registry
     let client = Client::new(Config::default());
     let cache_temp_dir = tempfile::tempdir()?;
@@ -23,7 +23,7 @@ pub async fn get_client() -> anyhow::Result<(TempDir, CachingClient<FileCache>)>
 }
 
 /// Loads the fixture with the given name into a temporary directory. This will copy the fixture from the tests/fixtures directory into a temporary directory and return the tempdir containing that directory (and its path)
-pub async fn load_fixture(fixture: &str) -> anyhow::Result<(TempDir, PathBuf)> {
+pub(crate) async fn load_fixture(fixture: &str) -> anyhow::Result<(TempDir, PathBuf)> {
     let temp_dir = tempfile::tempdir()?;
     let fixture_path = fixture_dir().join(fixture);
     // This will error if it doesn't exist, which is what we want
