@@ -27,7 +27,7 @@
 //! ```
 
 pub mod caching;
-mod decoded_component;
+pub mod decoded_component;
 mod loader;
 pub mod local;
 pub mod metadata;

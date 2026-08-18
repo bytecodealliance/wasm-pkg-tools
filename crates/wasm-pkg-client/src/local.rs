@@ -64,7 +64,7 @@ fn registry_path_context(err: io::Error, path: &Path) -> Error {
 }
 
 impl LocalBackend {
-    pub fn new(registry_config: RegistryConfig) -> Result<Self, Error> {
+    pub(crate) fn new(registry_config: RegistryConfig) -> Result<Self, Error> {
         let config = registry_config
             .backend_config::<LocalConfig>(LOCAL_PROTOCOL)?
             .ok_or_else(|| {

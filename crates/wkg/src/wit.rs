@@ -167,7 +167,7 @@ impl FetchArgs {
         let manifest = match root.as_ref() {
             Some(root) => {
                 let manifest_path = root.root_dir().join(MANIFEST_FILE_NAME);
-                Manifest::load_from_path(manifest_path).await?
+                Manifest::load_from_path(manifest_path)?
             }
             None => Manifest::load().await?,
         };

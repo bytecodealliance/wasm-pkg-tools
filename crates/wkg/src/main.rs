@@ -25,9 +25,9 @@ use wasm_pkg_core::{
 };
 use wit_component::DecodedWasm;
 
-mod oci;
+pub mod oci;
 mod overlay;
-mod wit;
+pub mod wit;
 
 use oci::OciCommands;
 use wit::{BuildArgs, FetchArgs, UpdateArgs, WitCommands};
@@ -64,7 +64,7 @@ macro_rules! helpln {
 
 #[derive(Parser, Debug)]
 #[command(version)]
-struct Cli {
+pub struct Cli {
     #[command(flatten)]
     color: colorchoice_clap::Color,
 
@@ -73,14 +73,14 @@ struct Cli {
 }
 
 #[derive(Args, Debug)]
-struct RegistryArgs {
+pub struct RegistryArgs {
     /// The registry domain to use. Overrides configuration file(s).
     #[arg(long = "registry", value_name = "REGISTRY", env = "WKG_REGISTRY")]
     registry: Option<Registry>,
 }
 
 #[derive(Args, Debug, Default)]
-struct Common {
+pub struct Common {
     /// The path to the configuration file.
     #[arg(long = "config", value_name = "CONFIG", env = "WKG_CONFIG_FILE")]
     config: Option<PathBuf>,
@@ -128,7 +128,7 @@ impl Common {
 
 #[derive(Subcommand, Debug)]
 #[allow(clippy::large_enum_variant)]
-enum Commands {
+pub enum Commands {
     /// Set registry configuration
     Config(ConfigArgs),
     /// Download a package from a registry
@@ -147,7 +147,7 @@ enum Commands {
 }
 
 #[derive(Args, Debug)]
-struct ConfigArgs {
+pub struct ConfigArgs {
     /// The default registry domain to use. Overrides configuration file(s).
     #[arg(long = "default-registry", value_name = "DEFAULT_REGISTRY")]
     default_registry: Option<Registry>,
@@ -235,7 +235,7 @@ impl ConfigArgs {
 }
 
 #[derive(Args, Debug)]
-struct GetArgs {
+pub struct GetArgs {
     /// Output path. If this ends with a '/', a filename based on the package
     /// name, version, and format will be appended, e.g.
     /// `name-space_name@1.0.0.wasm``.
@@ -270,7 +270,7 @@ struct GetArgs {
 }
 
 #[derive(Args, Debug)]
-struct PublishArgs {
+pub struct PublishArgs {
     /// The files and directories to publish.
     /// If a directory is provided, the package is built to a tempfile before publishing.
     paths: Vec<PathBuf>,
