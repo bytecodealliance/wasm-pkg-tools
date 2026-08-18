@@ -73,7 +73,6 @@ async fn build_and_publish_with_metadata() {
         .expect("OciManifest should have annotations");
 
     let manifest = Manifest::load_from_path(fixture.fixture_path.join(MANIFEST_FILE_NAME))
-        .await
         .expect("Should be able to load wkg manifest");
     let meta = manifest.metadata.expect("Should have metadata");
 

@@ -155,7 +155,7 @@ pub async fn temp_wit_file(package: &PackageRef, bytes: &[u8]) -> anyhow::Result
 impl FetchArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         let cwd = std::env::current_dir()?;
-        let root = Manifest::load_root_workspace(&cwd).await?;
+        let root = Manifest::load_root_workspace(&cwd)?;
 
         let dirs = if let Some(dir) = self.dir.clone() {
             vec![dir]

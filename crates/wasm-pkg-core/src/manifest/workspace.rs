@@ -268,14 +268,10 @@ members = ["pkg-a"]
         fs::create_dir_all(root_dir.join("pkg-a/wit")).unwrap();
 
         let expected = root_dir.canonicalize().unwrap();
-        let from_root = Manifest::load_root_workspace(root_dir)
-            .await
-            .unwrap()
-            .unwrap();
+        let from_root = Manifest::load_root_workspace(root_dir).unwrap().unwrap();
         assert_eq!(from_root.root_dir.canonicalize().unwrap(), expected);
 
         let from_member = Manifest::load_root_workspace(&root_dir.join("pkg-a/wit"))
-            .await
             .unwrap()
             .unwrap();
         assert_eq!(from_member.root_dir.canonicalize().unwrap(), expected);
@@ -293,11 +289,6 @@ members = ["pkg-a"]
 authors = "Webster Assembler"
 "#,
         );
-        assert!(
-            Manifest::load_root_workspace(root_dir)
-                .await
-                .unwrap()
-                .is_none()
-        );
+        assert!(Manifest::load_root_workspace(root_dir).unwrap().is_none());
     }
 }

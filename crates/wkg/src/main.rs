@@ -308,7 +308,7 @@ pub struct PublishArgs {
 impl PublishArgs {
     pub async fn run(mut self) -> anyhow::Result<()> {
         let publish_opts = self.publish_opts()?;
-        let _root = self.workspace_root().await?;
+        let _root = self.workspace_root()?;
         let path = match &self.paths[..] {
             [] => {
                 anyhow::bail!(
@@ -446,7 +446,7 @@ impl PublishArgs {
         Ok(())
     }
 
-    async fn workspace_root(&mut self) -> anyhow::Result<Option<WorkspaceRootConfig>> {
+    fn workspace_root(&mut self) -> anyhow::Result<Option<WorkspaceRootConfig>> {
         match self.workspace {
             true if !self.paths.is_empty() => anyhow::bail!(
                 "`--workspace` selects every workspace member; do not also pass explicit \
@@ -457,7 +457,7 @@ impl PublishArgs {
             false => return Ok(None),
         }
         let cwd = std::env::current_dir()?;
-        let Some(root) = Manifest::load_root_workspace(&cwd).await? else {
+        let Some(root) = Manifest::load_root_workspace(&cwd)? else {
             bail!(
                 "`--workspace` called but unable to find workspace root from {}",
                 cwd.display(),
