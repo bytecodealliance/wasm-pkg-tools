@@ -60,6 +60,36 @@ wasm-metadata = "0.254"
 wit-component = "0.254"
 wit-parser = "0.254"
 
+[workspace.lints.rustdoc]
+# Detects URLs that are not hyperlinks
+bare_urls = "warn"
+# Failures in resolving intra-doc link targets
+broken_intra_doc_links = "warn"
+# Codeblock attribute looks a lot like a known one
+invalid_codeblock_attributes = "warn"
+# Detects invalid HTML tags in doc comments
+invalid_html_tags = "warn"
+# Codeblock could not be parsed as valid Rust or is empty
+invalid_rust_codeblocks = "warn"
+# Detects crates with no crate-level documentation
+missing_crate_level_docs = "warn"
+# Linking from a public item to a private one
+private_intra_doc_links = "warn"
+# Detects redundant explicit links in doc comments
+redundant_explicit_links = "warn"
+# Detects unescaped backticks in doc comments
+unescaped_backticks = "warn"
+
+[workspace.lints.rust]
+# `pub` items not reachable from crate root
+unreachable_pub = "warn"
+# Non-standard naming conventions (includes non-camel-case types, non-snake-case, non-upper-case globals)
+bad_style = "warn"
+
+[workspace.lints.clippy]
+unnested_or_patterns = "warn"
+unused_async = "warn"
+
 # https://github.com/crate-ci/typos/blob/master/docs/reference.md
 [workspace.metadata.typos.default]
 extend-ignore-re = ["\\d\\w{4,}\\d"]
