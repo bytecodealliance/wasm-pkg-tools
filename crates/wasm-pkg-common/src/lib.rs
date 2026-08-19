@@ -1,3 +1,6 @@
+//! Types shared across the `wasm-pkg-*` crates,
+//! references, content digests, registry metadata, and the common [`Error`] type.
+
 use http::uri::InvalidUri;
 use label::Label;
 

@@ -157,7 +157,7 @@ pub async fn temp_wit_file(package: &PackageRef, bytes: &[u8]) -> anyhow::Result
 impl FetchArgs {
     pub async fn run(self) -> anyhow::Result<()> {
         let cwd = std::env::current_dir()?;
-        let mut root = Manifest::load_root_workspace(&cwd).await?;
+        let mut root = Manifest::load_root_workspace(&cwd)?;
         let manifest_path = find_root_manifest_for_wd(&cwd);
         if root.as_ref().is_some_and(|root| {
             manifest_path
@@ -178,10 +178,10 @@ impl FetchArgs {
         let manifest = match root.as_ref() {
             Some(root) => {
                 let manifest_path = root.root_dir().join(MANIFEST_FILE_NAME);
-                Manifest::load_from_path(manifest_path).await?
+                Manifest::load_from_path(manifest_path)?
             }
             None => match manifest_path.as_ref() {
-                Some(path) => Manifest::load_from_path(path).await?,
+                Some(path) => Manifest::load_from_path(path)?,
                 None => Manifest::default(),
             },
         };

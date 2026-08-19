@@ -388,7 +388,7 @@ impl Locker {
     ///
     /// The returned file can be accessed to look at the path and also has
     /// read/write access to the underlying file.
-    pub async fn try_open_rw(path: impl Into<PathBuf>) -> Result<Option<Self>> {
+    pub(crate) async fn try_open_rw(path: impl Into<PathBuf>) -> Result<Option<Self>> {
         Self::open(
             path.into(),
             OpenOptions::new().read(true).write(true).create(true),
@@ -410,7 +410,7 @@ impl Locker {
     ///
     /// The returned file can be accessed to look at the path and also has
     /// read/write access to the underlying file.
-    pub async fn open_rw(path: impl Into<PathBuf>) -> Result<Self> {
+    pub(crate) async fn open_rw(path: impl Into<PathBuf>) -> Result<Self> {
         Ok(Self::open(
             path.into(),
             OpenOptions::new().read(true).write(true).create(true),
@@ -433,7 +433,7 @@ impl Locker {
     /// The returned file can be accessed to look at the path and also has read
     /// access to the underlying file. Any writes to the file will return an
     /// error.
-    pub async fn try_open_ro(path: impl Into<PathBuf>) -> Result<Option<Self>> {
+    pub(crate) async fn try_open_ro(path: impl Into<PathBuf>) -> Result<Option<Self>> {
         Self::open(
             path.into(),
             OpenOptions::new().read(true),
@@ -454,7 +454,7 @@ impl Locker {
     /// The returned file can be accessed to look at the path and also has read
     /// access to the underlying file. Any writes to the file will return an
     /// error.
-    pub async fn open_ro(path: impl Into<PathBuf>) -> Result<Self> {
+    pub(crate) async fn open_ro(path: impl Into<PathBuf>) -> Result<Self> {
         Ok(Self::open(
             path.into(),
             OpenOptions::new().read(true),

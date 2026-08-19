@@ -1,3 +1,4 @@
+#[cfg(feature = "docker-tests")]
 use wasm_pkg_client::{Version, VersionInfo};
 
 #[cfg(feature = "docker-tests")]
@@ -73,7 +74,6 @@ async fn build_and_publish_with_metadata() {
         .expect("OciManifest should have annotations");
 
     let manifest = Manifest::load_from_path(fixture.fixture_path.join(MANIFEST_FILE_NAME))
-        .await
         .expect("Should be able to load wkg manifest");
     let meta = manifest.metadata.expect("Should have metadata");
 
@@ -126,7 +126,7 @@ async fn oci_push_sets_layer_title() {
     let image_ref = format!("{registry}/wasi/http:0.2.0");
     let status = fixture
         .command()
-        .args(["oci", "push", "--insecure", &registry.to_string()])
+        .args(["oci", "push", "--insecure", registry.as_ref()])
         .arg(&image_ref)
         .arg(&wasm_file)
         .status()

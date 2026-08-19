@@ -46,7 +46,7 @@ pub(crate) struct OciBackend {
 }
 
 impl OciBackend {
-    pub fn new(
+    pub(crate) fn new(
         registry: &Registry,
         registry_config: &RegistryConfig,
         registry_meta: &RegistryMetadata,

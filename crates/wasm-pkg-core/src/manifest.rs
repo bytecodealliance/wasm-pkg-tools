@@ -49,7 +49,7 @@ impl Manifest {
     }
 
     /// Loads a manifest file from the given path.
-    pub async fn load_from_path(path: impl AsRef<Path>) -> Result<Manifest> {
+    pub fn load_from_path(path: impl AsRef<Path>) -> Result<Manifest> {
         let path = path.as_ref();
         tracing::info!(path = %path.display(), "loading wkg manifest file");
         let contents = std::fs::read_to_string(path)
@@ -114,20 +114,20 @@ impl Manifest {
         if !tokio::fs::try_exists(&manifest_path).await? {
             return Ok(Manifest::default());
         }
-        Self::load_from_path(manifest_path).await
+        Self::load_from_path(manifest_path)
     }
 
     /// Tries to find the root workspace config
     /// Returns `Ok(None)` when there is no `wkg.toml` ancestor that can be [`WorkspaceRootConfig`]
     // TODO(maktychev): reconcile load_from_path and load_root_workspace
-    pub async fn load_root_workspace(cwd: &Path) -> Result<Option<WorkspaceRootConfig>> {
+    pub fn load_root_workspace(cwd: &Path) -> Result<Option<WorkspaceRootConfig>> {
         let Some(manifest_file) = find_root_manifest_for_wd(cwd) else {
             return Ok(None);
         };
         let manifest_dir = manifest_file
             .parent()
             .context("unexpectedly missing directory containing manifest")?;
-        let manifest = Self::load_from_path(&manifest_file).await?;
+        let manifest = Self::load_from_path(&manifest_file)?;
 
         if let Some(root) = manifest.root() {
             return Ok(Some(root.clone()));
@@ -135,7 +135,7 @@ impl Manifest {
 
         // keep walking up if we have not found root
         for file in find_root_iter(&manifest_file) {
-            let manifest = Self::load_from_path(&file).await?;
+            let manifest = Self::load_from_path(&file)?;
             if let Some(WorkspaceConfig::Root(root)) = manifest.workspace
                 && root.is_explicitly_listed_member(manifest_dir)
             {
@@ -233,9 +233,8 @@ mod tests {
             .write(&manifest_path)
             .await
             .expect("unable to write manifest");
-        let loaded_manifest = Manifest::load_from_path(manifest_path)
-            .await
-            .expect("unable to load manifest");
+        let loaded_manifest =
+            Manifest::load_from_path(manifest_path).expect("unable to load manifest");
         assert_eq!(
             manifest, loaded_manifest,
             "manifest loaded from file does not match original manifest"

@@ -46,3 +46,6 @@ sha2 = { workspace = true }
 rstest = { workspace = true }
 glob = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "process"] }
+
+[lints]
+workspace = true

@@ -1,3 +1,7 @@
+// NOTE: test "lib" code needs to be under ./tests/common/mod.rs otherwise there will
+// be false clippy positives since ./tests/common.rs will be treated as a runnable test target
+#![cfg_attr(not(feature = "docker-tests"), allow(dead_code))]
+
 use std::{
     collections::HashMap,
     net::{Ipv4Addr, SocketAddrV4},
@@ -15,7 +19,7 @@ use wasm_pkg_client::{Config, CustomConfig, Registry, RegistryMetadata, oci::Oci
 use wasm_pkg_core::wit::WIT_DEPS_DIR;
 
 /// Returns an open port on localhost
-pub async fn find_open_port() -> u16 {
+pub(crate) async fn find_open_port() -> u16 {
     TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
         .await
         .expect("failed to bind random port")
@@ -27,7 +31,7 @@ pub async fn find_open_port() -> u16 {
 /// Starts a registry container on an open port, returning a [`Config`] with registry auth
 /// configured for it and the name of the registry. The container handle is also returned as it must
 /// be kept in scope
-pub async fn start_registry() -> (Config, Registry, ContainerAsync<GenericImage>) {
+pub(crate) async fn start_registry() -> (Config, Registry, ContainerAsync<GenericImage>) {
     let port = find_open_port().await;
     let container = GenericImage::new("registry", "2")
         .with_wait_for(WaitFor::message_on_stderr("listening on [::]:5000"))
@@ -61,11 +65,11 @@ pub async fn start_registry() -> (Config, Registry, ContainerAsync<GenericImage>
     (config, registry, container)
 }
 
-pub const TRANSITIVE_LOCAL_NAMESPACES: &[&str] =
+pub(crate) const TRANSITIVE_LOCAL_NAMESPACES: &[&str] =
     &["example-a", "example-b", "example-c", "example-d"];
 
 /// Maps every namespace in [`TRANSITIVE_LOCAL_NAMESPACES`] to `registry`.
-pub fn map_transitive_local_namespaces(config: &Config, registry: &Registry) -> Config {
+pub(crate) fn map_transitive_local_namespaces(config: &Config, registry: &Registry) -> Config {
     let mut mapped = config.clone();
     for ns in TRANSITIVE_LOCAL_NAMESPACES {
         mapped = map_namespace(&mapped, ns, registry);
@@ -74,7 +78,7 @@ pub fn map_transitive_local_namespaces(config: &Config, registry: &Registry) -> 
 }
 
 /// runs `wkg publish --workspace` for [`TRANSITIVE_LOCAL_NAMESPACES`] packages
-pub async fn publish_transitive_local(config: &Config) -> Fixture {
+pub(crate) async fn publish_transitive_local(config: &Config) -> Fixture {
     let fixture = load_fixture_from(transitive_local_fixture()).await;
     let status = fixture
         .command_with_config(config)
@@ -88,7 +92,7 @@ pub async fn publish_transitive_local(config: &Config) -> Fixture {
 }
 
 /// Clones the given config, mapping the namespace to the given registry at the top level
-pub fn map_namespace(config: &Config, namespace: &str, registry: &Registry) -> Config {
+pub(crate) fn map_namespace(config: &Config, namespace: &str, registry: &Registry) -> Config {
     let mut config = config.clone();
     let mut metadata = RegistryMetadata::default();
     metadata.preferred_protocol = Some("oci".to_string());
@@ -106,7 +110,7 @@ pub fn map_namespace(config: &Config, namespace: &str, registry: &Registry) -> C
 }
 
 /// A loaded fixture with helpers for running wkg tests
-pub struct Fixture {
+pub(crate) struct Fixture {
     pub temp_dir: tempfile::TempDir,
     pub fixture_path: PathBuf,
 }
@@ -114,7 +118,7 @@ pub struct Fixture {
 impl Fixture {
     /// Returns a base `wkg` command for running tests with the current directory set to the loaded
     /// fixture and with a separate wkg cache dir
-    pub fn command(&self) -> Command {
+    pub(crate) fn command(&self) -> Command {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_wkg"));
         cmd.current_dir(&self.fixture_path);
         cmd.env("WKG_CACHE_DIR", self.temp_dir.path().join("cache"));
@@ -123,7 +127,7 @@ impl Fixture {
 
     /// Same as [`Fixture::command`] but also writes the given config to disk and sets the
     /// `WKG_CONFIG` environment variable to the path of the config
-    pub async fn command_with_config(&self, config: &Config) -> Command {
+    pub(crate) async fn command_with_config(&self, config: &Config) -> Command {
         let config_path = self.temp_dir.path().join("config.toml");
         config
             .to_file(&config_path)
@@ -136,13 +140,13 @@ impl Fixture {
 }
 
 /// Gets the path to the fixture
-pub fn fixture_dir() -> PathBuf {
+pub(crate) fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("fixtures")
 }
 
-pub fn transitive_local_fixture() -> PathBuf {
+pub(crate) fn transitive_local_fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../wasm-pkg-core/tests/fixtures/transitive-local")
 }
@@ -150,11 +154,11 @@ pub fn transitive_local_fixture() -> PathBuf {
 /// Loads the fixture with the given name into a temporary directory. This will copy the fixture
 /// from the tests/fixtures directory into a temporary directory and return the tempdir containing
 /// that directory (and its path)
-pub async fn load_fixture(fixture: &str) -> Fixture {
+pub(crate) async fn load_fixture(fixture: &str) -> Fixture {
     load_fixture_from(fixture_dir().join(fixture)).await
 }
 
-pub async fn load_fixture_from(src: impl AsRef<Path>) -> Fixture {
+async fn load_fixture_from(src: impl AsRef<Path>) -> Fixture {
     let src = src.as_ref();
     let temp_dir = tempfile::tempdir().expect("Failed to create tempdir");
     // This will error if it doesn't exist, which is what we want
@@ -171,7 +175,7 @@ pub async fn load_fixture_from(src: impl AsRef<Path>) -> Fixture {
     }
 }
 
-pub async fn copy_dir(
+pub(crate) async fn copy_dir(
     source: impl AsRef<Path>,
     destination: impl AsRef<Path>,
 ) -> anyhow::Result<()> {
