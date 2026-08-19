@@ -16,11 +16,18 @@ pub struct DecodedComponent {
 }
 
 impl DecodedComponent {
+    /// Decode a publishing source. `package_override`, when supplied, is the
+    /// authoritative `(package, version)`; otherwise the identity is extracted
+    /// from the binary.
     pub async fn from_publishing_source(
         data: PublishingSource,
+        package_override: Option<(PackageRef, Version)>,
     ) -> Result<(PublishingSource, DecodedComponent), Error> {
         let (reader, decoded_wasm) = decode(SyncIoBridge::new(data)).await?;
-        let (package_ref, version) = extract_package_version(&decoded_wasm)?;
+        let (package_ref, version) = match package_override {
+            Some(id) => id,
+            None => extract_package_version(&decoded_wasm)?,
+        };
 
         let mut data = reader.into_inner();
         data.rewind().await?;
@@ -33,20 +40,6 @@ impl DecodedComponent {
                 decoded_wasm,
             },
         ))
-    }
-
-    /// Like [`Self::from_publishing_source`] but overrides the derived
-    /// `(package, version)` identity with `package_override` when supplied.
-    pub async fn from_publishing_source_with_package(
-        data: PublishingSource,
-        package_override: Option<(PackageRef, Version)>,
-    ) -> Result<(PublishingSource, DecodedComponent), Error> {
-        let (data, mut decoded) = Self::from_publishing_source(data).await?;
-        if let Some((p, v)) = package_override {
-            decoded.package_ref = p;
-            decoded.version = v;
-        }
-        Ok((data, decoded))
     }
 
     /// Construct from a registry content stream. Callers already know the
