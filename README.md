@@ -73,6 +73,14 @@ Publish a package to the configured registry:
 wkg publish path/to/component.wasm
 ```
 
+Pull a component directly from an OCI registry by [tag or by digest](https://specs.opencontainers.org/image-spec/annotations/?v=v1.1.1#IMAGE-SPEC-ANNOTATIONS-4:~:text=SPDX%20License%20Expression%2E-,org%2Eopencontainers%2Eimage%2Eref%2Ename,-Name%20of%20the) to pin an exact immutable artifact:
+
+```sh
+wkg oci pull ghcr.io/webassembly/wasi/http:0.2.1
+# pulls the equivalent artifact
+wkg oci pull ghcr.io/webassembly/wasi/http@sha256:49be4c9201a1b9fe99d589cde205d6096384a77b8767fedeef0e53e480abff49
+```
+
 Fetch WIT dependencies for the current project (uses `wkg.toml` / `wkg.lock`):
 
 ```sh
