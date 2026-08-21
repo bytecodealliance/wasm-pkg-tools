@@ -1,7 +1,7 @@
 //! Type definitions and functions for working with `wkg.toml` files.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
@@ -95,8 +95,7 @@ impl Manifest {
             return Ok(());
         };
         // `overrides` is a map, so walk it in a stable order
-        let mut sorted_keys: Vec<&String> = overrides.keys().collect();
-        sorted_keys.sort_unstable();
+        let sorted_keys: BTreeSet<&str> = overrides.keys().map(String::as_str).collect();
 
         let mut bare: HashSet<PackageRef> = HashSet::new();
         let mut versioned: HashMap<PackageRef, Vec<&str>> = HashMap::new();

@@ -9,7 +9,7 @@ use std::{
 use anyhow::{Context as _, Result, bail};
 use indexmap::IndexMap;
 use petgraph::{Direction, data::Build};
-use semver::{Version, VersionReq};
+use semver::Version;
 use wasm_metadata::{AddMetadata, AddMetadataField};
 use wasm_pkg_client::{
     PackageRef,
@@ -23,7 +23,7 @@ use crate::{
     lock::LockFile,
     manifest::Manifest,
     resolver::{
-        DecodedDependency, Dependency, DependencyGraph, DependencyKey, DependencyResolution,
+        DecodedDependency, Dependency, DependencyGraph, DependencyResolution,
         DependencyResolutionMap, DependencyResolver, LocalPackageIndex, LocalResolution,
         RegistryPackage,
     },
@@ -146,14 +146,12 @@ pub async fn fetch_dependencies(
     populate_dependencies(wit_dir, &dependencies, output).await
 }
 
-/// Generate the list of all packages and their version requirement from the given path (a directory
-/// or file).
+/// Generate the list of all packages named by the given path (a directory or file), each with the
+/// version the WIT asks for, if any.
 ///
 /// This is a lower level function exposed for convenience that is used by higher level functions
 /// for resolving dependencies.
-pub fn get_packages(
-    path: impl AsRef<Path>,
-) -> Result<(PackageSpec, HashSet<(PackageRef, VersionReq)>)> {
+pub fn get_packages(path: impl AsRef<Path>) -> Result<(PackageSpec, HashSet<PackageSpec>)> {
     let path = path.as_ref();
 
     // Build a package group out of a single file or a directory
@@ -201,7 +199,7 @@ pub fn get_packages(
     };
 
     // Get all package refs from the main package and then from any nested packages
-    let packages: HashSet<(PackageRef, VersionReq)> =
+    let packages: HashSet<PackageSpec> =
         packages_from_foreign_deps(group.main.foreign_deps.into_keys())
             .chain(
                 group
@@ -241,7 +239,7 @@ pub(crate) fn get_local_dependencies(
     }
     for ((spec, _), deps) in pkg_trees {
         // TODO handle version matching for dependencies
-        for (dep, _version) in deps {
+        for PackageSpec { package: dep, .. } in deps {
             if let Some(&(dep, _)) = indices.get(&dep) {
                 let pkg = &spec.package;
                 let (id, _) = indices[pkg];
@@ -286,8 +284,10 @@ pub async fn resolve_dependencies(
     if let Some(overrides) = manifest.overrides.as_ref() {
         tracing::debug!("detected manifest overrides");
         for (pkg, ovr) in overrides.iter() {
-            let key =
-                parse_override_key(pkg).with_context(|| format!("invalid override key `{pkg}`"))?;
+            // `"ns:pkg"` overrides every version of the package, `"ns:pkg@1.2.3"` just that one
+            let key: PackageSpec = pkg
+                .parse()
+                .with_context(|| format!("invalid override key `{pkg}`"))?;
             let dep = match (ovr.path.as_ref(), ovr.version.as_ref()) {
                 (Some(path), v) => {
                     if v.is_some() {
@@ -426,41 +426,15 @@ async fn write_wasm_deps(
     Ok(())
 }
 
-/// Parses a key from the manifest's `[overrides]` table.
-///
-/// A bare package name (`"ns:pkg"`) applies to every version of that package, same as before.
-/// Adding an exact version (`"ns:pkg@1.2.3"`) limits the override to just that version, so a world
-/// with two versions of one package can point each version somewhere different.
-fn parse_override_key(key: &str) -> Result<DependencyKey> {
-    let spec: PackageSpec = key.parse().context("Unable to parse as a package ref")?;
-    Ok(match spec.version {
-        // Built the same way as `packages_from_foreign_deps` does, so this matches the requirement
-        // the WIT's own `@version` produces.
-        Some(version) => DependencyKey::new(
-            spec.package,
-            format!("={version}")
-                .parse()
-                .expect("an exact version is always a valid requirement"),
-        ),
-        None => DependencyKey::any_version(spec.package),
-    })
-}
-
 fn packages_from_foreign_deps(
     deps: impl IntoIterator<Item = PackageName>,
-) -> impl Iterator<Item = (PackageRef, VersionReq)> {
+) -> impl Iterator<Item = PackageSpec> {
     deps.into_iter().filter_map(|dep| {
-        let name = PackageRef::new(dep.namespace.parse().ok()?, dep.name.parse().ok()?);
-        let version = match dep.version {
-            Some(v) => format!("={v}"),
-            None => "*".to_string(),
-        };
-        Some((
-            name,
-            version
-                .parse()
-                .expect("Unable to parse into version request, this is programmer error"),
-        ))
+        let package = PackageRef::new(dep.namespace.parse().ok()?, dep.name.parse().ok()?);
+        Some(PackageSpec {
+            package,
+            version: dep.version,
+        })
     })
 }
 
@@ -585,26 +559,36 @@ fn name_from_package_name(package_name: &PackageName) -> String {
 mod tests {
     use super::*;
 
-    /// A versioned override key only matches its dependency if it builds the same requirement the
-    /// WIT's `@version` does — these two need to always agree.
+    /// An override key and the WIT import it targets must produce the same key, versioned or not.
     #[test]
-    fn override_key_requirement_matches_foreign_dep() {
-        for version in ["0.1.0", "1.2.3", "0.2.0-draft", "0.2.0-alpha.1"] {
+    fn override_key_matches_foreign_dep() {
+        for version in [
+            None,
+            Some("0.1.0"),
+            Some("1.2.3"),
+            Some("0.2.0-draft"),
+            Some("0.2.0-alpha.1"),
+        ] {
             let from_wit = packages_from_foreign_deps([PackageName {
                 namespace: "foo".to_string(),
                 name: "bar".to_string(),
-                version: Some(version.parse().unwrap()),
+                version: version.map(|v| v.parse().unwrap()),
             }])
             .next()
             .expect("foreign dep should yield a package");
 
-            let from_key = parse_override_key(&format!("foo:bar@{version}")).unwrap();
+            let key = match version {
+                Some(version) => format!("foo:bar@{version}"),
+                None => "foo:bar".to_string(),
+            };
+            let from_key: PackageSpec = key.parse().unwrap();
 
-            assert_eq!(from_key.package, from_wit.0, "package for {version}");
+            assert_eq!(from_key, from_wit, "key for {version:?}");
+            let req = crate::resolver::key_requirement(&from_key);
             assert_eq!(
-                from_key.version,
-                Some(from_wit.1),
-                "requirement for {version}"
+                req.to_string(),
+                version.map(|v| format!("={v}")).unwrap_or("*".to_string()),
+                "requirement for {version:?}"
             );
         }
     }
@@ -612,7 +596,10 @@ mod tests {
     #[test]
     fn malformed_override_keys_are_rejected() {
         for key in ["foo:bar@", "foo:bar@not-a-version", "not a package ref"] {
-            assert!(parse_override_key(key).is_err(), "`{key}` should not parse");
+            assert!(
+                key.parse::<PackageSpec>().is_err(),
+                "`{key}` should not parse"
+            );
         }
     }
 }

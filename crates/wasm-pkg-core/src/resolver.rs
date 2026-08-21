@@ -104,64 +104,19 @@ impl FromStr for RegistryPackage {
     }
 }
 
-/// The key identifying a dependency in the resolver.
-///
-/// A single world can name more than one version of the same package — a component exporting both
-/// `ns:pkg/interface@0.2.0` and `@0.3.0`, for example — so a [`PackageRef`] on its own
-/// does not uniquely identify a dependency.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct DependencyKey {
-    /// The package the dependency refers to.
-    pub package: PackageRef,
-    /// The version this dependency was requested at.
-    ///
-    /// `None` means "every version". This only happens for a bare override key (no `@version`),
-    /// which applies to every version the WIT names.
-    pub version: Option<VersionReq>,
+/// Returns whether resolving `key` also satisfies `other`. A key without a version (`foo:bar`)
+/// covers every version of its package; `foo:bar@0.1.0` covers only itself.
+fn key_supersedes(key: &PackageSpec, other: &PackageSpec) -> bool {
+    key.package == other.package && (key.version.is_none() || key.version == other.version)
 }
 
-impl DependencyKey {
-    pub fn new(package: PackageRef, version: VersionReq) -> Self {
-        Self {
-            package,
-            version: Some(version),
-        }
-    }
-
-    /// Creates a key that applies to every version of the given package.
-    pub fn any_version(package: PackageRef) -> Self {
-        Self {
-            package,
-            version: None,
-        }
-    }
-
-    /// Returns whether this key applies to every version of its package.
-    pub fn is_any_version(&self) -> bool {
-        self.version.is_none()
-    }
-
-    /// Returns whether resolving this key also satisfies `other`, making `other` redundant.
-    ///
-    /// `foo:bar` has no version, so it satisfies every key for `foo:bar`. `foo:bar@0.1.0`
-    /// satisfies only itself.
-    pub fn supersedes(&self, other: &DependencyKey) -> bool {
-        self.package == other.package && (self.is_any_version() || self.version == other.version)
-    }
-}
-
-impl From<PackageRef> for DependencyKey {
-    fn from(package: PackageRef) -> Self {
-        Self::any_version(package)
-    }
-}
-
-impl std::fmt::Display for DependencyKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.version {
-            Some(version) => write!(f, "{}@{version}", self.package),
-            None => write!(f, "{}", self.package),
-        }
+/// The version requirement a dependency key asks for.
+pub(crate) fn key_requirement(key: &PackageSpec) -> VersionReq {
+    match &key.version {
+        Some(version) => format!("={version}")
+            .parse()
+            .expect("an exact version is always a valid requirement"),
+        None => VersionReq::STAR,
     }
 }
 
@@ -409,7 +364,7 @@ pub struct DependencyResolver<'a> {
     client: CachingClient<FileCache>,
     lock_file: Option<&'a LockFile>,
     packages: HashMap<PackageRef, Vec<VersionInfo>>,
-    dependencies: HashMap<DependencyKey, RegistryDependency>,
+    dependencies: HashMap<PackageSpec, RegistryDependency>,
     any_version_overrides: HashSet<PackageRef>,
     resolutions: DependencyResolutionMap,
 }
@@ -459,11 +414,14 @@ impl<'a> DependencyResolver<'a> {
 
     /// Add a dependency to the resolver. If the dependency already exists, then it will be ignored.
     /// To override an existing dependency, use [`override_dependency`](Self::override_dependency).
+    ///
+    /// A key without a version covers every version of the package.
     pub async fn add_dependency(
         &mut self,
-        key: &DependencyKey,
+        key: &PackageSpec,
         dependency: &Dependency,
     ) -> Result<()> {
+        self.record_any_version_override(key);
         self.add_dependency_internal(key, dependency, false).await
     }
 
@@ -471,18 +429,28 @@ impl<'a> DependencyResolver<'a> {
     /// overridden.
     pub async fn override_dependency(
         &mut self,
-        key: &DependencyKey,
+        key: &PackageSpec,
         dependency: &Dependency,
     ) -> Result<()> {
+        self.record_any_version_override(key);
         self.add_dependency_internal(key, dependency, true).await
+    }
+
+    /// Recorded before the dependency itself is added, so that versioned requests for the same
+    /// package arriving later are skipped. Only overrides get here: an unversioned WIT import is
+    /// a single dependency with no version, not an override covering every version.
+    fn record_any_version_override(&mut self, key: &PackageSpec) {
+        if key.version.is_none() {
+            self.any_version_overrides.insert(key.package.clone());
+        }
     }
 
     /// Returns whether this key has already been handled: it was added before, or a bare
     /// override for the whole package already covers it.
-    fn is_already_superseded(&self, key: &DependencyKey) -> bool {
+    fn is_already_superseded(&self, key: &PackageSpec) -> bool {
         // A bare override covers every version of a package, even ones we haven't added a
         // dependency for yet, so we keep track of it separately from the maps below.
-        if !key.is_any_version() && self.any_version_overrides.contains(&key.package) {
+        if key.version.is_some() && self.any_version_overrides.contains(&key.package) {
             return true;
         }
         self.resolutions.contains_key(key) || self.dependencies.contains_key(key)
@@ -490,29 +458,24 @@ impl<'a> DependencyResolver<'a> {
 
     /// Removes any registry dependency that this key replaces. Returns true if something was
     /// removed.
-    fn take_superseded_dependencies(&mut self, key: &DependencyKey) -> bool {
+    fn take_superseded_dependencies(&mut self, key: &PackageSpec) -> bool {
         let before = self.dependencies.len();
-        self.dependencies.retain(|k, _| !key.supersedes(k));
+        self.dependencies.retain(|k, _| !key_supersedes(key, k));
         self.dependencies.len() != before
     }
 
     /// Returns whether a resolution that this key replaces has already been recorded.
-    fn has_superseded_resolution(&self, key: &DependencyKey) -> bool {
-        self.resolutions.keys().any(|k| key.supersedes(k))
+    fn has_superseded_resolution(&self, key: &PackageSpec) -> bool {
+        self.resolutions.keys().any(|k| key_supersedes(key, k))
     }
 
     async fn add_dependency_internal(
         &mut self,
-        key: &DependencyKey,
+        key: &PackageSpec,
         dependency: &Dependency,
         force_override: bool,
     ) -> Result<()> {
         let name = &key.package;
-        // Record this first: a versioned request for the same package later in this resolution
-        // will see it and be skipped.
-        if key.is_any_version() {
-            self.any_version_overrides.insert(name.clone());
-        }
         match dependency {
             Dependency::Package(package) => {
                 // Dependency comes from a registry, add a dependency to the resolver
@@ -587,20 +550,20 @@ impl<'a> DependencyResolver<'a> {
         Ok(())
     }
 
-    /// A helper function for adding an iterator of package refs and their associated version
-    /// requirements to the resolver
+    /// A helper function for adding an iterator of packages named by a WIT file to the resolver.
     pub async fn add_packages(
         &mut self,
-        packages: impl IntoIterator<Item = (PackageRef, VersionReq)>,
+        packages: impl IntoIterator<Item = PackageSpec>,
     ) -> Result<()> {
-        for (package, req) in packages {
-            self.add_dependency(
-                &DependencyKey::new(package.clone(), req.clone()),
+        for spec in packages {
+            self.add_dependency_internal(
+                &spec,
                 &Dependency::Package(RegistryPackage {
-                    name: Some(package),
-                    version: req,
+                    name: Some(spec.package.clone()),
+                    version: key_requirement(&spec),
                     registry: None,
                 }),
+                false,
             )
             .await?;
         }
@@ -751,16 +714,16 @@ fn find_latest_release<'a>(
 /// Each key is a dependency's package plus the version it was requested at. This lets a world
 /// naming several versions of the same package resolve all of them, not just one.
 #[derive(Debug, Clone, Default)]
-pub struct DependencyResolutionMap(HashMap<DependencyKey, DependencyResolution>);
+pub struct DependencyResolutionMap(HashMap<PackageSpec, DependencyResolution>);
 
-impl AsRef<HashMap<DependencyKey, DependencyResolution>> for DependencyResolutionMap {
-    fn as_ref(&self) -> &HashMap<DependencyKey, DependencyResolution> {
+impl AsRef<HashMap<PackageSpec, DependencyResolution>> for DependencyResolutionMap {
+    fn as_ref(&self) -> &HashMap<PackageSpec, DependencyResolution> {
         &self.0
     }
 }
 
 impl Deref for DependencyResolutionMap {
-    type Target = HashMap<DependencyKey, DependencyResolution>;
+    type Target = HashMap<PackageSpec, DependencyResolution>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
