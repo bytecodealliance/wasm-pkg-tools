@@ -1,13 +1,14 @@
 //! Type definitions and functions for working with `wkg.toml` files.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result};
 use semver::VersionReq;
 use serde::{Deserialize, Serialize};
+use wasm_pkg_common::package::{PackageRef, PackageSpec};
 mod paths;
 pub mod workspace;
 
@@ -79,8 +80,53 @@ impl Manifest {
     // `Manifest` validations, mirrors cargo's `Workspace::validate`
     fn validate(&self) -> Result<()> {
         self.validate_workspace_exclusivity()?;
+        self.validate_override_keys()?;
         // Add new validation rules with `self.validate_*()?;`
         Ok(())
+    }
+
+    /// Checks that override keys parse and that no package is covered by both a bare and a
+    /// versioned key.
+    ///
+    /// Runs when a `wkg.toml` is loaded (see [`validate`](Self::validate)), and again when
+    /// resolving, since a `Manifest` built directly in Rust code skips the load step.
+    pub(crate) fn validate_override_keys(&self) -> Result<()> {
+        let Some(overrides) = self.overrides.as_ref() else {
+            return Ok(());
+        };
+        // `overrides` is a map, so walk it in a stable order
+        let sorted_keys: BTreeSet<&str> = overrides.keys().map(String::as_str).collect();
+
+        let mut bare: HashSet<PackageRef> = HashSet::new();
+        let mut versioned: HashMap<PackageRef, Vec<&str>> = HashMap::new();
+        for key in sorted_keys {
+            let spec: PackageSpec = key
+                .parse()
+                .with_context(|| format!("invalid override key `{key}`"))?;
+            match spec.version {
+                Some(_) => versioned.entry(spec.package).or_default().push(key),
+                None => {
+                    bare.insert(spec.package);
+                }
+            }
+        }
+
+        let mut conflicts: Vec<String> = versioned
+            .iter()
+            .filter(|(package, _)| bare.contains(*package))
+            .map(|(package, keys)| {
+                format!(
+                    "override `{package}` applies to every version of the package, so it \
+                     conflicts with the versioned override(s) `{}`",
+                    keys.join("`, `")
+                )
+            })
+            .collect();
+        if conflicts.is_empty() {
+            return Ok(());
+        }
+        conflicts.sort_unstable();
+        anyhow::bail!("{} - remove one or the other", conflicts.join("; "));
     }
 
     // no overrides or top-level metadata when workspace is present
@@ -238,6 +284,70 @@ mod tests {
         assert_eq!(
             manifest, loaded_manifest,
             "manifest loaded from file does not match original manifest"
+        );
+    }
+
+    #[test]
+    fn override_keys_may_carry_a_version() {
+        let manifest = Manifest::from_toml(
+            r#"
+[overrides]
+"foo:bar@0.1.0" = { path = "bar-0.1.0" }
+"foo:bar@0.2.0" = { path = "bar-0.2.0" }
+"foo:baz" = { path = "baz" }
+"#,
+        )
+        .expect("versioned override keys should be accepted");
+        assert_eq!(manifest.overrides.unwrap().len(), 3);
+    }
+
+    #[test]
+    fn override_keys_conflict_when_bare_and_versioned() {
+        let err = Manifest::from_toml(
+            r#"
+[overrides]
+"foo:bar" = { path = "bar" }
+"foo:bar@0.1.0" = { path = "bar-0.1.0" }
+"#,
+        )
+        .expect_err("a bare key alongside a versioned one is ambiguous");
+        let err = format!("{err:#}");
+        assert!(err.contains("foo:bar@0.1.0"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn override_key_conflicts_are_all_reported_in_a_stable_order() {
+        // Two conflicting packages: both must appear, and always in the same order, rather than
+        // whichever the underlying map happened to yield first.
+        let err = Manifest::from_toml(
+            r#"
+[overrides]
+"zzz:two" = { path = "z" }
+"zzz:two@0.2.0" = { path = "z2" }
+"aaa:one" = { path = "a" }
+"aaa:one@0.1.0" = { path = "a1" }
+"#,
+        )
+        .expect_err("both packages conflict");
+        let err = format!("{err:#}");
+        let aaa = err.find("aaa:one").expect("aaa:one should be reported");
+        let zzz = err.find("zzz:two").expect("zzz:two should be reported");
+        assert!(aaa < zzz, "conflicts should be sorted: {err}");
+    }
+
+    #[test]
+    fn override_keys_must_parse() {
+        let err = Manifest::from_toml(
+            r#"
+[overrides]
+"not a package ref" = { path = "bar" }
+"#,
+        )
+        .expect_err("an unparseable override key should be rejected");
+        let err = format!("{err:#}");
+        assert!(
+            err.contains("invalid override key"),
+            "unexpected error: {err}"
         );
     }
 }

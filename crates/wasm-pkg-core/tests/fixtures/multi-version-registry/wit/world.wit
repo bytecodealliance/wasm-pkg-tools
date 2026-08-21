@@ -1,0 +1,7 @@
+package test:multiversion;
+
+// Imports two versions of the same registry package, which must both be fetched.
+world multiversion {
+  import wasi:clocks/monotonic-clock@0.2.0;
+  import wasi:clocks/monotonic-clock@0.2.1;
+}
