@@ -1,0 +1,6 @@
+package my:local@0.2.0;
+
+interface foo {
+    // Differs from 0.1.0 so a test can tell which version was written out.
+    foo: func() -> result<string>;
+}

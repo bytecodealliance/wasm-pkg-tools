@@ -238,11 +238,11 @@ impl FetchArgs {
                     .with_context(|| {
                         format!("failed to resolve dependencies for {}", dir.display())
                     })?;
-            for (pkg, resolution) in resolved.as_ref() {
-                if verifier.packages.contains(pkg) {
+            for (key, resolution) in resolved.as_ref() {
+                if verifier.packages.contains(&key.package) {
                     continue;
                 }
-                merged.insert(pkg.clone(), resolution.clone());
+                merged.insert(key.clone(), resolution.clone());
             }
         }
 

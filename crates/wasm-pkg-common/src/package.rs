@@ -79,10 +79,23 @@ impl std::fmt::Display for PackageSpec {
 }
 
 /// A package spec combines a [`PackageRef`] with an optional version.
-#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct PackageSpec {
     pub package: PackageRef,
     pub version: Option<Version>,
+}
+
+impl PackageSpec {
+    /// The requirement used to fetch this package from a registry: exactly its version, or any
+    /// version (`*`) for a package that names none.
+    pub fn version_req(&self) -> VersionReq {
+        match &self.version {
+            Some(version) => format!("={version}")
+                .parse()
+                .expect("an exact version is always a valid requirement"),
+            None => VersionReq::STAR,
+        }
+    }
 }
 
 impl PartialEq<str> for PackageSpec {
