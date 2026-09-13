@@ -85,6 +85,19 @@ pub struct PackageSpec {
     pub version: Option<Version>,
 }
 
+impl PackageSpec {
+    /// The requirement used to fetch this package from a registry: exactly its version, or any
+    /// version (`*`) for a package that names none.
+    pub fn version_req(&self) -> VersionReq {
+        match &self.version {
+            Some(version) => format!("={version}")
+                .parse()
+                .expect("an exact version is always a valid requirement"),
+            None => VersionReq::STAR,
+        }
+    }
+}
+
 impl PartialEq<str> for PackageSpec {
     fn eq(&self, other: &str) -> bool {
         // clippy --fix will create a recursive callsite here if `self.to_string()` is used instead

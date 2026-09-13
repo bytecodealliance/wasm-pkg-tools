@@ -277,6 +277,7 @@ pub async fn resolve_dependencies(
     lock_file: Option<&LockFile>,
     client: CachingClient<FileCache>,
 ) -> Result<DependencyResolutionMap> {
+    // A manifest built in code skips TOML-load validation, so check the override keys here too
     manifest.validate_override_keys()?;
 
     let mut resolver = DependencyResolver::new_with_client(client, lock_file)?;
@@ -293,10 +294,8 @@ pub async fn resolve_dependencies(
                     if v.is_some() {
                         tracing::warn!(
                             %key,
-                            "Ignoring `version` field for local override; to scope an override to \
-                             a single version, put the version in the key (e.g. \
-                             `\"{}@1.2.3\"`)",
-                            key.package,
+                            "the `version` field has no effect on a local (path) override; the \
+                             key alone decides which version it applies to",
                         );
                     }
                     let path = tokio::fs::canonicalize(path).await.with_context(|| {
@@ -584,7 +583,7 @@ mod tests {
             let from_key: PackageSpec = key.parse().unwrap();
 
             assert_eq!(from_key, from_wit, "key for {version:?}");
-            let req = crate::resolver::key_requirement(&from_key);
+            let req = from_key.version_req();
             assert_eq!(
                 req.to_string(),
                 version.map(|v| format!("={v}")).unwrap_or("*".to_string()),

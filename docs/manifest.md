@@ -69,8 +69,13 @@ A package cannot have both a bare and a versioned key, since the bare key
 already covers every version; such a manifest is rejected rather than resolved
 in an unspecified order.
 
+The key has to describe the package it points at: a bare key must match its
+name, and a versioned key its name and version. Pointing `"my:local@0.1.0"` at
+a directory whose package is `my:local@0.2.0` is an error rather than a silent
+version swap.
+
 Note that the `version` field is a *registry* version requirement and is
-ignored when `path` is set — use a versioned key to select which version an
+ignored when `path` is set - use a versioned key to select which version an
 override applies to.
 
 ### `workspace.members`

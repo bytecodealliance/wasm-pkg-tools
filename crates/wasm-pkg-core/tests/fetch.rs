@@ -92,38 +92,17 @@ async fn test_transitive_local(#[values(OutputType::Wasm, OutputType::Wit)] outp
     let mut lock = LockFile::new_with_path([], &lock_file)
         .await
         .expect("Should be able to create a new lock file");
-    // ```toml
-    // [overrides]
-    // "example-b:bar" = { "path" = "../example-b/wit" }
-    // "example-c:baz" = { "path" = "../example-c/wit" }
-    // "example-c:nested" = { "path" = "../example-c/wit/nested" }
-    // ```
-    let manifest = Manifest {
-        overrides: Some(HashMap::from([
-            (
-                "example-b:bar".to_string(),
-                Override {
-                    path: Some(fixture_path.join("example-b/wit")),
-                    version: None,
-                },
-            ),
-            (
-                "example-c:baz".to_string(),
-                Override {
-                    path: Some(fixture_path.join("example-c/wit")),
-                    version: None,
-                },
-            ),
-            (
-                "example-c:nested".to_string(),
-                Override {
-                    path: Some(fixture_path.join("example-c/wit/nested")),
-                    version: None,
-                },
-            ),
-        ])),
-        ..Default::default()
-    };
+    // Override paths resolve against the working directory, so they must be absolute here
+    let manifest = Manifest::from_toml(&format!(
+        r#"
+[overrides]
+"example-b:bar" = {{ path = '{root}/example-b/wit' }}
+"example-c:baz" = {{ path = '{root}/example-c/wit' }}
+"example-c:nested" = {{ path = '{root}/example-c/wit/nested' }}
+"#,
+        root = fixture_path.display()
+    ))
+    .expect("manifest should parse");
     let (_temp_cache, client) = common::get_client().await.unwrap();
 
     // If overrides didn't properly resolve, this will fail
@@ -169,30 +148,15 @@ async fn test_multi_version_local(#[values(OutputType::Wasm, OutputType::Wit)] o
     let mut lock = LockFile::new_with_path([], &lock_file)
         .await
         .expect("Should be able to create a new lock file");
-    // ```toml
-    // [overrides]
-    // "my:local@0.1.0" = { "path" = "../local-dep-0.1.0/wit" }
-    // "my:local@0.2.0" = { "path" = "../local-dep-0.2.0/wit" }
-    // ```
-    let manifest = Manifest {
-        overrides: Some(HashMap::from([
-            (
-                "my:local@0.1.0".to_string(),
-                Override {
-                    path: Some(fixture_path.join("local-dep-0.1.0/wit")),
-                    version: None,
-                },
-            ),
-            (
-                "my:local@0.2.0".to_string(),
-                Override {
-                    path: Some(fixture_path.join("local-dep-0.2.0/wit")),
-                    version: None,
-                },
-            ),
-        ])),
-        ..Default::default()
-    };
+    let manifest = Manifest::from_toml(&format!(
+        r#"
+[overrides]
+"my:local@0.1.0" = {{ path = '{root}/local-dep-0.1.0/wit' }}
+"my:local@0.2.0" = {{ path = '{root}/local-dep-0.2.0/wit' }}
+"#,
+        root = fixture_path.display()
+    ))
+    .expect("manifest should parse");
     let (_temp_cache, client) = common::get_client().await.unwrap();
 
     wit::fetch_dependencies(
@@ -301,8 +265,7 @@ async fn test_multi_version_registry(
 }
 
 /// A bare key already covers every version, so pairing it with a versioned key for the same
-/// package is ambiguous. Manifests built through the library API skip the load-time check, so
-/// resolving has to reject the combination too rather than pick a winner by map ordering.
+/// package is ambiguous and resolving must reject it rather than pick a winner by map ordering.
 #[tokio::test]
 async fn test_conflicting_override_keys_rejected() {
     let (_temp, fixture_path) = common::load_fixture("multi-version-local").await.unwrap();
@@ -344,12 +307,49 @@ async fn test_conflicting_override_keys_rejected() {
 
     let err = format!("{err:#}");
     assert!(
-        err.contains("my:local@0.2.0") && err.contains("conflicts"),
+        err.contains("my:local@0.2.0") && err.contains("overlap"),
         "unexpected error: {err}"
     );
 }
 
-/// Concatenates every WIT file in a dep directory, whose name differs by output type.
+/// A versioned override key must name the package actually at its path; a mismatch is an error
+/// naming both the key and what is on disk.
+#[tokio::test]
+async fn test_override_key_must_match_package_on_disk() {
+    let (_temp, fixture_path) = common::load_fixture("multi-version-local").await.unwrap();
+    let project_path = fixture_path.join("project");
+    let mut lock = LockFile::new_with_path([], project_path.join("wkg.lock"))
+        .await
+        .expect("Should be able to create a new lock file");
+    let manifest = Manifest::from_toml(&format!(
+        r#"
+[overrides]
+"my:local@0.1.0" = {{ path = '{root}/local-dep-0.2.0/wit' }}
+"#,
+        root = fixture_path.display()
+    ))
+    .expect("manifest should parse");
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+
+    let err = wit::fetch_dependencies(
+        &manifest,
+        project_path.join("wit"),
+        &mut lock,
+        client,
+        OutputType::Wit,
+    )
+    .await
+    .expect_err("an override key that does not match the package on disk should be rejected");
+
+    let err = format!("{err:#}");
+    assert!(
+        err.contains("override `my:local@0.1.0` points at")
+            && err.contains("is package `my:local@0.2.0`"),
+        "unexpected error: {err}"
+    );
+}
+
+/// Concatenates every WIT file in a dep directory; the file names inside differ by output type.
 async fn read_dep_wit(dir: &Path) -> String {
     let mut entries = tokio::fs::read_dir(dir)
         .await

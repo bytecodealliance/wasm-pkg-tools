@@ -1,7 +1,7 @@
 //! Type definitions and functions for working with `wkg.toml` files.
 
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     path::{Path, PathBuf},
 };
 
@@ -43,7 +43,8 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    fn from_toml(contents: &str) -> Result<Manifest> {
+    /// Parses and validates a manifest from its TOML contents.
+    pub fn from_toml(contents: &str) -> Result<Manifest> {
         let manifest: Manifest = toml::from_str(contents)?;
         manifest.validate()?;
         Ok(manifest)
@@ -87,7 +88,6 @@ impl Manifest {
 
     /// Checks that override keys parse and that no package is covered by both a bare and a
     /// versioned key.
-
     pub(crate) fn validate_override_keys(&self) -> Result<()> {
         let Some(overrides) = self.overrides.as_ref() else {
             return Ok(());
@@ -95,36 +95,45 @@ impl Manifest {
         // `overrides` is a map, so walk it in a stable order
         let sorted_keys: BTreeSet<&str> = overrides.keys().map(String::as_str).collect();
 
-        let mut bare: HashSet<PackageRef> = HashSet::new();
-        let mut versioned: HashMap<PackageRef, Vec<&str>> = HashMap::new();
+        // A bare key (`ns:pkg`) covers every version of its package, a versioned key
+        // (`ns:pkg@1.2.3`) exactly one, so a package may be named by one kind or the other but
+        // not both
+        let mut bare: BTreeSet<PackageRef> = BTreeSet::new();
+        let mut versioned: Vec<(&str, PackageRef)> = Vec::new();
         for key in sorted_keys {
             let spec: PackageSpec = key
                 .parse()
                 .with_context(|| format!("invalid override key `{key}`"))?;
             match spec.version {
-                Some(_) => versioned.entry(spec.package).or_default().push(key),
+                Some(_) => versioned.push((key, spec.package)),
                 None => {
                     bare.insert(spec.package);
                 }
             }
         }
-
-        let mut conflicts: Vec<String> = versioned
+        let conflicts: Vec<String> = bare
             .iter()
-            .filter(|(package, _)| bare.contains(*package))
-            .map(|(package, keys)| {
-                format!(
-                    "override `{package}` applies to every version of the package, so it \
-                     conflicts with the versioned override(s) `{}`",
-                    keys.join("`, `")
-                )
+            .filter_map(|package| {
+                let keys: Vec<&str> = versioned
+                    .iter()
+                    .filter(|(_, p)| p == package)
+                    .map(|(key, _)| *key)
+                    .collect();
+                (!keys.is_empty()).then(|| {
+                    format!(
+                        "`{package}` covers every version and overlaps `{}`",
+                        keys.join("`, `")
+                    )
+                })
             })
             .collect();
         if conflicts.is_empty() {
             return Ok(());
         }
-        conflicts.sort_unstable();
-        anyhow::bail!("{} - remove one or the other", conflicts.join("; "));
+        anyhow::bail!(
+            "overrides must not overlap: {} - remove one or the other",
+            conflicts.join("; ")
+        );
     }
 
     // no overrides or top-level metadata when workspace is present
