@@ -1,0 +1,5 @@
+package my:local@0.1.0;
+
+interface foo {
+    foo: func() -> string;
+}
