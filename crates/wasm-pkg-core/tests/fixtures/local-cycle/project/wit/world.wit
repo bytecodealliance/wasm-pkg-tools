@@ -1,0 +1,5 @@
+package cycle:component;
+
+world component {
+    import cycle:a/a@0.1.0;
+}

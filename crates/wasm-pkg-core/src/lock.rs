@@ -221,7 +221,7 @@ fn generate_locked_packages(map: &DependencyResolutionMap) -> impl Iterator<Item
     type VersionsMap = HashMap<String, (Version, ContentDigest)>;
     let mut packages: HashMap<PackageKey, VersionsMap> = HashMap::new();
 
-    for resolution in map.values() {
+    for resolution in map.resolutions() {
         match resolution.key() {
             Some((id, registry)) => {
                 let pkg = match resolution {

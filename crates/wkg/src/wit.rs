@@ -238,12 +238,12 @@ impl FetchArgs {
                     .with_context(|| {
                         format!("failed to resolve dependencies for {}", dir.display())
                     })?;
-            for (pkg, resolution) in resolved.as_ref() {
-                if verifier.packages.contains(pkg) {
-                    continue;
-                }
-                merged.insert(pkg.clone(), resolution.clone());
-            }
+            // Skip workspace members, which the verifier resolves through its local registry.
+            merged
+                .extend_filtered(&resolved, |resolution| {
+                    !verifier.packages.contains(resolution.name())
+                })
+                .with_context(|| format!("failed to merge dependencies for {}", dir.display()))?;
         }
 
         lock_file.update_dependencies(&merged);

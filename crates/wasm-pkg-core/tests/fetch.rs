@@ -2,9 +2,11 @@ use std::{collections::HashMap, path::Path};
 
 use rstest::rstest;
 use tokio::process::Command;
+use wasm_pkg_common::package::PackageReq;
 use wasm_pkg_core::{
     lock::LockFile,
     manifest::{Manifest, Override},
+    resolver::{Dependency, DependencyResolutionMap, DependencyResolver},
     wit::{self, OutputType},
 };
 
@@ -92,38 +94,17 @@ async fn test_transitive_local(#[values(OutputType::Wasm, OutputType::Wit)] outp
     let mut lock = LockFile::new_with_path([], &lock_file)
         .await
         .expect("Should be able to create a new lock file");
-    // ```toml
-    // [overrides]
-    // "example-b:bar" = { "path" = "../example-b/wit" }
-    // "example-c:baz" = { "path" = "../example-c/wit" }
-    // "example-c:nested" = { "path" = "../example-c/wit/nested" }
-    // ```
-    let manifest = Manifest {
-        overrides: Some(HashMap::from([
-            (
-                "example-b:bar".to_string(),
-                Override {
-                    path: Some(fixture_path.join("example-b/wit")),
-                    version: None,
-                },
-            ),
-            (
-                "example-c:baz".to_string(),
-                Override {
-                    path: Some(fixture_path.join("example-c/wit")),
-                    version: None,
-                },
-            ),
-            (
-                "example-c:nested".to_string(),
-                Override {
-                    path: Some(fixture_path.join("example-c/wit/nested")),
-                    version: None,
-                },
-            ),
-        ])),
-        ..Default::default()
-    };
+    // Override paths resolve against the working directory, so they must be absolute here
+    let manifest = Manifest::from_toml(&format!(
+        r#"
+[overrides]
+"example-b:bar" = {{ path = '{root}/example-b/wit' }}
+"example-c:baz" = {{ path = '{root}/example-c/wit' }}
+"example-c:nested" = {{ path = '{root}/example-c/wit/nested' }}
+"#,
+        root = fixture_path.display()
+    ))
+    .expect("manifest should parse");
     let (_temp_cache, client) = common::get_client().await.unwrap();
 
     // If overrides didn't properly resolve, this will fail
@@ -156,6 +137,556 @@ async fn test_transitive_local(#[values(OutputType::Wasm, OutputType::Wit)] outp
         0,
         "Should have the correct number of packages in the lock file"
     );
+}
+
+/// A world naming several versions of one package resolves all of them via per-version overrides.
+#[rstest]
+#[tokio::test]
+async fn test_multi_version_local(#[values(OutputType::Wasm, OutputType::Wit)] output: OutputType) {
+    let (_temp, fixture_path) = common::load_fixture("multi-version-local").await.unwrap();
+    let project_path = fixture_path.join("project");
+    let lock_file = project_path.join("wkg.lock");
+    let mut lock = LockFile::new_with_path([], &lock_file)
+        .await
+        .expect("Should be able to create a new lock file");
+    let manifest = Manifest::from_toml(&format!(
+        r#"
+[overrides]
+"my:local@0.1.0" = {{ path = '{root}/local-dep-0.1.0/wit' }}
+"my:local@0.2.0" = {{ path = '{root}/local-dep-0.2.0/wit' }}
+"#,
+        root = fixture_path.display()
+    ))
+    .expect("manifest should parse");
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+
+    wit::fetch_dependencies(
+        &manifest,
+        project_path.join("wit"),
+        &mut lock,
+        client,
+        output,
+    )
+    .await
+    .unwrap_or_else(|e| panic!("Should be able to fetch the dependencies: {e:#}"));
+
+    let mut deps_dir = tokio::fs::read_dir(project_path.join("wit/deps"))
+        .await
+        .expect("Should be able to read the deps directory");
+    let mut deps = Vec::new();
+    while let Ok(Some(entry)) = deps_dir.next_entry().await {
+        deps.push(entry.file_name().to_string_lossy().to_string());
+    }
+    assert_eq!(deps.len(), 2, "expected both versions, got {deps:?}");
+    assert!(
+        deps.contains(&"my-local-0.1.0".to_string()),
+        "missing my-local-0.1.0 in {deps:?}"
+    );
+    assert!(
+        deps.contains(&"my-local-0.2.0".to_string()),
+        "missing my-local-0.2.0 in {deps:?}"
+    );
+
+    // Each directory holds its own version's WIT, not two copies of whichever won
+    let v1 = read_dep_wit(&project_path.join("wit/deps/my-local-0.1.0")).await;
+    let v2 = read_dep_wit(&project_path.join("wit/deps/my-local-0.2.0")).await;
+    assert!(v1.contains("foo: func() -> string"), "0.1.0 body was: {v1}");
+    assert!(
+        v2.contains("foo: func() -> result<string>"),
+        "0.2.0 body was: {v2}"
+    );
+
+    // All dependencies are local, so the lock file should be empty
+    assert_eq!(
+        lock.packages.len(),
+        0,
+        "Should have the correct number of packages in the lock file"
+    );
+}
+
+/// Both versions of a registry package are fetched and locked under the one package.
+#[rstest]
+#[tokio::test]
+async fn test_multi_version_registry(
+    #[values(OutputType::Wasm, OutputType::Wit)] output: OutputType,
+) {
+    let (_temp, fixture_path) = common::load_fixture("multi-version-registry")
+        .await
+        .unwrap();
+    let lock_file = fixture_path.join("wkg.lock");
+    let mut lock = LockFile::new_with_path([], &lock_file)
+        .await
+        .expect("Should be able to create a new lock file");
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+
+    wit::fetch_dependencies(
+        &Manifest::default(),
+        fixture_path.join("wit"),
+        &mut lock,
+        client,
+        output,
+    )
+    .await
+    .unwrap_or_else(|e| panic!("Should be able to fetch the dependencies: {e:#}"));
+
+    let mut deps_dir = tokio::fs::read_dir(fixture_path.join("wit/deps"))
+        .await
+        .expect("Should be able to read the deps directory");
+    let mut deps = Vec::new();
+    while let Ok(Some(entry)) = deps_dir.next_entry().await {
+        deps.push(entry.file_name().to_string_lossy().to_string());
+    }
+    let suffix = match output {
+        OutputType::Wit => "",
+        OutputType::Wasm => ".wasm",
+    };
+    for version in ["0.2.0", "0.2.1"] {
+        let expected = format!("wasi-clocks-{version}{suffix}");
+        assert!(deps.contains(&expected), "missing {expected} in {deps:?}");
+    }
+
+    let clocks = lock
+        .packages
+        .iter()
+        .find(|p| p.name.to_string() == "wasi:clocks")
+        .expect("wasi:clocks should be in the lock file");
+    let mut locked: Vec<String> = clocks
+        .versions
+        .iter()
+        .map(|v| v.version.to_string())
+        .collect();
+    locked.sort();
+    assert_eq!(locked, ["0.2.0", "0.2.1"], "lock file versions: {locked:?}");
+}
+
+/// A bare key covers every version, so pairing it with a versioned key is ambiguous.
+#[tokio::test]
+async fn test_conflicting_override_keys_rejected() {
+    let (_temp, fixture_path) = common::load_fixture("multi-version-local").await.unwrap();
+    let project_path = fixture_path.join("project");
+    let mut lock = LockFile::new_with_path([], project_path.join("wkg.lock"))
+        .await
+        .expect("Should be able to create a new lock file");
+    // Built directly rather than parsed from TOML, so `Manifest::validate` never ran
+    let manifest = Manifest {
+        overrides: Some(HashMap::from([
+            (
+                "my:local".to_string(),
+                Override {
+                    path: Some(fixture_path.join("local-dep-0.1.0/wit")),
+                    version: None,
+                },
+            ),
+            (
+                "my:local@0.2.0".to_string(),
+                Override {
+                    path: Some(fixture_path.join("local-dep-0.2.0/wit")),
+                    version: None,
+                },
+            ),
+        ])),
+        ..Default::default()
+    };
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+
+    let err = wit::fetch_dependencies(
+        &manifest,
+        project_path.join("wit"),
+        &mut lock,
+        client,
+        OutputType::Wit,
+    )
+    .await
+    .expect_err("conflicting override keys should be rejected");
+
+    let err = format!("{err:#}");
+    assert!(
+        err.contains("overrides must not overlap") && err.contains("my:local"),
+        "unexpected error: {err}"
+    );
+}
+
+/// A versioned override key must name the package at its path; a mismatch is an error.
+#[tokio::test]
+async fn test_override_key_must_match_package_on_disk() {
+    let (_temp, fixture_path) = common::load_fixture("multi-version-local").await.unwrap();
+    let project_path = fixture_path.join("project");
+    let mut lock = LockFile::new_with_path([], project_path.join("wkg.lock"))
+        .await
+        .expect("Should be able to create a new lock file");
+    let manifest = Manifest::from_toml(&format!(
+        r#"
+[overrides]
+"my:local@0.1.0" = {{ path = '{root}/local-dep-0.2.0/wit' }}
+"my:local@0.2.0" = {{ path = '{root}/local-dep-0.2.0/wit' }}
+"#,
+        root = fixture_path.display()
+    ))
+    .expect("manifest should parse");
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+
+    let err = wit::fetch_dependencies(
+        &manifest,
+        project_path.join("wit"),
+        &mut lock,
+        client,
+        OutputType::Wit,
+    )
+    .await
+    .expect_err("an override key that does not match the package on disk should be rejected");
+
+    let err = format!("{err:#}");
+    assert!(
+        err.contains("points at") && err.contains("which provides `my:local@0.2.0`"),
+        "unexpected error: {err}"
+    );
+}
+
+/// A dependency cycle between local overrides is rejected.
+#[tokio::test]
+async fn test_local_override_cycle_rejected() {
+    let (_temp, fixture_path) = common::load_fixture("local-cycle").await.unwrap();
+    let project_path = fixture_path.join("project");
+    let mut lock = LockFile::new_with_path([], project_path.join("wkg.lock"))
+        .await
+        .expect("Should be able to create a new lock file");
+    let manifest = Manifest::from_toml(&format!(
+        r#"
+[overrides]
+"cycle:a" = {{ path = '{root}/a/wit' }}
+"cycle:b" = {{ path = '{root}/b/wit' }}
+"#,
+        root = fixture_path.display()
+    ))
+    .expect("manifest should parse");
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+
+    let err = wit::fetch_dependencies(
+        &manifest,
+        project_path.join("wit"),
+        &mut lock,
+        client,
+        OutputType::Wit,
+    )
+    .await
+    .expect_err("a cycle between local overrides should be rejected");
+
+    let err = format!("{err:#}");
+    assert!(
+        err.contains("cyclical dependency detected"),
+        "unexpected error: {err}"
+    );
+}
+
+/// The result must not depend on the order requirements or overrides were added in.
+#[tokio::test]
+async fn test_resolution_is_order_independent() {
+    let (_temp, fixture_path) = common::load_fixture("multi-version-local").await.unwrap();
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+
+    let overrides = vec![
+        (
+            "my:local@0.1.0".parse().unwrap(),
+            Dependency::Local(fixture_path.join("local-dep-0.1.0/wit")),
+        ),
+        (
+            "my:local@0.2.0".parse().unwrap(),
+            Dependency::Local(fixture_path.join("local-dep-0.2.0/wit")),
+        ),
+    ];
+    let requirements: Vec<PackageReq> = vec![
+        "my:local@=0.1.0".parse().unwrap(),
+        "my:local@=0.2.0".parse().unwrap(),
+    ];
+
+    let mut forward = DependencyResolver::new_with_client(client.clone(), None).unwrap();
+    forward.add_overrides(overrides.clone()).unwrap();
+    forward.add_requirements(requirements.clone());
+    let forward = forward.resolve().await.unwrap();
+
+    let mut reverse = DependencyResolver::new_with_client(client, None).unwrap();
+    reverse.add_overrides(overrides.into_iter().rev()).unwrap();
+    reverse.add_requirements(requirements.into_iter().rev());
+    let reverse = reverse.resolve().await.unwrap();
+
+    let resolved = |map: &wasm_pkg_core::resolver::DependencyResolutionMap| {
+        let mut names: Vec<String> = map
+            .resolutions()
+            .map(|r| format!("{}@{:?}", r.name(), r.version()))
+            .collect();
+        names.sort();
+        names
+    };
+
+    assert_eq!(forward.len(), 2);
+    assert_eq!(resolved(&forward), resolved(&reverse));
+}
+
+/// A bare override covers every version, so it fails when the WIT names a version the package on
+/// disk cannot provide, rather than silently serving the wrong one.
+#[tokio::test]
+async fn test_bare_override_cannot_satisfy_second_version() {
+    let (_temp, fixture_path) = common::load_fixture("multi-version-local").await.unwrap();
+    let project_path = fixture_path.join("project");
+    let mut lock = LockFile::new_with_path([], project_path.join("wkg.lock"))
+        .await
+        .expect("Should be able to create a new lock file");
+    let manifest = Manifest::from_toml(&format!(
+        r#"
+[overrides]
+"my:local" = {{ path = '{root}/local-dep-0.1.0/wit' }}
+"#,
+        root = fixture_path.display()
+    ))
+    .expect("manifest should parse");
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+
+    let err = wit::fetch_dependencies(
+        &manifest,
+        project_path.join("wit"),
+        &mut lock,
+        client,
+        OutputType::Wit,
+    )
+    .await
+    .expect_err("the 0.2.0 import cannot be satisfied by the 0.1.0 package");
+
+    let err = format!("{err:#}");
+    assert!(
+        err.contains("which provides `my:local@0.1.0`")
+            && err.contains("required as `my:local@=0.2.0`"),
+        "unexpected error: {err}"
+    );
+}
+
+/// A versionless local package satisfies a versionless import but not a versioned one.
+#[tokio::test]
+async fn test_versionless_local_package() {
+    let (_temp, fixture_path) = common::load_fixture("versionless-local").await.unwrap();
+    let manifest = Manifest::from_toml(&format!(
+        r#"
+[overrides]
+"my:plain" = {{ path = '{root}/local-dep/wit' }}
+"#,
+        root = fixture_path.display()
+    ))
+    .expect("manifest should parse");
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+
+    let resolved = wit::resolve_dependencies(
+        &manifest,
+        fixture_path.join("project/wit"),
+        None,
+        client.clone(),
+    )
+    .await
+    .unwrap_or_else(|e| panic!("versionless import should resolve: {e:#}"));
+    assert_eq!(resolved.len(), 1);
+    let resolution = resolved
+        .get(&"my:plain@*".parse().unwrap())
+        .expect("the `*` requirement should be recorded");
+    assert_eq!(resolution.version(), None, "local package has no version");
+
+    let err = wit::resolve_dependencies(
+        &manifest,
+        fixture_path.join("project-versioned/wit"),
+        None,
+        client,
+    )
+    .await
+    .expect_err("a versioned import is not satisfied by a versionless package");
+    let err = format!("{err:#}");
+    assert!(
+        err.contains("which provides `my:plain`") && err.contains("required as `my:plain@=0.1.0`"),
+        "unexpected error: {err}"
+    );
+}
+
+/// Two local packages depending on the same third one share a single node, which is ordered
+/// before both of them.
+#[rstest]
+#[tokio::test]
+async fn test_local_diamond(#[values(OutputType::Wasm, OutputType::Wit)] output: OutputType) {
+    let (_temp, fixture_path) = common::load_fixture("local-diamond").await.unwrap();
+    let project_path = fixture_path.join("project");
+    let mut lock = LockFile::new_with_path([], project_path.join("wkg.lock"))
+        .await
+        .expect("Should be able to create a new lock file");
+    let manifest = Manifest::from_toml(&format!(
+        r#"
+[overrides]
+"diamond:a" = {{ path = '{root}/a/wit' }}
+"diamond:b" = {{ path = '{root}/b/wit' }}
+"diamond:c" = {{ path = '{root}/c/wit' }}
+"#,
+        root = fixture_path.display()
+    ))
+    .expect("manifest should parse");
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+
+    let resolved = wit::resolve_dependencies(
+        &manifest,
+        project_path.join("wit"),
+        Some(&lock),
+        client.clone(),
+    )
+    .await
+    .unwrap_or_else(|e| panic!("diamond should resolve: {e:#}"));
+
+    assert_eq!(resolved.len(), 3, "`c` must be a single shared node");
+    assert_eq!(resolved.requirements().count(), 3);
+
+    let order: Vec<String> = resolved
+        .resolutions()
+        .map(|r| r.name().to_string())
+        .collect();
+    let position = |name: &str| order.iter().position(|n| n == name).unwrap();
+    assert!(
+        position("diamond:c") < position("diamond:a")
+            && position("diamond:c") < position("diamond:b"),
+        "dependencies must come first: {order:?}"
+    );
+
+    wit::fetch_dependencies(
+        &manifest,
+        project_path.join("wit"),
+        &mut lock,
+        client,
+        output,
+    )
+    .await
+    .unwrap_or_else(|e| panic!("Should be able to fetch the dependencies: {e:#}"));
+    assert!(lock.packages.is_empty(), "all dependencies are local");
+}
+
+/// Two versions of a package reached only through a local dependency are both resolved.
+#[rstest]
+#[tokio::test]
+async fn test_transitive_multi_version_local(
+    #[values(OutputType::Wasm, OutputType::Wit)] output: OutputType,
+) {
+    let (_temp, fixture_path) = common::load_fixture("multi-version-local").await.unwrap();
+    let project_path = fixture_path.join("project-transitive");
+    let mut lock = LockFile::new_with_path([], project_path.join("wkg.lock"))
+        .await
+        .expect("Should be able to create a new lock file");
+    let manifest = Manifest::from_toml(&format!(
+        r#"
+[overrides]
+"my:mid" = {{ path = '{root}/mid/wit' }}
+"my:local@0.1.0" = {{ path = '{root}/local-dep-0.1.0/wit' }}
+"my:local@0.2.0" = {{ path = '{root}/local-dep-0.2.0/wit' }}
+"#,
+        root = fixture_path.display()
+    ))
+    .expect("manifest should parse");
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+
+    wit::fetch_dependencies(
+        &manifest,
+        project_path.join("wit"),
+        &mut lock,
+        client,
+        output,
+    )
+    .await
+    .unwrap_or_else(|e| panic!("Should be able to fetch the dependencies: {e:#}"));
+
+    let mut deps_dir = tokio::fs::read_dir(project_path.join("wit/deps"))
+        .await
+        .expect("Should be able to read the deps directory");
+    let mut deps = Vec::new();
+    while let Ok(Some(entry)) = deps_dir.next_entry().await {
+        deps.push(entry.file_name().to_string_lossy().to_string());
+    }
+    deps.sort();
+    assert_eq!(deps, ["my-local-0.1.0", "my-local-0.2.0", "my-mid-0.1.0"]);
+}
+
+/// Overlap is detected across separate `add_overrides` calls, not just within one.
+#[tokio::test]
+async fn test_overrides_conflict_across_calls() {
+    let (_temp, fixture_path) = common::load_fixture("multi-version-local").await.unwrap();
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+    let mut resolver = DependencyResolver::new_with_client(client, None).unwrap();
+
+    resolver
+        .add_overrides([(
+            "my:local@*".parse().unwrap(),
+            Dependency::Local(fixture_path.join("local-dep-0.1.0/wit")),
+        )])
+        .expect("a single override cannot conflict");
+
+    let err = resolver
+        .add_overrides([(
+            "my:local@=0.2.0".parse().unwrap(),
+            Dependency::Local(fixture_path.join("local-dep-0.2.0/wit")),
+        )])
+        .expect_err("a versioned key overlaps the bare key added earlier");
+    let err = format!("{err:#}");
+    assert!(
+        err.contains("`my:local@*` and `my:local@=0.2.0`"),
+        "unexpected error: {err}"
+    );
+}
+
+/// Merging drops filtered resolutions along with their requirements and edges, and merging the
+/// same map twice does not duplicate nodes.
+#[tokio::test]
+async fn test_resolution_map_extend() {
+    let (_temp, fixture_path) = common::load_fixture("transitive-local").await.unwrap();
+    let manifest = Manifest::from_toml(&format!(
+        r#"
+[overrides]
+"example-b:bar" = {{ path = '{root}/example-b/wit' }}
+"example-c:baz" = {{ path = '{root}/example-c/wit' }}
+"example-c:nested" = {{ path = '{root}/example-c/wit/nested' }}
+"#,
+        root = fixture_path.display()
+    ))
+    .expect("manifest should parse");
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+
+    let resolved = wit::resolve_dependencies(
+        &manifest,
+        fixture_path.join("example-a/wit"),
+        None,
+        client,
+    )
+    .await
+    .unwrap_or_else(|e| panic!("Should be able to resolve: {e:#}"));
+    assert_eq!(resolved.len(), 3);
+
+    let mut merged = DependencyResolutionMap::default();
+    merged.extend(&resolved).unwrap();
+    merged.extend(&resolved).unwrap();
+    assert_eq!(merged.len(), 3, "merging twice must not duplicate nodes");
+    assert_eq!(merged.requirements().count(), 3);
+
+    let bar: PackageReq = "example-b:bar@=0.1.0".parse().unwrap();
+    let mut filtered = DependencyResolutionMap::default();
+    filtered
+        .extend_filtered(&resolved, |r| r.name() != &bar.package)
+        .unwrap();
+    assert_eq!(filtered.len(), 2);
+    assert!(filtered.get(&bar).is_none(), "dropped requirement is gone");
+    assert!(
+        filtered
+            .get(&"example-c:baz@=0.1.0".parse().unwrap())
+            .is_some()
+    );
+}
+
+/// Concatenates every WIT file in a dep directory.
+async fn read_dep_wit(dir: &Path) -> String {
+    let mut entries = tokio::fs::read_dir(dir)
+        .await
+        .unwrap_or_else(|e| panic!("Should be able to read {}: {e}", dir.display()));
+    let mut contents = String::new();
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        contents.push_str(&tokio::fs::read_to_string(entry.path()).await.unwrap());
+    }
+    contents
 }
 
 async fn build_component(fixture_path: &Path) {

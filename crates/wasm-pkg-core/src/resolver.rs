@@ -2,24 +2,25 @@
 // NOTE(thomastaylor312): This is copied and adapted from the `cargo-component` crate: https://github.com/bytecodealliance/cargo-component/blob/f0be1c7d9917aa97e9102e69e3b838dae38d624b/crates/core/src/registry.rs
 
 use std::{
-    collections::{BTreeSet, HashMap, HashSet, hash_map},
+    collections::{BTreeMap, BTreeSet, HashMap, hash_map},
     fmt::Debug,
-    ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     str::FromStr,
 };
 
 use anyhow::{Context, Result, bail};
 use futures_util::TryStreamExt;
-use indexmap::{IndexMap, IndexSet};
-use petgraph::{Direction, acyclic::Acyclic, graph::NodeIndex, stable_graph::StableDiGraph};
+use indexmap::IndexMap;
+use petgraph::{
+    Direction, acyclic::Acyclic, data::Build, graph::NodeIndex, stable_graph::StableDiGraph,
+};
 use semver::{Comparator, Op, Version, VersionReq};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use wasm_pkg_client::{
     Client, Config, ContentDigest, Error as WasmPkgError, PackageRef, Release, VersionInfo,
     caching::{CachingClient, FileCache},
 };
-use wasm_pkg_common::package::PackageSpec;
+use wasm_pkg_common::package::{PackageReq, PackageSpec};
 use wit_component::DecodedWasm;
 use wit_parser::{PackageId, PackageName, Resolve, UnresolvedPackageGroup, WorldId};
 
@@ -30,6 +31,9 @@ use crate::{
 
 /// The name of the default registry.
 pub const DEFAULT_REGISTRY_NAME: &str = "default";
+
+/// Graph of packages where an edge `a -> b` means "`a` depends on `b`".
+pub type DependencyGraph<N, E = petgraph::Direction> = Acyclic<StableDiGraph<N, E>>;
 
 // TODO: functions for resolving dependencies from a lock file
 
@@ -164,6 +168,11 @@ impl RegistryResolution {
 pub struct LocalResolution {
     /// The name of the dependency that was resolved.
     pub name: PackageRef,
+    /// The version declared by the package at `path`.
+    ///
+    /// `None` means the package declares no version, which in WIT is a package distinct from any
+    /// versioned one.
+    pub version: Option<Version>,
     /// The path to the resolved dependency.
     pub path: PathBuf,
 }
@@ -189,11 +198,12 @@ impl DependencyResolution {
 
     /// Gets the resolved version.
     ///
-    /// Returns `None` if the dependency is not resolved from a registry package.
+    /// `None` means the resolved package declares no version, which is only possible for a local
+    /// resolution: a registry release always has one.
     pub fn version(&self) -> Option<&Version> {
         match self {
             Self::Registry(res) => Some(&res.version),
-            Self::Local(_) => None,
+            Self::Local(res) => res.version.as_ref(),
         }
     }
 
@@ -348,8 +358,11 @@ pub struct DependencyResolver<'a> {
     client: CachingClient<FileCache>,
     lock_file: Option<&'a LockFile>,
     packages: HashMap<PackageRef, Vec<VersionInfo>>,
-    dependencies: HashMap<PackageRef, RegistryDependency>,
-    resolutions: DependencyResolutionMap,
+    /// Overrides keyed by the requirement they stand in for. Overlaps are rejected up front, so
+    /// at most one matches any requirement.
+    overrides: BTreeMap<PackageReq, Dependency>,
+    /// Requirements from the root WIT package and, transitively, each local package pulled in.
+    requirements: BTreeSet<PackageReq>,
 }
 
 impl<'a> DependencyResolver<'a> {
@@ -368,9 +381,9 @@ impl<'a> DependencyResolver<'a> {
         Ok(DependencyResolver {
             client,
             lock_file,
-            resolutions: Default::default(),
             packages: Default::default(),
-            dependencies: Default::default(),
+            overrides: Default::default(),
+            requirements: Default::default(),
         })
     }
 
@@ -387,235 +400,284 @@ impl<'a> DependencyResolver<'a> {
         Ok(DependencyResolver {
             client,
             lock_file,
-            resolutions: Default::default(),
             packages: Default::default(),
-            dependencies: Default::default(),
+            overrides: Default::default(),
+            requirements: Default::default(),
         })
     }
 
-    /// Add a dependency to the resolver. If the dependency already exists, then it will be ignored.
-    /// To override an existing dependency, use [`override_dependency`](Self::override_dependency).
-    pub async fn add_dependency(
+    /// Add manifest overrides to the resolver.
+    ///
+    /// Overrides for the same package may name disjoint versions but must not overlap, so the
+    /// outcome does not depend on the order they arrive in.
+    pub fn add_overrides(
         &mut self,
-        name: &PackageRef,
-        dependency: &Dependency,
+        overrides: impl IntoIterator<Item = (PackageReq, Dependency)>,
     ) -> Result<()> {
-        self.add_dependency_internal(name, dependency, false).await
-    }
+        let overrides: Vec<(PackageReq, Dependency)> = overrides.into_iter().collect();
 
-    /// Add a dependency to the resolver. If the dependency already exists, then it will be
-    /// overridden.
-    pub async fn override_dependency(
-        &mut self,
-        name: &PackageRef,
-        dependency: &Dependency,
-    ) -> Result<()> {
-        self.add_dependency_internal(name, dependency, true).await
-    }
-
-    async fn add_dependency_internal(
-        &mut self,
-        name: &PackageRef,
-        dependency: &Dependency,
-        force_override: bool,
-    ) -> Result<()> {
-        match dependency {
-            Dependency::Package(package) => {
-                // Dependency comes from a registry, add a dependency to the resolver
-                let registry_name = package.registry.as_deref().or_else(|| {
-                    self.client.client().ok().and_then(|client| {
-                        client
-                            .config()
-                            .resolve_registry(name)
-                            .map(|reg| reg.as_ref())
-                    })
-                });
-                let package_name = package.name.clone().unwrap_or_else(|| name.clone());
-
-                // Resolve the version from the lock file if there is one
-                let locked = match self.lock_file.as_ref().and_then(|resolver| {
-                    resolver
-                        .resolve(registry_name, &package_name, &package.version)
-                        .transpose()
-                }) {
-                    Some(Ok(locked)) => Some(locked),
-                    Some(Err(e)) => return Err(e),
-                    _ => None,
-                };
-
-                // So if it wasn't already fetched first? then we'll try and resolve it later, and the override
-                // is not present there for some reason
-                if !force_override
-                    && (self.resolutions.contains_key(name) || self.dependencies.contains_key(name))
-                {
-                    tracing::debug!(%name, %dependency, "dependency already exists and override is not set, ignoring");
-                    return Ok(());
+        // Check new keys against each other and against overrides already registered.
+        let mut conflicts: BTreeSet<String> = BTreeSet::new();
+        for (i, (key_a, _)) in overrides.iter().enumerate() {
+            let later = overrides.iter().skip(i + 1).map(|(key, _)| key);
+            for key_b in later.chain(self.overrides.keys()) {
+                if key_a.intersects(key_b) {
+                    let (a, b) = if key_a.to_string() <= key_b.to_string() {
+                        (key_a, key_b)
+                    } else {
+                        (key_b, key_a)
+                    };
+                    conflicts.insert(format!("`{a}` and `{b}`"));
                 }
-                self.dependencies.insert(
-                    name.to_owned(),
-                    RegistryDependency {
-                        package: package_name,
-                        version: package.version.clone(),
-                        locked: locked.map(|l| (l.version.clone(), l.digest.clone())),
-                    },
-                );
-            }
-            Dependency::Local(p) => {
-                let res = DependencyResolution::Local(LocalResolution {
-                    name: name.clone(),
-                    path: p.clone(),
-                });
-
-                // This is a bit of a hack, but if there are multiple local dependencies that are
-                // nested and overridden, getting the packages from the local package treats _all_
-                // deps as registry deps. So if we're handling a local path and the dependencies
-                // have a registry package already, override it. Otherwise follow normal overrides.
-                // We should definitely fix this and change where we resolve these things
-                let should_insert = force_override
-                    || self.dependencies.contains_key(name)
-                    || !self.resolutions.contains_key(name);
-                if !should_insert {
-                    tracing::debug!(%name, "dependency already exists and registry override is not set, ignoring");
-                    return Ok(());
-                }
-
-                // Because we got here, we should remove anything from dependencies that is the same
-                // package because we're overriding with the local package. Technically we could be
-                // clever and just do this in the boolean above, but I'm paranoid
-                self.dependencies.remove(name);
-
-                // Now that we check we haven't already inserted this dep, get the packages from the
-                // local dependency and add those to the resolver before adding the dependency
-                let (_, packages) = get_packages(p)
-                    .context("Error getting dependent packages from local dependency")?;
-                Box::pin(self.add_packages(packages))
-                    .await
-                    .context("Error adding packages to resolver for local dependency")?;
-
-                let prev = self.resolutions.insert(name.clone(), res);
-                assert!(prev.is_none());
             }
         }
+        if !conflicts.is_empty() {
+            bail!(
+                "overrides must not overlap: {} - remove one from each pair",
+                conflicts.into_iter().collect::<Vec<_>>().join("; ")
+            );
+        }
 
-        Ok(())
-    }
-
-    /// A helper function for adding an iterator of package refs and their associated version
-    /// requirements to the resolver
-    pub async fn add_packages(
-        &mut self,
-        packages: impl IntoIterator<Item = (PackageRef, VersionReq)>,
-    ) -> Result<()> {
-        for (package, req) in packages {
-            self.add_dependency(
-                &package,
-                &Dependency::Package(RegistryPackage {
-                    name: Some(package.clone()),
-                    version: req,
-                    registry: None,
-                }),
-            )
-            .await?;
+        for (key, dependency) in overrides {
+            self.overrides.insert(key, dependency);
         }
         Ok(())
     }
 
-    /// Resolve all dependencies.
+    /// Add the version requirements named by a WIT file (or package) to the resolver.
+    pub fn add_requirements(&mut self, requirements: impl IntoIterator<Item = PackageReq>) {
+        self.requirements.extend(requirements);
+    }
+
+    /// Resolve all requirements.
     ///
-    /// This will download all dependencies that are not already present in client storage.
-    ///
-    /// Returns the dependency resolution map.
+    /// This will download all dependencies that are not already present in client storage. The
+    /// result does not depend on the order requirements or overrides were added in.
     pub async fn resolve(mut self) -> Result<DependencyResolutionMap> {
-        let mut resolutions = self.resolutions;
-        for (name, dependency) in self.dependencies.into_iter() {
-            // We need to clone a handle to the client because we mutably borrow self below. Might
-            // be worth replacing the mutable borrow with a RwLock down the line.
-            let client = self.client.clone();
+        let mut map = DependencyResolutionMap::default();
+        // Requirements that resolve to the same release or local path share one node.
+        let mut nodes: HashMap<ResolutionIdentity, NodeIndex> = HashMap::new();
+        // Local packages, cached so a path is only parsed once.
+        let mut local_packages: HashMap<PathBuf, (PackageSpec, BTreeSet<PackageReq>)> =
+            HashMap::new();
+        let overrides = std::mem::take(&mut self.overrides);
 
-            let (selected_version, digest) = if client.is_readonly() {
-                dependency
-                    .locked
-                    .as_ref()
-                    .map(|(ver, digest)| (ver, Some(digest)))
-                    .ok_or_else(|| {
-                        anyhow::anyhow!("Couldn't find locked dependency while in offline mode")
-                    })?
-            } else {
-                let versions =
-                    load_package(&mut self.packages, &self.client, dependency.package.clone())
-                        .await
-                        .with_context(|| format!("package: {}", dependency.package.clone()))?
-                        .with_context(|| {
+        // Each entry carries the node that depends on the requirement, so an edge can be drawn
+        // once the requirement's own node exists.
+        let mut worklist: Vec<(PackageReq, Option<NodeIndex>)> =
+            std::mem::take(&mut self.requirements)
+                .into_iter()
+                .map(|req| (req, None))
+                .collect();
+
+        while let Some((req, parent)) = worklist.pop() {
+            let matched = overrides
+                .iter()
+                .find(|(key, _)| key.intersects(&req))
+                .map(|(key, dep)| (key.clone(), dep.clone()));
+
+            let (identity, resolution, discovered) = match matched {
+                Some((key, Dependency::Local(path))) => {
+                    if !local_packages.contains_key(&path) {
+                        let entry = get_packages(&path).with_context(|| {
                             format!(
-                                "package `{name}` was not found in component registry",
-                                name = dependency.package
+                                "Error getting packages from local dependency {}",
+                                path.display()
                             )
                         })?;
+                        local_packages.insert(path.clone(), entry);
+                    }
+                    let (found, packages) = local_packages.get(&path).expect("just inserted");
 
-                match &dependency.locked {
-                    Some((version, digest)) => {
-                        // The dependency had a lock file entry, so attempt to do an exact match first
-                        let exact_req = VersionReq {
-                            comparators: vec![Comparator {
-                                op: Op::Exact,
-                                major: version.major,
-                                minor: Some(version.minor),
-                                patch: Some(version.patch),
-                                pre: version.pre.clone(),
-                            }],
-                        };
+                    // The package on disk must satisfy the requirement that reached it.
+                    if !req.matches(found) {
+                        bail!(
+                            "override `{key}` points at {path}, which provides `{found}`, but it is \
+                             required as `{req}`",
+                            path = path.display(),
+                        );
+                    }
 
-                        // If an exact match can't be found, fallback to the latest release to satisfy
-                        // the version requirement; this can happen when packages are yanked. If we did
-                        // find an exact match, return the digest for comparison after fetching the
-                        // release
-                        find_latest_release(versions, &exact_req)
-                            .map(|v| (&v.version, Some(digest)))
-                            .or_else(|| find_latest_release(versions, &dependency.version).map(|v| (&v.version, None)))
-                        }
-                    None => find_latest_release(versions, &dependency.version).map(|v| (&v.version, None)),
-                }.with_context(||
-                    format!(
-                        "component registry package `{name}` has no release matching version requirement `{version}`",
-                        name = dependency.package,
-                        version = dependency.version
+                    (
+                        ResolutionIdentity::Local(path.clone()),
+                        DependencyResolution::Local(LocalResolution {
+                            name: found.package.clone(),
+                            version: found.version.clone(),
+                            path: path.clone(),
+                        }),
+                        packages.iter().cloned().collect::<Vec<_>>(),
                     )
-                )?
+                }
+                Some((_key, Dependency::Package(package))) => {
+                    let name = req.package.clone();
+                    let package_name = package.name.clone().unwrap_or_else(|| name.clone());
+                    let res = self
+                        .resolve_registry(
+                            &name,
+                            package_name,
+                            package.version.clone(),
+                            package.registry.as_deref(),
+                        )
+                        .await?;
+                    (
+                        ResolutionIdentity::from_registry(&res),
+                        DependencyResolution::Registry(res),
+                        Vec::new(),
+                    )
+                }
+                None => {
+                    let name = req.package.clone();
+                    let res = self
+                        .resolve_registry(&name, name.clone(), req.version.clone(), None)
+                        .await?;
+                    (
+                        ResolutionIdentity::from_registry(&res),
+                        DependencyResolution::Registry(res),
+                        Vec::new(),
+                    )
+                }
             };
 
-            // We need to clone a handle to the client because we mutably borrow self above. Might
-            // be worth replacing the mutable borrow with a RwLock down the line.
-            let release = client
-                .get_release(&dependency.package, selected_version)
-                .await?;
-            if let Some(digest) = digest
-                && &release.content_digest != digest
-            {
-                bail!(
-                    "component registry package `{name}` (v`{version}`) has digest `{content}` but the lock file specifies digest `{digest}`",
-                    name = dependency.package,
-                    version = release.version,
-                    content = release.content_digest,
-                );
-            }
-            let resolution = RegistryResolution {
-                name: name.clone(),
-                package: dependency.package.clone(),
-                registry: self.client.client().ok().and_then(|client| {
-                    client
-                        .config()
-                        .resolve_registry(&name)
-                        .map(ToString::to_string)
-                }),
-                requirement: dependency.version.clone(),
-                version: release.version.clone(),
-                digest: release.content_digest.clone(),
-                client: self.client.clone(),
+            let node = match nodes.get(&identity) {
+                Some(&node) => node,
+                None => {
+                    let node = map.graph.add_node(resolution);
+                    nodes.insert(identity, node);
+                    for dep in discovered {
+                        worklist.push((dep, Some(node)));
+                    }
+                    node
+                }
             };
-            resolutions.insert(name, DependencyResolution::Registry(resolution));
+
+            map.requirements.insert(req.clone(), node);
+
+            // `try_update_edge` keeps the graph acyclic and rejects self-loops.
+            if let Some(parent) = parent {
+                map.graph
+                    .try_update_edge(parent, node, ())
+                    .map_err(|e| match e {
+                        petgraph::acyclic::AcyclicEdgeError::Cycle(cycle) => {
+                            anyhow::anyhow!("cyclical dependency detected").context(format!(
+                                "other package: {}",
+                                map.graph[cycle.node_id()].name()
+                            ))
+                        }
+                        petgraph::acyclic::AcyclicEdgeError::SelfLoop => {
+                            anyhow::anyhow!("package `{req}` depends on itself")
+                        }
+                        petgraph::acyclic::AcyclicEdgeError::InvalidEdge => anyhow::anyhow!(
+                            "could not successfully add the edge to the dependency graph"
+                        ),
+                    })?;
+            }
         }
 
-        Ok(resolutions)
+        Ok(map)
+    }
+
+    /// Resolve a single registry package, selecting a release that satisfies `version` and
+    /// consulting the lock file if one is present.
+    async fn resolve_registry(
+        &mut self,
+        name: &PackageRef,
+        package: PackageRef,
+        version: VersionReq,
+        registry: Option<&str>,
+    ) -> Result<RegistryResolution> {
+        // Clone the client so `self` can be borrowed mutably below.
+        let client = self.client.clone();
+
+        let registry_name = registry.or_else(|| {
+            self.client.client().ok().and_then(|client| {
+                client
+                    .config()
+                    .resolve_registry(name)
+                    .map(|reg| reg.as_ref())
+            })
+        });
+
+        let locked = match self.lock_file.as_ref().and_then(|resolver| {
+            resolver
+                .resolve(registry_name, &package, &version)
+                .transpose()
+        }) {
+            Some(Ok(locked)) => Some(locked),
+            Some(Err(e)) => return Err(e),
+            _ => None,
+        };
+
+        let (selected_version, digest) = if client.is_readonly() {
+            locked
+                .as_ref()
+                .map(|l| (&l.version, Some(&l.digest)))
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Couldn't find locked dependency while in offline mode")
+                })?
+        } else {
+            let versions = load_package(&mut self.packages, &self.client, package.clone())
+                .await
+                .with_context(|| format!("package: {}", package.clone()))?
+                .with_context(|| {
+                    format!("package `{package}` was not found in component registry")
+                })?;
+
+            match &locked {
+                Some(locked) => {
+                    // Try an exact match against the locked version first.
+                    let locked_version = &locked.version;
+                    let exact_req = VersionReq {
+                        comparators: vec![Comparator {
+                            op: Op::Exact,
+                            major: locked_version.major,
+                            minor: Some(locked_version.minor),
+                            patch: Some(locked_version.patch),
+                            pre: locked_version.pre.clone(),
+                        }],
+                    };
+
+                    // Fall back to the latest release if the locked one was yanked, carrying the
+                    // locked digest along for comparison after the fetch.
+                    find_latest_release(versions, &exact_req)
+                        .map(|v| (&v.version, Some(&locked.digest)))
+                        .or_else(|| find_latest_release(versions, &version).map(|v| (&v.version, None)))
+                }
+                None => find_latest_release(versions, &version).map(|v| (&v.version, None)),
+            }
+            .with_context(|| {
+                format!(
+                    "component registry package `{package}` has no release matching version requirement `{version}`"
+                )
+            })?
+        };
+
+        let release = client.get_release(&package, selected_version).await?;
+        if let Some(digest) = digest
+            && &release.content_digest != digest
+        {
+            bail!(
+                "component registry package `{package}` (v`{version}`) has digest `{content}` but the lock file specifies digest `{digest}`",
+                version = release.version,
+                content = release.content_digest,
+            );
+        }
+
+        let registry = self.client.client().ok().and_then(|client| {
+            client
+                .config()
+                .resolve_registry(name)
+                .map(ToString::to_string)
+        });
+
+        Ok(RegistryResolution {
+            name: name.clone(),
+            package,
+            registry,
+            requirement: version,
+            version: release.version.clone(),
+            digest: release.content_digest.clone(),
+            client: self.client.clone(),
+        })
     }
 }
 
@@ -634,13 +696,33 @@ async fn load_package<'b>(
     }
 }
 
-#[derive(Debug)]
-struct RegistryDependency {
-    /// The canonical package name of the registry package. In most cases, this is the same as the
-    /// name but could be different if the given package name has been remapped
-    package: PackageRef,
-    version: VersionReq,
-    locked: Option<(Version, ContentDigest)>,
+/// Identity of a resolved package, so requirements selecting the same release or local path share
+/// one graph node.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum ResolutionIdentity {
+    Registry {
+        package: PackageRef,
+        version: Version,
+        registry: Option<String>,
+    },
+    Local(PathBuf),
+}
+
+impl ResolutionIdentity {
+    fn from_registry(res: &RegistryResolution) -> Self {
+        Self::Registry {
+            package: res.package.clone(),
+            version: res.version.clone(),
+            registry: res.registry.clone(),
+        }
+    }
+
+    fn of(resolution: &DependencyResolution) -> Self {
+        match resolution {
+            DependencyResolution::Registry(res) => Self::from_registry(res),
+            DependencyResolution::Local(res) => Self::Local(res.path.clone()),
+        }
+    }
 }
 
 fn find_latest_release<'a>(
@@ -658,63 +740,145 @@ fn find_latest_release<'a>(
 // write this, so any future people seeing this should feel free to refactor it if they know a
 // better way to do it.
 
-/// Represents a map of dependency resolutions.
+/// Resolutions chosen for a set of requirements.
 ///
-/// The key to the map is the package name of the dependency.
+/// Stored in a [`DependencyGraph`] where an edge `a -> b` means "`a` depends on `b`". Each
+/// requirement maps to exactly one node; a node may satisfy several requirements.
 #[derive(Debug, Clone, Default)]
-pub struct DependencyResolutionMap(HashMap<PackageRef, DependencyResolution>);
-
-impl AsRef<HashMap<PackageRef, DependencyResolution>> for DependencyResolutionMap {
-    fn as_ref(&self) -> &HashMap<PackageRef, DependencyResolution> {
-        &self.0
-    }
-}
-
-impl Deref for DependencyResolutionMap {
-    type Target = HashMap<PackageRef, DependencyResolution>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for DependencyResolutionMap {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
+pub struct DependencyResolutionMap {
+    graph: DependencyGraph<DependencyResolution, ()>,
+    requirements: BTreeMap<PackageReq, NodeIndex>,
 }
 
 impl DependencyResolutionMap {
-    /// Fetch all dependencies and ensure there are no circular dependencies. Returns the decoded
-    /// dependencies (sorted topologically), ready to use for output or adding to a [`Resolve`].
+    /// The resolution chosen for `requirement`, if it was resolved.
+    pub fn get(&self, requirement: &PackageReq) -> Option<&DependencyResolution> {
+        self.requirements
+            .get(requirement)
+            .map(|id| &self.graph[*id])
+    }
+
+    /// Every requirement and the resolution chosen for it.
+    pub fn requirements(&self) -> impl Iterator<Item = (&PackageReq, &DependencyResolution)> {
+        self.requirements
+            .iter()
+            .map(|(req, id)| (req, &self.graph[*id]))
+    }
+
+    /// Every distinct resolution, dependencies before their dependents.
+    pub fn resolutions(&self) -> impl Iterator<Item = &DependencyResolution> {
+        // `nodes_iter` orders a node before its successors; reverse to put dependencies first.
+        let mut nodes: Vec<NodeIndex> = self.graph.nodes_iter().collect();
+        nodes.reverse();
+        nodes.into_iter().map(|id| &self.graph[id])
+    }
+
+    /// The number of distinct resolutions.
+    pub fn len(&self) -> usize {
+        self.graph.node_count()
+    }
+
+    /// Whether there are no resolutions.
+    pub fn is_empty(&self) -> bool {
+        self.graph.node_count() == 0
+    }
+
+    /// Insert a requirement and the resolution it selects, reusing an existing node for the same
+    /// resolution.
+    pub fn insert(&mut self, requirement: PackageReq, resolution: DependencyResolution) {
+        let identity = ResolutionIdentity::of(&resolution);
+        let node = match self
+            .graph
+            .node_indices()
+            .find(|id| ResolutionIdentity::of(&self.graph[*id]) == identity)
+        {
+            Some(id) => id,
+            None => self.graph.add_node(resolution),
+        };
+        self.requirements.insert(requirement, node);
+    }
+
+    /// Merge `other` into `self`, preserving edges. Errors if the result would contain a cycle.
+    pub fn extend(&mut self, other: &DependencyResolutionMap) -> Result<()> {
+        self.extend_filtered(other, |_| true)
+    }
+
+    /// Merge the resolutions of `other` that satisfy `keep`, preserving edges between them.
+    /// Requirements and edges of dropped resolutions are dropped as well.
+    pub fn extend_filtered(
+        &mut self,
+        other: &DependencyResolutionMap,
+        keep: impl Fn(&DependencyResolution) -> bool,
+    ) -> Result<()> {
+        // Map each kept node in `other` to the equivalent node here, adding it if missing.
+        let mut remap: HashMap<NodeIndex, NodeIndex> = HashMap::new();
+        for id in other.graph.node_indices() {
+            let resolution = &other.graph[id];
+            if !keep(resolution) {
+                continue;
+            }
+            let identity = ResolutionIdentity::of(resolution);
+            let node = match self
+                .graph
+                .node_indices()
+                .find(|existing| ResolutionIdentity::of(&self.graph[*existing]) == identity)
+            {
+                Some(existing) => existing,
+                None => self.graph.add_node(resolution.clone()),
+            };
+            remap.insert(id, node);
+        }
+
+        for edge in other.graph.edge_indices() {
+            let (a, b) = other
+                .graph
+                .edge_endpoints(edge)
+                .expect("edge index should have endpoints");
+            // Skip edges that touch a resolution that was filtered out.
+            let (Some(&a), Some(&b)) = (remap.get(&a), remap.get(&b)) else {
+                continue;
+            };
+            self.graph.try_update_edge(a, b, ()).map_err(|e| match e {
+                petgraph::acyclic::AcyclicEdgeError::Cycle(cycle) => {
+                    anyhow::anyhow!("cyclical dependency detected").context(format!(
+                        "other package: {}",
+                        self.graph[cycle.node_id()].name()
+                    ))
+                }
+                petgraph::acyclic::AcyclicEdgeError::SelfLoop => {
+                    anyhow::anyhow!("package depends on itself")
+                }
+                petgraph::acyclic::AcyclicEdgeError::InvalidEdge => {
+                    anyhow::anyhow!("could not successfully add the edge to the dependency graph")
+                }
+            })?;
+        }
+
+        for (requirement, id) in &other.requirements {
+            if let Some(&node) = remap.get(id) {
+                self.requirements.insert(requirement.clone(), node);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Fetch all dependencies, decoded in dependency-first order, ready for output or adding to a
+    /// [`Resolve`]. The graph is acyclic by construction.
     pub async fn decode_dependencies(
         &self,
     ) -> Result<IndexMap<PackageName, DecodedDependency<'_>>> {
-        // Start by decoding all of the dependencies
         let mut deps = IndexMap::new();
-        for (name, resolution) in self.0.iter() {
+        for resolution in self.resolutions() {
             let decoded = resolution.decode().await?;
             if let Some(prev) = deps.insert(decoded.package_name().clone(), decoded) {
                 anyhow::bail!(
                     "duplicate definitions of package `{prev}` found while decoding dependency `{name}`",
-                    prev = prev.package_name()
+                    prev = prev.package_name(),
+                    name = resolution.name(),
                 );
             }
         }
-
-        // Do a topological sort of the dependencies
-        let mut order = IndexSet::new();
-        let mut visiting = HashSet::new();
-        for dep in deps.values() {
-            visit(dep, &deps, &mut order, &mut visiting)?;
-        }
-
-        assert!(visiting.is_empty());
-
-        // Now that we have the right order, re-order the dependencies to match
-        deps.sort_by(|name_a, _, name_b, _| {
-            order.get_index_of(name_a).cmp(&order.get_index_of(name_b))
-        });
 
         Ok(deps)
     }
@@ -788,75 +952,6 @@ impl DependencyResolutionMap {
         Ok((merged, package))
     }
 }
-
-fn visit<'a>(
-    dep: &'a DecodedDependency<'a>,
-    deps: &'a IndexMap<PackageName, DecodedDependency>,
-    order: &mut IndexSet<PackageName>,
-    visiting: &mut HashSet<&'a PackageName>,
-) -> Result<()> {
-    if order.contains(dep.package_name()) {
-        return Ok(());
-    }
-
-    // Visit any unresolved foreign dependencies
-    match dep {
-        DecodedDependency::Wit {
-            package,
-            resolution,
-        } => {
-            for name in package.main.foreign_deps.keys() {
-                // Only visit known dependencies
-                // wit-parser will error on unknown foreign dependencies when
-                // the package is resolved
-                if let Some(dep) = deps.get(name) {
-                    if !visiting.insert(name) {
-                        anyhow::bail!(
-                            "foreign dependency `{name}` forms a dependency cycle while parsing dependency `{other}`",
-                            other = resolution.name()
-                        );
-                    }
-
-                    visit(dep, deps, order, visiting)?;
-                    assert!(visiting.remove(name));
-                }
-            }
-        }
-        DecodedDependency::Wasm {
-            decoded,
-            resolution,
-        } => {
-            // Look for foreign packages in the decoded dependency
-            for (_, package) in &decoded.resolve().packages {
-                if package.name.namespace == dep.package_name().namespace
-                    && package.name.name == dep.package_name().name
-                {
-                    continue;
-                }
-
-                if let Some(dep) = deps.get(&package.name) {
-                    if !visiting.insert(&package.name) {
-                        anyhow::bail!(
-                            "foreign dependency `{name}` forms a dependency cycle while parsing dependency `{other}`",
-                            name = package.name,
-                            other = resolution.name()
-                        );
-                    }
-
-                    visit(dep, deps, order, visiting)?;
-                    assert!(visiting.remove(&package.name));
-                }
-            }
-        }
-    }
-
-    assert!(order.insert(dep.package_name().clone()));
-
-    Ok(())
-}
-
-/// Graph of publishable packages with the [`petgraph::Direction`] edges describing the dependency direction.
-pub type DependencyGraph<N> = Acyclic<StableDiGraph<N, petgraph::Direction>>;
 
 /// Mapping of [`PackageRef`]s to the respective index inside the dependency graph.
 pub type LocalPackageIndex = HashMap<PackageRef, (NodeIndex, PathBuf)>;
