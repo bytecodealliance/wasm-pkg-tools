@@ -343,6 +343,33 @@ mod tests {
     }
 
     #[test]
+    fn intersects_two_ranges() {
+        let req = |s: &str| s.parse::<PackageReq>().unwrap();
+        assert!(!req("foo:bar@^0.1").intersects(&req("foo:bar@^0.2")));
+        assert!(req("foo:bar@>=0.1, <0.3").intersects(&req("foo:bar@^0.2")));
+        assert!(req("foo:bar@~0.1.2").intersects(&req("foo:bar@^0.1")));
+        assert!(!req("foo:bar@>1").intersects(&req("foo:bar@<1")));
+        assert!(req("foo:bar@>1").intersects(&req("foo:bar@>=1")));
+    }
+
+    #[test]
+    fn prerelease_versions_are_exact() {
+        let draft = exact("0.2.0-draft");
+        assert!(draft.matches(&spec(Some("0.2.0-draft"))));
+        assert!(!draft.matches(&spec(Some("0.2.0"))));
+        assert!(!exact("0.2.0").matches(&spec(Some("0.2.0-draft"))));
+        assert!(!draft.intersects(&exact("0.2.0")));
+        assert_eq!(draft.as_exact(), Some("0.2.0-draft".parse().unwrap()));
+    }
+
+    #[test]
+    fn as_exact_rejects_partial_and_non_exact() {
+        for text in ["foo:bar@*", "foo:bar@^0.1.0", "foo:bar@=0.1", "foo:bar@>=0.1.0"] {
+            assert!(text.parse::<PackageReq>().unwrap().as_exact().is_none(), "{text}");
+        }
+    }
+
+    #[test]
     fn ordering_is_deterministic() {
         let mut reqs = [exact("0.2.0"), PackageReq::any(pkg()), exact("0.1.0")];
         reqs.sort();

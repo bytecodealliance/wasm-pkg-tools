@@ -416,9 +416,11 @@ impl<'a> DependencyResolver<'a> {
     ) -> Result<()> {
         let overrides: Vec<(PackageReq, Dependency)> = overrides.into_iter().collect();
 
+        // Check new keys against each other and against overrides already registered.
         let mut conflicts: BTreeSet<String> = BTreeSet::new();
         for (i, (key_a, _)) in overrides.iter().enumerate() {
-            for (key_b, _) in overrides.iter().skip(i + 1) {
+            let later = overrides.iter().skip(i + 1).map(|(key, _)| key);
+            for key_b in later.chain(self.overrides.keys()) {
                 if key_a.intersects(key_b) {
                     let (a, b) = if key_a.to_string() <= key_b.to_string() {
                         (key_a, key_b)
