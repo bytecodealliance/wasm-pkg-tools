@@ -1,0 +1,7 @@
+package my:component;
+
+// Exports two versions of the same package, which is only expressible with per-version overrides.
+world component {
+    export my:local/foo@0.1.0;
+    export my:local/foo@0.2.0;
+}
