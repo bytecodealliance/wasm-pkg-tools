@@ -6,7 +6,7 @@ edition.workspace = true
 version.workspace = true
 authors.workspace = true
 license.workspace = true
-readme = "../../README.md"
+readme = "README.md"
 
 [features]
 default = ["docker-tests"]
