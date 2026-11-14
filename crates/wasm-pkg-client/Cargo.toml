@@ -33,13 +33,11 @@ tokio = { workspace = true, features = ["rt", "macros"] }
 tokio-util = { workspace = true, features = ["io", "io-util", "codec"] }
 toml = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 url = { workspace = true }
 wasm-metadata = { workspace = true }
 wasm-pkg-common = { workspace = true, features = ["registry-config"] }
 wit-component = { workspace = true, features = ["semver-check"] }
 wit-parser = { workspace = true }
-petgraph = { workspace = true }
 tempfile = { workspace = true }
 
 [dev-dependencies]

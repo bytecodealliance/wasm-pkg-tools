@@ -42,7 +42,6 @@ anstream = { workspace = true, features = ["test"] }
 base64 = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
-testcontainers = { workspace = true }
 
 [lints]
 workspace = true

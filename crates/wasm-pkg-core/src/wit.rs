@@ -79,7 +79,7 @@ pub async fn build_package(
                 e
             }
         })?;
-    let bytes = wit_component::encode(&resolve, pkg_id)?;
+    let bytes = wit_component::encode(&resolve, pkg_id, false)?;
 
     let pkg = &resolve.packages[pkg_id];
     let name = PackageRef::new(

@@ -79,7 +79,7 @@ fn wit_to_wasm(wit: &str) -> Vec<u8> {
     let pkg_id = resolve
         .push_str("test.wit", wit)
         .expect("test WIT should parse");
-    wit_component::encode(&resolve, pkg_id).expect("test WIT should encode")
+    wit_component::encode(&resolve, pkg_id, false).expect("test WIT should encode")
 }
 
 async fn publish(client: &Client, bytes: Vec<u8>, opts: PublishOpts) -> Result<(), Error> {

@@ -42,6 +42,7 @@ fn component_bytes() -> Vec<u8> {
         &resolve,
         world,
         wit_component::StringEncoding::UTF8,
+        false,
     )
     .expect("component metadata should embed");
     wit_component::ComponentEncoder::default()
