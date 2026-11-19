@@ -1,0 +1,5 @@
+package cycle:a@0.1.0;
+
+world a {
+    import cycle:b/b@0.1.0;
+}

@@ -1,7 +1,7 @@
 //! Functions for building WIT packages and fetching their dependencies.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -9,13 +9,13 @@ use std::{
 use anyhow::{Context as _, Result, bail};
 use indexmap::IndexMap;
 use petgraph::{Direction, data::Build};
-use semver::{Version, VersionReq};
+use semver::Version;
 use wasm_metadata::{AddMetadata, AddMetadataField};
 use wasm_pkg_client::{
     PackageRef,
     caching::{CachingClient, FileCache},
 };
-use wasm_pkg_common::package::PackageSpec;
+use wasm_pkg_common::package::{PackageReq, PackageSpec};
 use wit_component::WitPrinter;
 use wit_parser::{PackageId, PackageName, Resolve};
 
@@ -23,9 +23,8 @@ use crate::{
     lock::LockFile,
     manifest::Manifest,
     resolver::{
-        DecodedDependency, Dependency, DependencyGraph, DependencyResolution,
-        DependencyResolutionMap, DependencyResolver, LocalPackageIndex, LocalResolution,
-        RegistryPackage,
+        DecodedDependency, DependencyGraph, DependencyResolution, DependencyResolutionMap,
+        DependencyResolver, LocalPackageIndex, LocalResolution,
     },
 };
 
@@ -146,14 +145,9 @@ pub async fn fetch_dependencies(
     populate_dependencies(wit_dir, &dependencies, output).await
 }
 
-/// Generate the list of all packages and their version requirement from the given path (a directory
-/// or file).
-///
-/// This is a lower level function exposed for convenience that is used by higher level functions
-/// for resolving dependencies.
-pub fn get_packages(
-    path: impl AsRef<Path>,
-) -> Result<(PackageSpec, HashSet<(PackageRef, VersionReq)>)> {
+/// Generate the packages named by the given path (a directory or file), each with the version
+/// requirement the WIT asks for.
+pub fn get_packages(path: impl AsRef<Path>) -> Result<(PackageSpec, BTreeSet<PackageReq>)> {
     let path = path.as_ref();
 
     // Build a package group out of a single file or a directory
@@ -201,7 +195,7 @@ pub fn get_packages(
     };
 
     // Get all package refs from the main package and then from any nested packages
-    let packages: HashSet<(PackageRef, VersionReq)> =
+    let packages: BTreeSet<PackageReq> =
         packages_from_foreign_deps(group.main.foreign_deps.into_keys())
             .chain(
                 group
@@ -240,9 +234,12 @@ pub(crate) fn get_local_dependencies(
         }
     }
     for ((spec, _), deps) in pkg_trees {
-        // TODO handle version matching for dependencies
-        for (dep, _version) in deps {
-            if let Some(&(dep, _)) = indices.get(&dep) {
+        for dep_req in deps {
+            if let Some(&(dep, _)) = indices.get(&dep_req.package) {
+                // A versioned requirement does not match a differently-versioned local package.
+                if !dep_req.matches(&graph[dep]) {
+                    continue;
+                }
                 let pkg = &spec.package;
                 let (id, _) = indices[pkg];
                 // // pkg <=DependsOn= dep
@@ -280,41 +277,16 @@ pub async fn resolve_dependencies(
     client: CachingClient<FileCache>,
 ) -> Result<DependencyResolutionMap> {
     let mut resolver = DependencyResolver::new_with_client(client, lock_file)?;
-    // add deps from manifest first in case they're local deps and then add deps from the directory
-    if let Some(overrides) = manifest.overrides.as_ref() {
-        tracing::debug!("detected manifest overrides");
-        for (pkg, ovr) in overrides.iter() {
-            let pkg: PackageRef = pkg.parse().context("Unable to parse as a package ref")?;
-            let dep = match (ovr.path.as_ref(), ovr.version.as_ref()) {
-                (Some(path), v) => {
-                    if v.is_some() {
-                        tracing::warn!("Ignoring version override for local package");
-                    }
-                    let path = tokio::fs::canonicalize(path).await.with_context(|| {
-                        format!("resolving local dependency {}", path.display())
-                    })?;
-                    Dependency::Local(path)
-                }
-                (None, Some(version)) => Dependency::Package(RegistryPackage {
-                    name: Some(pkg.clone()),
-                    version: version.to_owned(),
-                    registry: None,
-                }),
-                (None, None) => {
-                    tracing::warn!("Found override without version or path, ignoring");
-                    continue;
-                }
-            };
 
-            tracing::debug!(dependency = %dep);
-            resolver
-                .add_dependency(&pkg, &dep)
-                .await
-                .with_context(|| format!("unable to add dependency {dep}"))?;
-        }
+    // Overrides decide which requirement every WIT import maps to, so add them first.
+    let overrides = manifest.override_dependencies().await?;
+    if !overrides.is_empty() {
+        tracing::debug!(count = overrides.len(), "detected manifest overrides");
     }
+    resolver.add_overrides(overrides)?;
+
     let (_spec, packages) = get_packages(path)?;
-    resolver.add_packages(packages).await?;
+    resolver.add_requirements(packages);
     resolver.resolve().await
 }
 
@@ -419,19 +391,14 @@ async fn write_wasm_deps(
 
 fn packages_from_foreign_deps(
     deps: impl IntoIterator<Item = PackageName>,
-) -> impl Iterator<Item = (PackageRef, VersionReq)> {
+) -> impl Iterator<Item = PackageReq> {
     deps.into_iter().filter_map(|dep| {
-        let name = PackageRef::new(dep.namespace.parse().ok()?, dep.name.parse().ok()?);
-        let version = match dep.version {
-            Some(v) => format!("={v}"),
-            None => "*".to_string(),
-        };
-        Some((
-            name,
-            version
-                .parse()
-                .expect("Unable to parse into version request, this is programmer error"),
-        ))
+        let package = PackageRef::new(dep.namespace.parse().ok()?, dep.name.parse().ok()?);
+        // A versioned import names that exact version; a bare one asks for any version.
+        Some(match dep.version {
+            Some(version) => PackageReq::exact(package, &version),
+            None => PackageReq::any(package),
+        })
     })
 }
 
@@ -550,4 +517,58 @@ pub async fn populate_dependencies_workspace(
 fn name_from_package_name(package_name: &PackageName) -> String {
     let package_name_str = package_name.to_string();
     package_name_str.replace([':', '@'], "-")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An override key and the WIT import it targets must produce the same requirement.
+    #[test]
+    fn override_key_matches_foreign_dep() {
+        for version in [
+            None,
+            Some("0.1.0"),
+            Some("1.2.3"),
+            Some("0.2.0-draft"),
+            Some("0.2.0-alpha.1"),
+        ] {
+            let from_wit = packages_from_foreign_deps([PackageName {
+                namespace: "foo".to_string(),
+                name: "bar".to_string(),
+                version: version.map(|v| v.parse().unwrap()),
+            }])
+            .next()
+            .expect("foreign dep should yield a package");
+
+            let key = match version {
+                Some(version) => format!("foo:bar@{version}"),
+                None => "foo:bar".to_string(),
+            };
+            let from_key: PackageSpec = key.parse().unwrap();
+
+            assert_eq!(
+                PackageReq::from(from_key),
+                from_wit,
+                "requirement for {version:?}"
+            );
+            assert_eq!(
+                from_wit.to_string(),
+                version
+                    .map(|v| format!("foo:bar@={v}"))
+                    .unwrap_or("foo:bar@*".to_string()),
+                "requirement for {version:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_override_keys_are_rejected() {
+        for key in ["foo:bar@", "foo:bar@not-a-version", "not a package ref"] {
+            assert!(
+                key.parse::<PackageSpec>().is_err(),
+                "`{key}` should not parse"
+            );
+        }
+    }
 }

@@ -1,19 +1,21 @@
 //! Type definitions and functions for working with `wkg.toml` files.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result};
 use semver::VersionReq;
 use serde::{Deserialize, Serialize};
+use wasm_pkg_common::package::{PackageReq, PackageSpec};
 mod paths;
 pub mod workspace;
 
 use workspace::*;
 
 use crate::manifest::paths::find_root_iter;
+use crate::resolver::{Dependency, RegistryPackage};
 
 pub use crate::manifest::paths::find_root_manifest_for_wd;
 
@@ -42,7 +44,8 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    fn from_toml(contents: &str) -> Result<Manifest> {
+    /// Parses and validates a manifest from its TOML contents.
+    pub fn from_toml(contents: &str) -> Result<Manifest> {
         let manifest: Manifest = toml::from_str(contents)?;
         manifest.validate()?;
         Ok(manifest)
@@ -79,8 +82,93 @@ impl Manifest {
     // `Manifest` validations, mirrors cargo's `Workspace::validate`
     fn validate(&self) -> Result<()> {
         self.validate_workspace_exclusivity()?;
+        self.validate_overrides()?;
         // Add new validation rules with `self.validate_*()?;`
         Ok(())
+    }
+
+    /// Checks that override keys parse and that no two name overlapping versions of one package.
+    ///
+    /// A bare key covers every version, so a bare and a versioned key for one package conflict;
+    /// two versioned keys may coexist when the versions they name are disjoint.
+    fn validate_overrides(&self) -> Result<()> {
+        let Some(overrides) = self.overrides.as_ref() else {
+            return Ok(());
+        };
+
+        // Parse in a stable order so errors do not depend on map ordering.
+        let mut keys: Vec<(&str, PackageReq)> = Vec::with_capacity(overrides.len());
+        for key in overrides.keys() {
+            let spec: PackageSpec = key
+                .parse()
+                .with_context(|| format!("invalid override key `{key}`"))?;
+            keys.push((key, PackageReq::from(spec)));
+        }
+        keys.sort_by_key(|(key, _)| *key);
+
+        let mut conflicts: BTreeSet<String> = BTreeSet::new();
+        for (i, (key_a, req_a)) in keys.iter().enumerate() {
+            for (key_b, req_b) in keys.iter().skip(i + 1) {
+                if req_a.intersects(req_b) {
+                    let (a, b) = if key_a <= key_b {
+                        (key_a, key_b)
+                    } else {
+                        (key_b, key_a)
+                    };
+                    conflicts.insert(format!("`{a}` and `{b}`"));
+                }
+            }
+        }
+        if conflicts.is_empty() {
+            return Ok(());
+        }
+        anyhow::bail!(
+            "overrides must not overlap: {} - remove one from each pair",
+            conflicts.into_iter().collect::<Vec<_>>().join("; ")
+        )
+    }
+
+    /// Builds the overrides as `(requirement, dependency)` pairs, canonicalizing local paths.
+    ///
+    /// The key decides which requirement applies; the `version` field is a registry requirement
+    /// and has no effect when `path` is set.
+    pub(crate) async fn override_dependencies(&self) -> Result<Vec<(PackageReq, Dependency)>> {
+        let Some(overrides) = self.overrides.as_ref() else {
+            return Ok(Vec::new());
+        };
+        let mut dependencies = Vec::with_capacity(overrides.len());
+        for (key, ovr) in overrides.iter() {
+            let spec: PackageSpec = key
+                .parse()
+                .with_context(|| format!("invalid override key `{key}`"))?;
+            let requirement = PackageReq::from(&spec);
+            let dependency = match (ovr.path.as_ref(), ovr.version.as_ref()) {
+                (Some(path), version) => {
+                    if version.is_some() {
+                        tracing::warn!(
+                            %key,
+                            "the `version` field has no effect on a local (path) override; the \
+                             key alone decides which version it applies to",
+                        );
+                    }
+                    let path = tokio::fs::canonicalize(path).await.with_context(|| {
+                        format!("resolving local dependency {}", path.display())
+                    })?;
+                    Dependency::Local(path)
+                }
+                (None, Some(version)) => Dependency::Package(RegistryPackage {
+                    name: Some(spec.package.clone()),
+                    version: version.clone(),
+                    registry: None,
+                }),
+                (None, None) => {
+                    tracing::warn!(%key, "Found override without version or path, ignoring");
+                    continue;
+                }
+            };
+            dependencies.push((requirement, dependency));
+        }
+        Ok(dependencies)
     }
 
     // no overrides or top-level metadata when workspace is present
@@ -238,6 +326,68 @@ mod tests {
         assert_eq!(
             manifest, loaded_manifest,
             "manifest loaded from file does not match original manifest"
+        );
+    }
+
+    #[test]
+    fn override_keys_may_carry_a_version() {
+        let manifest = Manifest::from_toml(
+            r#"
+[overrides]
+"foo:bar@0.1.0" = { path = "bar-0.1.0" }
+"foo:bar@0.2.0" = { path = "bar-0.2.0" }
+"foo:baz" = { path = "baz" }
+"#,
+        )
+        .expect("versioned override keys should be accepted");
+        assert_eq!(manifest.overrides.unwrap().len(), 3);
+    }
+
+    #[test]
+    fn override_keys_conflict_when_bare_and_versioned() {
+        let err = Manifest::from_toml(
+            r#"
+[overrides]
+"foo:bar" = { path = "bar" }
+"foo:bar@0.1.0" = { path = "bar-0.1.0" }
+"#,
+        )
+        .expect_err("a bare key alongside a versioned one is ambiguous");
+        let err = format!("{err:#}");
+        assert!(err.contains("foo:bar@0.1.0"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn override_key_conflicts_are_all_reported_in_a_stable_order() {
+        let err = Manifest::from_toml(
+            r#"
+[overrides]
+"zzz:two" = { path = "z" }
+"zzz:two@0.2.0" = { path = "z2" }
+"aaa:one" = { path = "a" }
+"aaa:one@0.1.0" = { path = "a1" }
+"#,
+        )
+        .expect_err("both packages conflict");
+        let err = format!("{err:#}");
+        let aaa = err.find("aaa:one").expect("aaa:one should be reported");
+        let zzz = err.find("zzz:two").expect("zzz:two should be reported");
+        assert!(aaa < zzz, "conflicts should be sorted: {err}");
+    }
+
+    #[test]
+    fn override_keys_must_parse() {
+        let err = Manifest::from_toml(
+            r#"
+[overrides]
+"not a package ref" = { path = "bar" }
+"#,
+        )
+        .expect_err("an unparseable override key should be rejected");
+        let err = format!("{err:#}");
+        assert!(
+            err.contains("invalid override key"),
+            "unexpected error: {err}"
         );
     }
 }
