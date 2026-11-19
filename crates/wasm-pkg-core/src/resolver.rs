@@ -2,7 +2,7 @@
 // NOTE(thomastaylor312): This is copied and adapted from the `cargo-component` crate: https://github.com/bytecodealliance/cargo-component/blob/f0be1c7d9917aa97e9102e69e3b838dae38d624b/crates/core/src/registry.rs
 
 use std::{
-    collections::{BTreeSet, HashMap, HashSet, hash_map},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, hash_map},
     fmt::Debug,
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
@@ -164,6 +164,9 @@ impl RegistryResolution {
 pub struct LocalResolution {
     /// The name of the dependency that was resolved.
     pub name: PackageRef,
+    /// The version declared by the package at `path`. `None` means that package
+    /// declares no version, which in WIT is a package distinct from any versioned one.
+    pub version: Option<Version>,
     /// The path to the resolved dependency.
     pub path: PathBuf,
 }
@@ -189,11 +192,12 @@ impl DependencyResolution {
 
     /// Gets the resolved version.
     ///
-    /// Returns `None` if the dependency is not resolved from a registry package.
+    /// `None` means the resolved package declares no version, which is only possible for a local
+    /// resolution: a registry release always has one.
     pub fn version(&self) -> Option<&Version> {
         match self {
             Self::Registry(res) => Some(&res.version),
-            Self::Local(_) => None,
+            Self::Local(res) => res.version.as_ref(),
         }
     }
 
@@ -348,8 +352,14 @@ pub struct DependencyResolver<'a> {
     client: CachingClient<FileCache>,
     lock_file: Option<&'a LockFile>,
     packages: HashMap<PackageRef, Vec<VersionInfo>>,
-    dependencies: HashMap<PackageRef, RegistryDependency>,
-    resolutions: DependencyResolutionMap,
+    dependencies: HashMap<PackageSpec, RegistryDependency>,
+    /// Overrides pointing at a path on disk, held as paths until [`Self::resolve`] reads each
+    /// one, so a [`LocalResolution`] never exists without the version found at its path.
+    local_overrides: BTreeMap<PackageSpec, PathBuf>,
+    /// Packages with a bare override (`foo:bar`). This is the one place a key means a *range*:
+    /// a bare override covers every version of its package. Keys everywhere else, including
+    /// those with no version, name exactly one package, as they do in WIT.
+    bare_overrides: HashSet<PackageRef>,
 }
 
 impl<'a> DependencyResolver<'a> {
@@ -368,9 +378,10 @@ impl<'a> DependencyResolver<'a> {
         Ok(DependencyResolver {
             client,
             lock_file,
-            resolutions: Default::default(),
             packages: Default::default(),
             dependencies: Default::default(),
+            local_overrides: Default::default(),
+            bare_overrides: Default::default(),
         })
     }
 
@@ -387,38 +398,74 @@ impl<'a> DependencyResolver<'a> {
         Ok(DependencyResolver {
             client,
             lock_file,
-            resolutions: Default::default(),
             packages: Default::default(),
             dependencies: Default::default(),
+            local_overrides: Default::default(),
+            bare_overrides: Default::default(),
         })
     }
 
     /// Add a dependency to the resolver. If the dependency already exists, then it will be ignored.
     /// To override an existing dependency, use [`override_dependency`](Self::override_dependency).
+    ///
+    /// A key without a version covers every version of the package. Callers adding several
+    /// overrides must reject overlapping keys first, as `Manifest::validate_override_keys` does;
+    /// overlapping keys apply in insertion order.
     pub async fn add_dependency(
         &mut self,
-        name: &PackageRef,
+        key: &PackageSpec,
         dependency: &Dependency,
     ) -> Result<()> {
-        self.add_dependency_internal(name, dependency, false).await
+        self.add_dependency_internal(key, dependency, false).await?;
+        self.record_bare_override(key);
+        Ok(())
     }
 
     /// Add a dependency to the resolver. If the dependency already exists, then it will be
     /// overridden.
     pub async fn override_dependency(
         &mut self,
-        name: &PackageRef,
+        key: &PackageSpec,
         dependency: &Dependency,
     ) -> Result<()> {
-        self.add_dependency_internal(name, dependency, true).await
+        self.add_dependency_internal(key, dependency, true).await?;
+        self.record_bare_override(key);
+        Ok(())
+    }
+
+    /// A bare override covers every version of its package, so versioned WIT imports of it
+    /// (`foo:bar@1.2.0`) are skipped instead of fetched. The resolver does not police overlap
+    /// between override keys; callers reject that first (`Manifest::validate_override_keys`),
+    /// and overlapping keys added anyway apply in insertion order.
+    fn record_bare_override(&mut self, key: &PackageSpec) {
+        if key.version.is_none() {
+            self.bare_overrides.insert(key.package.clone());
+        }
+    }
+
+    /// Returns whether this key is already accounted for: the same key was added before, or a
+    /// bare override covers every version of its package.
+    ///
+    /// A key skipped for the latter reason is never recorded anywhere — it is satisfied by the
+    /// bare override's own resolution, not by one of its own, so [`DependencyResolutionMap`] has
+    /// no entry for it.
+    fn is_covered(&self, key: &PackageSpec) -> bool {
+        self.local_overrides.contains_key(key)
+            || self.dependencies.contains_key(key)
+            || self.bare_overrides.contains(&key.package)
     }
 
     async fn add_dependency_internal(
         &mut self,
-        name: &PackageRef,
+        key: &PackageSpec,
         dependency: &Dependency,
         force_override: bool,
     ) -> Result<()> {
+        if !force_override && self.is_covered(key) {
+            tracing::debug!(%key, %dependency, "dependency already exists and override is not set, ignoring");
+            return Ok(());
+        }
+        let name = &key.package;
         match dependency {
             Dependency::Package(package) => {
                 // Dependency comes from a registry, add a dependency to the resolver
@@ -443,16 +490,9 @@ impl<'a> DependencyResolver<'a> {
                     _ => None,
                 };
 
-                // So if it wasn't already fetched first? then we'll try and resolve it later, and the override
-                // is not present there for some reason
-                if !force_override
-                    && (self.resolutions.contains_key(name) || self.dependencies.contains_key(name))
-                {
-                    tracing::debug!(%name, %dependency, "dependency already exists and override is not set, ignoring");
-                    return Ok(());
-                }
+                self.local_overrides.remove(key);
                 self.dependencies.insert(
-                    name.to_owned(),
+                    key.to_owned(),
                     RegistryDependency {
                         package: package_name,
                         version: package.version.clone(),
@@ -461,59 +501,30 @@ impl<'a> DependencyResolver<'a> {
                 );
             }
             Dependency::Local(p) => {
-                let res = DependencyResolution::Local(LocalResolution {
-                    name: name.clone(),
-                    path: p.clone(),
-                });
-
-                // This is a bit of a hack, but if there are multiple local dependencies that are
-                // nested and overridden, getting the packages from the local package treats _all_
-                // deps as registry deps. So if we're handling a local path and the dependencies
-                // have a registry package already, override it. Otherwise follow normal overrides.
-                // We should definitely fix this and change where we resolve these things
-                let should_insert = force_override
-                    || self.dependencies.contains_key(name)
-                    || !self.resolutions.contains_key(name);
-                if !should_insert {
-                    tracing::debug!(%name, "dependency already exists and registry override is not set, ignoring");
-                    return Ok(());
-                }
-
-                // Because we got here, we should remove anything from dependencies that is the same
-                // package because we're overriding with the local package. Technically we could be
-                // clever and just do this in the boolean above, but I'm paranoid
-                self.dependencies.remove(name);
-
-                // Now that we check we haven't already inserted this dep, get the packages from the
-                // local dependency and add those to the resolver before adding the dependency
-                let (_, packages) = get_packages(p)
-                    .context("Error getting dependent packages from local dependency")?;
-                Box::pin(self.add_packages(packages))
-                    .await
-                    .context("Error adding packages to resolver for local dependency")?;
-
-                let prev = self.resolutions.insert(name.clone(), res);
-                assert!(prev.is_none());
+                self.dependencies.remove(key);
+                self.local_overrides.insert(key.clone(), p.clone());
             }
         }
 
         Ok(())
     }
 
-    /// A helper function for adding an iterator of package refs and their associated version
-    /// requirements to the resolver
+    /// A helper function for adding an iterator of packages named by a WIT file to the resolver.
     pub async fn add_packages(
         &mut self,
-        packages: impl IntoIterator<Item = (PackageRef, VersionReq)>,
+        packages: impl IntoIterator<Item = PackageSpec>,
     ) -> Result<()> {
-        for (package, req) in packages {
-            self.add_dependency(
-                &package,
+        for spec in packages {
+            // Not `add_dependency`: a versionless WIT import names the unversioned package and
+            // must not be recorded as a bare override covering every version
+            self.add_dependency_internal(
+                &spec,
                 &Dependency::Package(RegistryPackage {
-                    name: Some(package.clone()),
-                    version: req,
+                    name: Some(spec.package.clone()),
+                    version: spec.version_req(),
                     registry: None,
                 }),
+                false,
             )
             .await?;
         }
@@ -526,8 +537,34 @@ impl<'a> DependencyResolver<'a> {
     ///
     /// Returns the dependency resolution map.
     pub async fn resolve(mut self) -> Result<DependencyResolutionMap> {
-        let mut resolutions = self.resolutions;
-        for (name, dependency) in self.dependencies.into_iter() {
+        let mut resolutions = DependencyResolutionMap::default();
+
+        // Reading a local package is what turns its override key into a resolution. The registry
+        // packages it names are added here rather than at override time, so that every override is
+        // already known and anything one covers is skipped; `self.local_overrides` stays intact for
+        // `is_covered`, which makes this loop independent of the order the keys come out in.
+        let local_overrides: Vec<(PackageSpec, PathBuf)> = self
+            .local_overrides
+            .iter()
+            .map(|(key, path)| (key.clone(), path.clone()))
+            .collect();
+        for (key, path) in local_overrides {
+            let (found, packages) = get_packages(&path)
+                .context("Error getting dependent packages from local dependency")?;
+            check_local_override(&key, &found, &path)?;
+            let resolution = DependencyResolution::Local(LocalResolution {
+                name: found.package,
+                version: found.version,
+                path,
+            });
+            resolutions.insert(key, resolution);
+            self.add_packages(packages)
+                .await
+                .context("Error adding packages to resolver for local dependency")?;
+        }
+
+        for (key, dependency) in self.dependencies.into_iter() {
+            let name = &key.package;
             // We need to clone a handle to the client because we mutably borrow self below. Might
             // be worth replacing the mutable borrow with a RwLock down the line.
             let client = self.client.clone();
@@ -604,7 +641,7 @@ impl<'a> DependencyResolver<'a> {
                 registry: self.client.client().ok().and_then(|client| {
                     client
                         .config()
-                        .resolve_registry(&name)
+                        .resolve_registry(name)
                         .map(ToString::to_string)
                 }),
                 requirement: dependency.version.clone(),
@@ -612,11 +649,27 @@ impl<'a> DependencyResolver<'a> {
                 digest: release.content_digest.clone(),
                 client: self.client.clone(),
             };
-            resolutions.insert(name, DependencyResolution::Registry(resolution));
+            resolutions.insert(key, DependencyResolution::Registry(resolution));
         }
 
         Ok(resolutions)
     }
+}
+
+/// An override key names the package it stands in for, so the package on disk has to be that
+/// package: a bare key must match the name, a versioned key the name and the version exactly.
+fn check_local_override(key: &PackageSpec, found: &PackageSpec, path: &Path) -> Result<()> {
+    let matches = match key.version {
+        Some(_) => key == found,
+        None => key.package == found.package,
+    };
+    if matches {
+        return Ok(());
+    }
+    bail!(
+        "override `{key}` points at {path}, which is package `{found}` - fix the key or the path",
+        path = path.display()
+    )
 }
 
 async fn load_package<'b>(
@@ -660,18 +713,29 @@ fn find_latest_release<'a>(
 
 /// Represents a map of dependency resolutions.
 ///
-/// The key to the map is the package name of the dependency.
+/// Each key is a dependency's package plus the version it was requested at. This lets a world
+/// naming several versions of the same package resolve all of them, not just one.
+///
+/// Under a versioned key the resolution carries that exact version. Under a bare key it carries
+/// whichever version was found: the package's own at a local path, the registry's pick otherwise.
+///
+/// A key is a requirement and its value the resolution that satisfies it, so this map is the
+/// requirement-to-resolution function: one requirement never maps to two resolutions. The reverse
+/// can happen — a bare override key is one resolution satisfying every versioned requirement for
+/// its package — which is why this map can hold fewer entries than there were imports. The
+/// requirements a bare override absorbs this way are never recorded here; the resolver's internal
+/// `is_covered` check is what skips them before they would be.
 #[derive(Debug, Clone, Default)]
-pub struct DependencyResolutionMap(HashMap<PackageRef, DependencyResolution>);
+pub struct DependencyResolutionMap(HashMap<PackageSpec, DependencyResolution>);
 
-impl AsRef<HashMap<PackageRef, DependencyResolution>> for DependencyResolutionMap {
-    fn as_ref(&self) -> &HashMap<PackageRef, DependencyResolution> {
+impl AsRef<HashMap<PackageSpec, DependencyResolution>> for DependencyResolutionMap {
+    fn as_ref(&self) -> &HashMap<PackageSpec, DependencyResolution> {
         &self.0
     }
 }
 
 impl Deref for DependencyResolutionMap {
-    type Target = HashMap<PackageRef, DependencyResolution>;
+    type Target = HashMap<PackageSpec, DependencyResolution>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
