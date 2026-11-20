@@ -1,0 +1,15 @@
+package example:app@0.1.0;
+
+package example:inline@0.1.0 {
+  interface types {
+    use example:dep/types@0.1.0.{id};
+
+    record entry {
+      id: id,
+    }
+  }
+}
+
+world app {
+  import example:inline/types@0.1.0;
+}

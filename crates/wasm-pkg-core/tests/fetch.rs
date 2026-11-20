@@ -7,6 +7,7 @@ use wasm_pkg_core::{
     manifest::{Manifest, Override},
     wit::{self, OutputType},
 };
+use wit_parser::Resolve;
 
 mod common;
 
@@ -151,6 +152,64 @@ async fn test_transitive_local(#[values(OutputType::Wasm, OutputType::Wit)] outp
     assert!(deps.contains(&"example-c-nested-0.1.0".to_string()));
 
     // All dependencies are local, so the lock file should be empty
+    assert_eq!(
+        lock.packages.len(),
+        0,
+        "Should have the correct number of packages in the lock file"
+    );
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_inline_packages(#[values(OutputType::Wasm, OutputType::Wit)] output: OutputType) {
+    let (_temp, fixture_path) = common::load_fixture("inline-packages").await.unwrap();
+    let project_path = fixture_path.join("project");
+    let lock_file = project_path.join("wkg.lock");
+    let mut lock = LockFile::new_with_path([], &lock_file)
+        .await
+        .expect("Should be able to create a new lock file");
+    let manifest = Manifest {
+        overrides: Some(HashMap::from([(
+            "example:dep".to_string(),
+            Override {
+                path: Some(fixture_path.join("local-dep/wit")),
+                version: None,
+            },
+        )])),
+        ..Default::default()
+    };
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+
+    // No registry is configured for `example`, so this fails if `example:inline`, which the root
+    // package defines inline, is resolved as a dependency
+    wit::fetch_dependencies(
+        &manifest,
+        project_path.join("wit"),
+        &mut lock,
+        client,
+        output,
+    )
+    .await
+    .unwrap_or_else(|e| panic!("Should be able to fetch the dependencies: {e:#}"));
+
+    // The deps directory holds the dependency of the inline package, but not the inline package
+    // itself, which would then be defined twice
+    let mut deps_dir = tokio::fs::read_dir(project_path.join("wit/deps"))
+        .await
+        .expect("Should be able to read the deps directory");
+    let mut deps = Vec::new();
+    while let Ok(Some(entry)) = deps_dir.next_entry().await {
+        deps.push(entry.file_name().to_string_lossy().to_string());
+    }
+    assert_eq!(deps, ["example-dep-0.1.0"]);
+
+    // Now try to parse the package to make sure the deps work
+    let mut resolve = Resolve::default();
+    resolve
+        .push_dir(project_path.join("wit"))
+        .unwrap_or_else(|e| panic!("Should be able to parse the package with its deps: {e:#}"));
+
+    // The only dependency is local, so the lock file should be empty
     assert_eq!(
         lock.packages.len(),
         0,

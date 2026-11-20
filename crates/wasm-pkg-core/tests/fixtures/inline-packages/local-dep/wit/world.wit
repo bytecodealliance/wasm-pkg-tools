@@ -1,0 +1,5 @@
+package example:dep@0.1.0;
+
+interface types {
+  type id = u32;
+}
