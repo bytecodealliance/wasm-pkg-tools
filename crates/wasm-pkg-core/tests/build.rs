@@ -1,4 +1,9 @@
-use wasm_pkg_core::{lock::LockFile, manifest::Manifest};
+use std::collections::HashMap;
+
+use wasm_pkg_core::{
+    lock::LockFile,
+    manifest::{Manifest, Override},
+};
 use wit_component::DecodedWasm;
 use wit_parser::Stability;
 
@@ -114,4 +119,55 @@ async fn test_bad_dep_failure() {
     )
     .await
     .expect_err("Should error with a bad dependency");
+}
+
+#[tokio::test]
+async fn test_build_inline_packages() {
+    let (_temp, fixture_path) = common::load_fixture("inline-packages").await.unwrap();
+    let project_path = fixture_path.join("project");
+    let lock_file = project_path.join("wkg.lock");
+    let mut lock = LockFile::new_with_path([], &lock_file)
+        .await
+        .expect("Should be able to create a new lock file");
+    let manifest = Manifest {
+        overrides: Some(HashMap::from([(
+            "example:dep".to_string(),
+            Override {
+                path: Some(fixture_path.join("local-dep/wit")),
+                version: None,
+            },
+        )])),
+        ..Default::default()
+    };
+    let (_temp_cache, client) = common::get_client().await.unwrap();
+
+    // No registry is configured for `example`, so this fails if `example:inline`, which the root
+    // package defines inline, is resolved as a dependency
+    let (pkg, _, bytes) =
+        wasm_pkg_core::wit::build_package(&manifest, project_path.join("wit"), &mut lock, client)
+            .await
+            .expect("Should be able to build the package");
+
+    assert_eq!(
+        pkg.to_string(),
+        "example:app",
+        "Should have the correct package reference"
+    );
+
+    // The inline package is embedded like any other dependency
+    let parsed = wit_component::decode(&bytes).expect("Should be able to parse the bytes");
+    let (resolve, pkg_id) = match parsed {
+        DecodedWasm::WitPackage(resolve, pkg_id) => (resolve, pkg_id),
+        _ => panic!("Should be a package"),
+    };
+    let mut deps = resolve
+        .package_direct_deps(pkg_id)
+        .map(|id| resolve.packages[id].name.to_string())
+        .collect::<Vec<_>>();
+    deps.sort();
+    assert_eq!(
+        deps,
+        vec!["example:dep@0.1.0", "example:inline@0.1.0"],
+        "Should have the inline package and its dependency embedded"
+    );
 }

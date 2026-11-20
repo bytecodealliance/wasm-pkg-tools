@@ -200,18 +200,35 @@ pub fn get_packages(
         version: group.main.name.version.clone(),
     };
 
-    // Get all package refs from the main package and then from any nested packages
-    let packages: HashSet<(PackageRef, VersionReq)> =
-        packages_from_foreign_deps(group.main.foreign_deps.into_keys())
+    let defined = defined_packages(&group);
+
+    // Get all package refs from the main package and then from any nested packages, leaving out
+    // the packages the group defines itself
+    let packages: HashSet<(PackageRef, VersionReq)> = packages_from_foreign_deps(
+        group
+            .main
+            .foreign_deps
+            .into_keys()
             .chain(
                 group
                     .nested
                     .into_iter()
-                    .flat_map(|pkg| packages_from_foreign_deps(pkg.foreign_deps.into_keys())),
+                    .flat_map(|pkg| pkg.foreign_deps.into_keys()),
             )
-            .collect();
+            .filter(|dep| !defined.contains(dep)),
+    )
+    .collect();
 
     Ok((package, packages))
+}
+
+/// The packages a group defines: its main package and any nested `package ... { ... }` blocks in
+/// its files. They are provided inline, so they are never dependencies to resolve or write to the
+/// deps directory.
+fn defined_packages(group: &wit_parser::UnresolvedPackageGroup) -> HashSet<PackageName> {
+    std::iter::once(group.main.name.clone())
+        .chain(group.nested.iter().map(|pkg| pkg.name.clone()))
+        .collect()
 }
 
 /// Build an acyclic [`DependencyGraph`] for the provided WIT package paths alongside a [`LocalPackageIndex`].
@@ -331,10 +348,14 @@ pub async fn populate_dependencies(
 ) -> Result<()> {
     let deps_path = prepare_deps_dir(path.as_ref()).await?;
 
-    // For wit output, generate the resolve and then output each package in the resolve
+    // For wit output, generate the resolve and then output each package in the resolve that the
+    // root does not define itself
     if let OutputType::Wit = output {
         let (resolve, pkg_id) = deps.generate_resolve(path.as_ref()).await?;
-        return print_wit_from_resolve(&resolve, pkg_id, &deps_path).await;
+        let root = wit_parser::UnresolvedPackageGroup::parse_dir(path.as_ref())
+            .context("Couldn't parse package")?;
+        return print_wit_from_resolve(&resolve, pkg_id, &defined_packages(&root), &deps_path)
+            .await;
     }
 
     write_wasm_deps(&deps_path, &deps.decode_dependencies().await?).await
@@ -465,6 +486,7 @@ async fn write_local_dep(local: &LocalResolution, output_path: impl AsRef<Path>)
 async fn print_wit_from_resolve(
     resolve: &Resolve,
     top_level_id: PackageId,
+    defined: &HashSet<PackageName>,
     root_deps_dir: &Path,
 ) -> Result<()> {
     print_wit_packages(
@@ -473,7 +495,7 @@ async fn print_wit_from_resolve(
         resolve
             .packages
             .iter()
-            .filter(|(id, _)| *id != top_level_id),
+            .filter(|(id, pkg)| *id != top_level_id && !defined.contains(&pkg.name)),
     )
     .await
 }
