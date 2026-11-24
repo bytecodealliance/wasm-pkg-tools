@@ -222,9 +222,7 @@ pub fn get_packages(
     Ok((package, packages))
 }
 
-/// The packages a group defines: its main package and any nested `package ... { ... }` blocks in
-/// its files. They are provided inline, so they are never dependencies to resolve or write to the
-/// deps directory.
+/// The main and nested packages a group defines.
 fn defined_packages(group: &wit_parser::UnresolvedPackageGroup) -> HashSet<PackageName> {
     std::iter::once(group.main.name.clone())
         .chain(group.nested.iter().map(|pkg| pkg.name.clone()))
