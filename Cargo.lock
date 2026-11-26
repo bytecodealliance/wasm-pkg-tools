@@ -3923,6 +3923,7 @@ dependencies = [
  "oci-wasm",
  "serde_json",
  "tempfile",
+ "testcontainers",
  "tokio",
  "tracing",
  "tracing-subscriber",
